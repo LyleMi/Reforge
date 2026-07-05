@@ -13,6 +13,7 @@ use crate::similar_functions::{
     SimilarFunctionOptions, SimilarFunctionProgress, SourceFile, is_supported_similarity_source,
     scan_similar_functions_report_with_progress,
 };
+use crate::structural::{StructureOptions, is_supported_structure_source, scan_structure};
 
 const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     "node_modules",
@@ -34,6 +35,18 @@ pub enum FindingKind {
     LargeDirectory,
     DebtMarker,
     SimilarFunctions,
+    LongFunction,
+    ComplexFunction,
+    DeepNesting,
+    ManyParameters,
+    LargeType,
+    LargePublicSurface,
+    ImportHeavyFile,
+    RepeatedLiteral,
+    RepeatedErrorPattern,
+    TestDuplication,
+    DirectoryDrift,
+    DataClump,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -269,6 +282,7 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
 
     let mut findings = Vec::new();
     let mut similarity_sources = Vec::new();
+    let mut structure_sources = Vec::new();
     let mut stats = ScanStats::default();
 
     let total_source_files = if progress.wants_detailed_progress() {
@@ -293,6 +307,7 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
             args.include_test_similarity,
             &mut findings,
             &mut similarity_sources,
+            &mut structure_sources,
             &mut stats,
         )?;
         if let Some(total) = total_source_files {
@@ -318,6 +333,7 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
                     args.include_test_similarity,
                     &mut findings,
                     &mut similarity_sources,
+                    &mut structure_sources,
                     &mut stats,
                 )?;
                 if let Some(total) = total_source_files {
@@ -333,6 +349,26 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
 
         scan_directories(&directory_source_files, args.max_dir_files, &mut findings);
     }
+
+    progress.report(&format!(
+        "Analyzing structural signals in {} files",
+        structure_sources.len()
+    ));
+    let structure_options = StructureOptions {
+        max_function_lines: args.max_function_lines,
+        max_function_complexity: args.max_function_complexity,
+        max_nesting_depth: args.max_nesting_depth,
+        max_function_parameters: args.max_function_parameters,
+        max_type_lines: args.max_type_lines,
+        max_type_members: args.max_type_members,
+        max_imports: args.max_imports,
+        max_public_items: args.max_public_items,
+        min_repeated_literal_occurrences: args.min_repeated_literal_occurrences,
+        min_data_clump_occurrences: args.min_data_clump_occurrences,
+        max_dir_files: args.max_dir_files,
+        include_test_structure: args.include_test_structure,
+    };
+    findings.extend(scan_structure(&structure_sources, &structure_options)?);
 
     progress.report(&format!(
         "Analyzing similar functions in {} files",
@@ -418,6 +454,7 @@ fn scan_file(
     include_test_similarity: bool,
     findings: &mut Vec<Finding>,
     similarity_sources: &mut Vec<SourceFile>,
+    structure_sources: &mut Vec<SourceFile>,
     stats: &mut ScanStats,
 ) -> Result<()> {
     if !is_supported_source(path) {
@@ -456,10 +493,19 @@ fn scan_file(
         }
     }
 
+    let display_path = display_path(path);
+    if is_supported_structure_source(path) {
+        structure_sources.push(SourceFile {
+            path: path.to_path_buf(),
+            display_path: display_path.clone(),
+            source: source.clone(),
+        });
+    }
+
     if is_supported_similarity_source(path) && (include_test_similarity || !is_test_source(path)) {
         similarity_sources.push(SourceFile {
             path: path.to_path_buf(),
-            display_path: display_path(path),
+            display_path,
             source,
         });
     }
@@ -564,7 +610,7 @@ fn pluralize(count: usize, noun: &str) -> String {
     }
 }
 
-fn is_test_source(path: &Path) -> bool {
+pub(crate) fn is_test_source(path: &Path) -> bool {
     let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
@@ -620,6 +666,17 @@ mod tests {
             min_function_tokens: 80,
             function_similarity: 0.85,
             include_test_similarity: false,
+            max_function_lines: 80,
+            max_function_complexity: 15,
+            max_nesting_depth: 4,
+            max_function_parameters: 5,
+            max_type_lines: 250,
+            max_type_members: 30,
+            max_imports: 35,
+            max_public_items: 30,
+            min_repeated_literal_occurrences: 4,
+            min_data_clump_occurrences: 3,
+            include_test_structure: false,
             output: Some(crate::cli::OutputFormat::Human),
             output_file: None,
             progress: crate::cli::ProgressMode::Auto,
@@ -760,9 +817,12 @@ function gamma(rows) {
 
         fs::remove_dir_all(root)?;
 
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].kind, FindingKind::SimilarFunctions);
-        assert_eq!(findings[0].magnitude, Some(3));
+        let similar_findings = findings
+            .iter()
+            .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
+            .collect::<Vec<_>>();
+        assert_eq!(similar_findings.len(), 1);
+        assert_eq!(similar_findings[0].magnitude, Some(3));
         assert!(
             stricter_findings
                 .iter()

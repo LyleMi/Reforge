@@ -68,13 +68,25 @@ pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
     output.push_str(&paint(color, "Signals", AnsiStyle::Section));
     output.push('\n');
     output.push_str(&format!(
-        "  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n",
+        "  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Directory drift: {}\n  Data clumps: {}\n",
         breakdown.warnings,
         breakdown.info,
         breakdown.large_files,
         breakdown.large_directories,
         breakdown.debt_markers,
-        breakdown.similar_functions
+        breakdown.similar_functions,
+        breakdown.long_functions,
+        breakdown.complex_functions,
+        breakdown.deep_nesting,
+        breakdown.many_parameters,
+        breakdown.large_types,
+        breakdown.large_public_surfaces,
+        breakdown.import_heavy_files,
+        breakdown.repeated_literals,
+        breakdown.repeated_error_patterns,
+        breakdown.test_duplication,
+        breakdown.directory_drift,
+        breakdown.data_clumps
     ));
 
     if report.findings.is_empty() {
@@ -105,7 +117,7 @@ pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
             output.push_str(&render_finding_line(finding, color));
             output.push('\n');
 
-            if finding.kind == FindingKind::SimilarFunctions {
+            if has_related_location_details(finding) {
                 output.push_str(&render_related_locations(finding, color));
             }
         }
@@ -175,7 +187,66 @@ fn concise_finding_message(finding: &Finding) -> String {
             ),
             None => finding.message.clone(),
         },
+        FindingKind::LongFunction => match finding.magnitude {
+            Some(lines) => format!("long function: {lines} lines"),
+            None => finding.message.clone(),
+        },
+        FindingKind::ComplexFunction => match finding.magnitude {
+            Some(complexity) => format!("complex function: complexity {complexity}"),
+            None => finding.message.clone(),
+        },
+        FindingKind::DeepNesting => match finding.magnitude {
+            Some(depth) => format!("deep nesting: {depth} levels"),
+            None => finding.message.clone(),
+        },
+        FindingKind::ManyParameters => match finding.magnitude {
+            Some(parameters) => format!("many parameters: {parameters} parameters"),
+            None => finding.message.clone(),
+        },
+        FindingKind::LargeType => match finding.magnitude {
+            Some(size) => format!("large type: size {size}"),
+            None => finding.message.clone(),
+        },
+        FindingKind::LargePublicSurface => match finding.magnitude {
+            Some(items) => format!("large public surface: {items} items"),
+            None => finding.message.clone(),
+        },
+        FindingKind::ImportHeavyFile => match finding.magnitude {
+            Some(imports) => format!("import-heavy file: {imports} imports"),
+            None => finding.message.clone(),
+        },
+        FindingKind::RepeatedLiteral => match finding.magnitude {
+            Some(count) => format!("repeated literal: {count} occurrences"),
+            None => finding.message.clone(),
+        },
+        FindingKind::RepeatedErrorPattern => match finding.magnitude {
+            Some(count) => format!("repeated error pattern: {count} occurrences"),
+            None => finding.message.clone(),
+        },
+        FindingKind::TestDuplication => match finding.magnitude {
+            Some(count) => format!("test duplication: {count} occurrences"),
+            None => finding.message.clone(),
+        },
+        FindingKind::DirectoryDrift => match finding.magnitude {
+            Some(concepts) => format!("directory drift: {concepts} concepts"),
+            None => finding.message.clone(),
+        },
+        FindingKind::DataClump => match finding.magnitude {
+            Some(count) => format!("data clump: {count} occurrences"),
+            None => finding.message.clone(),
+        },
     }
+}
+
+fn has_related_location_details(finding: &Finding) -> bool {
+    matches!(
+        finding.kind,
+        FindingKind::SimilarFunctions
+            | FindingKind::RepeatedLiteral
+            | FindingKind::RepeatedErrorPattern
+            | FindingKind::TestDuplication
+            | FindingKind::DataClump
+    )
 }
 
 fn render_debt_marker_group(findings: &[&Finding], color: bool) -> String {
@@ -270,6 +341,18 @@ struct FindingBreakdown {
     large_directories: usize,
     debt_markers: usize,
     similar_functions: usize,
+    long_functions: usize,
+    complex_functions: usize,
+    deep_nesting: usize,
+    many_parameters: usize,
+    large_types: usize,
+    large_public_surfaces: usize,
+    import_heavy_files: usize,
+    repeated_literals: usize,
+    repeated_error_patterns: usize,
+    test_duplication: usize,
+    directory_drift: usize,
+    data_clumps: usize,
 }
 
 impl FindingBreakdown {
@@ -287,6 +370,18 @@ impl FindingBreakdown {
                 FindingKind::LargeDirectory => breakdown.large_directories += 1,
                 FindingKind::DebtMarker => breakdown.debt_markers += 1,
                 FindingKind::SimilarFunctions => breakdown.similar_functions += 1,
+                FindingKind::LongFunction => breakdown.long_functions += 1,
+                FindingKind::ComplexFunction => breakdown.complex_functions += 1,
+                FindingKind::DeepNesting => breakdown.deep_nesting += 1,
+                FindingKind::ManyParameters => breakdown.many_parameters += 1,
+                FindingKind::LargeType => breakdown.large_types += 1,
+                FindingKind::LargePublicSurface => breakdown.large_public_surfaces += 1,
+                FindingKind::ImportHeavyFile => breakdown.import_heavy_files += 1,
+                FindingKind::RepeatedLiteral => breakdown.repeated_literals += 1,
+                FindingKind::RepeatedErrorPattern => breakdown.repeated_error_patterns += 1,
+                FindingKind::TestDuplication => breakdown.test_duplication += 1,
+                FindingKind::DirectoryDrift => breakdown.directory_drift += 1,
+                FindingKind::DataClump => breakdown.data_clumps += 1,
             }
         }
 
@@ -527,5 +622,27 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&output).unwrap()["summary"]["scanned_files"],
             2
         );
+    }
+
+    #[test]
+    fn renders_new_signal_counts_and_snake_case_json_kind() {
+        let finding = Finding {
+            kind: FindingKind::LongFunction,
+            severity: Severity::Warning,
+            path: "src/a.rs".to_string(),
+            line: Some(10),
+            magnitude: Some(90),
+            message: "long".to_string(),
+            related_locations: Vec::new(),
+        };
+        let report = report(vec![finding]);
+
+        let human = render_human_report(&report);
+        assert!(human.contains("Long functions: 1"));
+        assert!(human.contains("long function: 90 lines"));
+
+        let value: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+        assert_eq!(value["findings"][0]["kind"], "long_function");
     }
 }

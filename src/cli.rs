@@ -54,6 +54,50 @@ pub struct ScanArgs {
     #[arg(long)]
     pub include_test_similarity: bool,
 
+    /// Report functions whose line span is above this threshold.
+    #[arg(long, default_value_t = 80)]
+    pub max_function_lines: usize,
+
+    /// Report functions whose estimated cyclomatic complexity is above this threshold.
+    #[arg(long, default_value_t = 15)]
+    pub max_function_complexity: usize,
+
+    /// Report functions whose nested control-flow depth is above this threshold.
+    #[arg(long, default_value_t = 4)]
+    pub max_nesting_depth: usize,
+
+    /// Report functions with more parameters than this threshold.
+    #[arg(long, default_value_t = 5)]
+    pub max_function_parameters: usize,
+
+    /// Report types whose line span is above this threshold.
+    #[arg(long, default_value_t = 250)]
+    pub max_type_lines: usize,
+
+    /// Report types whose member count is above this threshold.
+    #[arg(long, default_value_t = 30)]
+    pub max_type_members: usize,
+
+    /// Report files with more imports than this threshold.
+    #[arg(long, default_value_t = 35)]
+    pub max_imports: usize,
+
+    /// Report files with more public/exported items than this threshold.
+    #[arg(long, default_value_t = 30)]
+    pub max_public_items: usize,
+
+    /// Report repeated literals seen at least this many times.
+    #[arg(long, default_value_t = 4)]
+    pub min_repeated_literal_occurrences: usize,
+
+    /// Report repeated parameter groups seen at least this many times.
+    #[arg(long, default_value_t = 3)]
+    pub min_data_clump_occurrences: usize,
+
+    /// Include test files in general structural analysis.
+    #[arg(long)]
+    pub include_test_structure: bool,
+
     /// Output format.
     #[arg(long, value_enum)]
     pub output: Option<OutputFormat>,
@@ -171,6 +215,67 @@ mod tests {
 
         let Command::Scan(args) = cli.command;
         assert!(args.include_test_similarity);
+    }
+
+    #[test]
+    fn parses_structure_thresholds() {
+        let cli = Cli::parse_from([
+            "reforge",
+            "scan",
+            ".",
+            "--max-function-lines",
+            "60",
+            "--max-function-complexity",
+            "10",
+            "--max-nesting-depth",
+            "3",
+            "--max-function-parameters",
+            "4",
+            "--max-type-lines",
+            "120",
+            "--max-type-members",
+            "20",
+            "--max-imports",
+            "12",
+            "--max-public-items",
+            "8",
+            "--min-repeated-literal-occurrences",
+            "5",
+            "--min-data-clump-occurrences",
+            "4",
+            "--include-test-structure",
+        ]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.max_function_lines, 60);
+        assert_eq!(args.max_function_complexity, 10);
+        assert_eq!(args.max_nesting_depth, 3);
+        assert_eq!(args.max_function_parameters, 4);
+        assert_eq!(args.max_type_lines, 120);
+        assert_eq!(args.max_type_members, 20);
+        assert_eq!(args.max_imports, 12);
+        assert_eq!(args.max_public_items, 8);
+        assert_eq!(args.min_repeated_literal_occurrences, 5);
+        assert_eq!(args.min_data_clump_occurrences, 4);
+        assert!(args.include_test_structure);
+    }
+
+    #[test]
+    fn uses_default_structure_thresholds() {
+        let cli = Cli::parse_from(["reforge", "scan", "."]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.max_function_lines, 80);
+        assert_eq!(args.max_function_complexity, 15);
+        assert_eq!(args.max_nesting_depth, 4);
+        assert_eq!(args.max_function_parameters, 5);
+        assert_eq!(args.max_type_lines, 250);
+        assert_eq!(args.max_type_members, 30);
+        assert_eq!(args.max_imports, 35);
+        assert_eq!(args.max_public_items, 30);
+        assert_eq!(args.min_repeated_literal_occurrences, 4);
+        assert_eq!(args.min_data_clump_occurrences, 3);
+        assert!(!args.include_test_structure);
     }
 
     #[test]

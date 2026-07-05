@@ -2,6 +2,7 @@ mod cli;
 mod report;
 mod scanner;
 mod similar_functions;
+mod structural;
 
 use anyhow::{Context, Result};
 use clap::Parser;
