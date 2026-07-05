@@ -1,5 +1,6 @@
 mod agent_drift;
 mod cli;
+mod language;
 mod report;
 mod scanner;
 mod similar_functions;

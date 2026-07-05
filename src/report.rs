@@ -58,43 +58,104 @@ pub fn render_human_report(report: &ScanReport) -> String {
 pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
     let mut output = String::new();
     let breakdown = FindingBreakdown::from_findings(&report.findings);
+    let mut context = ReportRenderContext {
+        output: &mut output,
+        report,
+        color,
+    };
 
-    render_report_header(&mut output, report, color);
-    render_report_summary(&mut output, report, color);
-    render_signal_breakdown(&mut output, &breakdown, color);
+    context.render_report_header();
+    context.render_report_summary();
+    render_signal_breakdown(&mut *context.output, &breakdown, color);
 
     if report.findings.is_empty() {
-        output.push('\n');
-        output.push_str("No refactoring signals found.\n");
+        context.output.push('\n');
+        context.output.push_str("No refactoring signals found.\n");
         return output;
     }
 
-    render_findings(&mut output, report, color);
+    context.render_findings();
     output
 }
 
-fn render_report_header(output: &mut String, report: &ScanReport, color: bool) {
-    output.push_str(&paint(color, "Reforge scan report", AnsiStyle::Header));
-    output.push('\n');
-    output.push_str(&format!(
-        "Scanned {} files in {} ms; {} findings; {} similar function groups.\n",
-        report.summary.scanned_files,
-        report.summary.duration_ms,
-        report.summary.finding_count,
-        report.summary.similar_function_group_count
-    ));
+struct ReportRenderContext<'a> {
+    output: &'a mut String,
+    report: &'a ScanReport,
+    color: bool,
 }
 
-fn render_report_summary(output: &mut String, report: &ScanReport, color: bool) {
-    output.push('\n');
-    output.push_str(&paint(color, "Summary", AnsiStyle::Section));
-    output.push('\n');
-    output.push_str(&format!(
-        "  Source files: {}\n  Directories: {}\n  Function candidates: {}\n",
-        report.stats.source_files_scanned,
-        report.stats.directories_scanned,
-        report.stats.function_candidates
-    ));
+impl ReportRenderContext<'_> {
+    fn render_report_header(&mut self) {
+        self.output
+            .push_str(&paint(self.color, "Reforge scan report", AnsiStyle::Header));
+        self.output.push('\n');
+        self.output.push_str(&format!(
+            "Scanned {} files in {} ms; {} findings; {} similar function groups.\n",
+            self.report.summary.scanned_files,
+            self.report.summary.duration_ms,
+            self.report.summary.finding_count,
+            self.report.summary.similar_function_group_count
+        ));
+    }
+
+    fn render_report_summary(&mut self) {
+        self.output.push('\n');
+        self.output
+            .push_str(&paint(self.color, "Summary", AnsiStyle::Section));
+        self.output.push('\n');
+        self.output.push_str(&format!(
+            "  Source files: {}\n  Directories: {}\n  Function candidates: {}\n",
+            self.report.stats.source_files_scanned,
+            self.report.stats.directories_scanned,
+            self.report.stats.function_candidates
+        ));
+    }
+
+    fn render_findings(&mut self) {
+        let mut by_path: BTreeMap<&str, Vec<&Finding>> = BTreeMap::new();
+        for finding in sorted_findings(&self.report.findings) {
+            by_path.entry(&finding.path).or_default().push(finding);
+        }
+
+        self.output.push('\n');
+        self.output
+            .push_str(&paint(self.color, "Findings", AnsiStyle::Section));
+        self.output.push('\n');
+
+        for (path, findings) in by_path {
+            self.output.push('\n');
+            self.output
+                .push_str(&paint(self.color, path, AnsiStyle::Path));
+            self.output.push('\n');
+
+            for finding in findings
+                .iter()
+                .filter(|finding| finding.kind != FindingKind::DebtMarker)
+            {
+                self.output.push_str("  ");
+                self.output
+                    .push_str(&render_finding_line(finding, self.color));
+                self.output.push('\n');
+
+                if has_related_location_details(finding) {
+                    self.output
+                        .push_str(&render_related_locations(finding, self.color));
+                }
+            }
+
+            let debt_markers = findings
+                .iter()
+                .copied()
+                .filter(|finding| finding.kind == FindingKind::DebtMarker)
+                .collect::<Vec<_>>();
+            if !debt_markers.is_empty() {
+                self.output.push_str("  ");
+                self.output
+                    .push_str(&render_debt_marker_group(&debt_markers, self.color));
+                self.output.push('\n');
+            }
+        }
+    }
 }
 
 fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, color: bool) {
@@ -129,47 +190,6 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
         breakdown.count(FindingKind::GenericBucketDrift),
         breakdown.count(FindingKind::AdapterBoundaryBypass)
     ));
-}
-
-fn render_findings(output: &mut String, report: &ScanReport, color: bool) {
-    let mut by_path: BTreeMap<&str, Vec<&Finding>> = BTreeMap::new();
-    for finding in sorted_findings(&report.findings) {
-        by_path.entry(&finding.path).or_default().push(finding);
-    }
-
-    output.push('\n');
-    output.push_str(&paint(color, "Findings", AnsiStyle::Section));
-    output.push('\n');
-
-    for (path, findings) in by_path {
-        output.push('\n');
-        output.push_str(&paint(color, path, AnsiStyle::Path));
-        output.push('\n');
-
-        for finding in findings
-            .iter()
-            .filter(|finding| finding.kind != FindingKind::DebtMarker)
-        {
-            output.push_str("  ");
-            output.push_str(&render_finding_line(finding, color));
-            output.push('\n');
-
-            if has_related_location_details(finding) {
-                output.push_str(&render_related_locations(finding, color));
-            }
-        }
-
-        let debt_markers = findings
-            .iter()
-            .copied()
-            .filter(|finding| finding.kind == FindingKind::DebtMarker)
-            .collect::<Vec<_>>();
-        if !debt_markers.is_empty() {
-            output.push_str("  ");
-            output.push_str(&render_debt_marker_group(&debt_markers, color));
-            output.push('\n');
-        }
-    }
 }
 
 fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
@@ -350,6 +370,7 @@ impl FindingBreakdown {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[repr(usize)]
 enum MagnitudePhrase {
     Lines,
     SourceFiles,
@@ -368,6 +389,64 @@ enum MagnitudePhrase {
     Factories,
     Bypasses,
 }
+
+const MAGNITUDE_PHRASE_COUNT: usize = MagnitudePhrase::Bypasses as usize + 1;
+
+impl MagnitudePhrase {
+    fn format(self) -> MagnitudeFormat {
+        MAGNITUDE_FORMATS[self as usize]
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MagnitudeFormat {
+    Count(&'static str),
+    PluralCount(&'static str),
+    PrefixedPluralCount {
+        prefix: &'static str,
+        noun: &'static str,
+    },
+    NamedValue(&'static str),
+}
+
+impl MagnitudeFormat {
+    fn render(self, label: &str, magnitude: usize) -> String {
+        match self {
+            Self::Count(unit) => render_count_magnitude(label, magnitude, unit),
+            Self::PluralCount(noun) => {
+                render_count_magnitude(label, magnitude, &pluralize(magnitude, noun))
+            }
+            Self::PrefixedPluralCount { prefix, noun } => render_count_magnitude(
+                label,
+                magnitude,
+                &format!("{prefix}{}", pluralize(magnitude, noun)),
+            ),
+            Self::NamedValue(name) => format!("{label}: {name} {magnitude}"),
+        }
+    }
+}
+
+const MAGNITUDE_FORMATS: [MagnitudeFormat; MAGNITUDE_PHRASE_COUNT] = [
+    MagnitudeFormat::Count("lines"),
+    MagnitudeFormat::Count("source files"),
+    MagnitudeFormat::PluralCount("function"),
+    MagnitudeFormat::NamedValue("complexity"),
+    MagnitudeFormat::Count("levels"),
+    MagnitudeFormat::Count("parameters"),
+    MagnitudeFormat::NamedValue("size"),
+    MagnitudeFormat::Count("items"),
+    MagnitudeFormat::Count("imports"),
+    MagnitudeFormat::Count("occurrences"),
+    MagnitudeFormat::Count("concepts"),
+    MagnitudeFormat::PluralCount("implementation"),
+    MagnitudeFormat::PluralCount("type shape"),
+    MagnitudeFormat::PrefixedPluralCount {
+        prefix: "config ",
+        noun: "key",
+    },
+    MagnitudeFormat::PluralCount("factory"),
+    MagnitudeFormat::PluralCount("bypass"),
+];
 
 #[derive(Debug, Clone, Copy)]
 struct FindingKindDisplay {
@@ -502,45 +581,11 @@ fn display_for_kind(kind: FindingKind) -> &'static FindingKindDisplay {
 }
 
 fn render_magnitude(label: &str, magnitude: usize, phrase: MagnitudePhrase) -> String {
-    match phrase {
-        MagnitudePhrase::Lines => format!("{label}: {magnitude} lines"),
-        MagnitudePhrase::SourceFiles => format!("{label}: {magnitude} source files"),
-        MagnitudePhrase::Functions => {
-            format!("{label}: {magnitude} {}", pluralize(magnitude, "function"))
-        }
-        MagnitudePhrase::Complexity => format!("{label}: complexity {magnitude}"),
-        MagnitudePhrase::Levels => format!("{label}: {magnitude} levels"),
-        MagnitudePhrase::Parameters => format!("{label}: {magnitude} parameters"),
-        MagnitudePhrase::Size => format!("{label}: size {magnitude}"),
-        MagnitudePhrase::Items => format!("{label}: {magnitude} items"),
-        MagnitudePhrase::Imports => format!("{label}: {magnitude} imports"),
-        MagnitudePhrase::Occurrences => format!("{label}: {magnitude} occurrences"),
-        MagnitudePhrase::Concepts => format!("{label}: {magnitude} concepts"),
-        MagnitudePhrase::Implementations => {
-            format!(
-                "{label}: {magnitude} {}",
-                pluralize(magnitude, "implementation")
-            )
-        }
-        MagnitudePhrase::TypeShapes => {
-            format!(
-                "{label}: {magnitude} {}",
-                pluralize(magnitude, "type shape")
-            )
-        }
-        MagnitudePhrase::ConfigKeys => {
-            format!(
-                "{label}: {magnitude} config {}",
-                pluralize(magnitude, "key")
-            )
-        }
-        MagnitudePhrase::Factories => {
-            format!("{label}: {magnitude} {}", pluralize(magnitude, "factory"))
-        }
-        MagnitudePhrase::Bypasses => {
-            format!("{label}: {magnitude} {}", pluralize(magnitude, "bypass"))
-        }
-    }
+    phrase.format().render(label, magnitude)
+}
+
+fn render_count_magnitude(label: &str, magnitude: usize, unit: &str) -> String {
+    format!("{label}: {magnitude} {unit}")
 }
 
 enum AnsiStyle {
@@ -588,289 +633,5 @@ impl std::fmt::Display for Severity {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::scanner::{RelatedLocation, ScanStats, ScanSummary};
-
-    fn finding(path: &str, magnitude: Option<usize>) -> Finding {
-        Finding {
-            kind: if magnitude.is_some() {
-                FindingKind::LargeFile
-            } else {
-                FindingKind::DebtMarker
-            },
-            severity: if magnitude.is_some() {
-                Severity::Warning
-            } else {
-                Severity::Info
-            },
-            path: path.to_string(),
-            line: Some(1),
-            magnitude,
-            message: String::new(),
-            related_locations: Vec::new(),
-        }
-    }
-
-    fn report(findings: Vec<Finding>) -> ScanReport {
-        ScanReport {
-            summary: ScanSummary {
-                scanned_files: 2,
-                finding_count: findings.len(),
-                similar_function_group_count: findings
-                    .iter()
-                    .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
-                    .count(),
-                duration_ms: 1,
-            },
-            stats: ScanStats::default(),
-            findings,
-        }
-    }
-
-    #[test]
-    fn sorts_by_path_then_large_findings_before_line_findings() {
-        let findings = vec![
-            finding("src/small_todo.rs", None),
-            finding("src/large.rs", Some(900)),
-            finding("src/largest.rs", Some(1_200)),
-            finding("src/medium.rs", Some(1_000)),
-            finding("src/another_todo.rs", None),
-        ];
-
-        let paths: Vec<&str> = sorted_findings(&findings)
-            .iter()
-            .map(|finding| finding.path.as_str())
-            .collect();
-
-        assert_eq!(
-            paths,
-            vec![
-                "src/another_todo.rs",
-                "src/large.rs",
-                "src/largest.rs",
-                "src/medium.rs",
-                "src/small_todo.rs",
-            ]
-        );
-    }
-
-    #[test]
-    fn renders_empty_human_report_clearly() {
-        let output = render_human_report(&report(Vec::new()));
-
-        assert!(output.contains("Reforge scan report"));
-        assert!(output.contains("Scanned 2 files"));
-        assert!(output.contains("Summary"));
-        assert!(output.contains("Signals"));
-        assert!(output.contains("No refactoring signals found."));
-    }
-
-    #[test]
-    fn renders_multiple_findings_grouped_by_path() {
-        let output = render_human_report(&report(vec![
-            finding("src/a.rs", Some(900)),
-            finding("src/a.rs", None),
-        ]));
-
-        assert_eq!(output.matches("src/a.rs").count(), 1);
-        assert_eq!(output.matches("[warning]").count(), 1);
-        assert_eq!(output.matches("[info]").count(), 1);
-    }
-
-    #[test]
-    fn truncates_similar_function_locations() {
-        let mut finding = finding("src/a.rs", Some(7));
-        finding.kind = FindingKind::SimilarFunctions;
-        finding.message =
-            "7 structurally similar functions/methods found at similarity >= 0.80".to_string();
-        finding.related_locations = (0..7)
-            .map(|index| RelatedLocation {
-                path: format!("src/{index}.rs"),
-                line: index + 1,
-                name: Some(format!("func_{index}")),
-            })
-            .collect();
-
-        let output = render_human_report(&report(vec![finding]));
-
-        assert!(output.contains("similar functions: 7 functions"));
-        assert!(output.contains("+4 more"));
-        assert!(!output.contains("func_3"));
-    }
-
-    #[test]
-    fn groups_debt_markers_by_path_in_human_report() {
-        let findings = (1..=8)
-            .map(|line| Finding {
-                line: Some(line),
-                ..finding("src/a.rs", None)
-            })
-            .collect::<Vec<_>>();
-
-        let output = render_human_report(&report(findings));
-
-        assert!(output.contains("Debt markers: 8"));
-        assert!(output.contains("[info] 8 debt markers: lines 1, 2, 3, 4, 5, 6 (+2 more)"));
-    }
-
-    #[test]
-    fn renders_colored_human_report_when_enabled() {
-        let output =
-            render_human_report_colored(&report(vec![finding("src/a.rs", Some(900))]), true);
-
-        assert!(output.contains("\u{1b}[1;36mReforge scan report\u{1b}[0m"));
-        assert!(output.contains("\u{1b}[33m[warning]\u{1b}[0m"));
-    }
-
-    #[test]
-    fn renders_json_report_shape() {
-        let report = ScanReport {
-            summary: ScanSummary {
-                scanned_files: 1,
-                finding_count: 1,
-                similar_function_group_count: 1,
-                duration_ms: 1,
-            },
-            stats: ScanStats {
-                source_files_scanned: 1,
-                directories_scanned: 1,
-                function_candidates: 3,
-            },
-            findings: vec![Finding {
-                kind: FindingKind::SimilarFunctions,
-                severity: Severity::Warning,
-                path: "src/a.rs".to_string(),
-                line: Some(1),
-                magnitude: Some(3),
-                message: "similar".to_string(),
-                related_locations: vec![RelatedLocation {
-                    path: "src/a.rs".to_string(),
-                    line: 1,
-                    name: Some("alpha".to_string()),
-                }],
-            }],
-        };
-
-        let value: serde_json::Value =
-            serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
-
-        assert_eq!(value["summary"]["scanned_files"], 1);
-        assert_eq!(value["stats"]["function_candidates"], 3);
-        assert_eq!(value["findings"][0]["kind"], "similar_functions");
-        assert_eq!(
-            value["findings"][0]["related_locations"][0]["name"],
-            "alpha"
-        );
-    }
-
-    #[test]
-    fn renders_agent_drift_signal_counts_and_related_locations() {
-        let kinds = [
-            FindingKind::ParallelImplementation,
-            FindingKind::ShadowedAbstraction,
-            FindingKind::DuplicateTypeShape,
-            FindingKind::ConfigKeyDrift,
-            FindingKind::FixtureFactoryDrift,
-            FindingKind::GenericBucketDrift,
-            FindingKind::AdapterBoundaryBypass,
-        ];
-        let findings = kinds
-            .iter()
-            .enumerate()
-            .map(|(index, kind)| Finding {
-                kind: *kind,
-                severity: Severity::Warning,
-                path: "src/agent.rs".to_string(),
-                line: Some(index + 1),
-                magnitude: Some(index + 2),
-                message: String::new(),
-                related_locations: vec![RelatedLocation {
-                    path: format!("src/related_{index}.rs"),
-                    line: index + 10,
-                    name: Some(format!("related_{index}")),
-                }],
-            })
-            .collect::<Vec<_>>();
-
-        let output = render_human_report(&report(findings));
-
-        assert!(output.contains("Parallel implementations: 1"));
-        assert!(output.contains("Shadowed abstractions: 1"));
-        assert!(output.contains("Duplicate type shapes: 1"));
-        assert!(output.contains("Config key drift: 1"));
-        assert!(output.contains("Fixture factory drift: 1"));
-        assert!(output.contains("Generic bucket drift: 1"));
-        assert!(output.contains("Adapter boundary bypasses: 1"));
-        assert!(output.contains("parallel implementation: 2 implementations"));
-        assert!(output.contains("src/related_0.rs:10 related_0"));
-    }
-
-    #[test]
-    fn serializes_agent_drift_kind_as_snake_case() {
-        let report = report(vec![Finding {
-            kind: FindingKind::ParallelImplementation,
-            severity: Severity::Warning,
-            path: "src/agent.rs".to_string(),
-            line: Some(1),
-            magnitude: Some(2),
-            message: String::new(),
-            related_locations: Vec::new(),
-        }]);
-
-        let value: serde_json::Value =
-            serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
-
-        assert_eq!(value["findings"][0]["kind"], "parallel_implementation");
-    }
-
-    #[test]
-    fn writes_json_report_to_writer() {
-        let mut output = Vec::new();
-
-        write_json_report(&mut output, &report(Vec::new())).unwrap();
-
-        let output = String::from_utf8(output).unwrap();
-        assert!(output.ends_with('\n'));
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&output).unwrap()["summary"]["scanned_files"],
-            2
-        );
-    }
-
-    #[test]
-    fn writes_yaml_report_to_writer() {
-        let mut output = Vec::new();
-
-        write_yaml_report(&mut output, &report(Vec::new())).unwrap();
-
-        let output = String::from_utf8(output).unwrap();
-        assert!(output.ends_with('\n'));
-        assert_eq!(
-            serde_yaml::from_str::<serde_yaml::Value>(&output).unwrap()["summary"]["scanned_files"],
-            2
-        );
-    }
-
-    #[test]
-    fn renders_new_signal_counts_and_snake_case_json_kind() {
-        let finding = Finding {
-            kind: FindingKind::LongFunction,
-            severity: Severity::Warning,
-            path: "src/a.rs".to_string(),
-            line: Some(10),
-            magnitude: Some(90),
-            message: "long".to_string(),
-            related_locations: Vec::new(),
-        };
-        let report = report(vec![finding]);
-
-        let human = render_human_report(&report);
-        assert!(human.contains("Long functions: 1"));
-        assert!(human.contains("long function: 90 lines"));
-
-        let value: serde_json::Value =
-            serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
-        assert_eq!(value["findings"][0]["kind"], "long_function");
-    }
-}
+#[path = "report_tests.rs"]
+mod tests;

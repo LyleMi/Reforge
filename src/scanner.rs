@@ -28,6 +28,7 @@ const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     ".svelte-kit",
     ".vite",
 ];
+const PERCENT_SCALE: usize = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -118,39 +119,56 @@ struct FileScanOptions {
     include_test_similarity: bool,
 }
 
-pub trait ProgressSink {
-    fn report(&mut self, message: &str);
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ProgressEvent<'a> {
+    completed: usize,
+    total: usize,
+    detail: &'a str,
+}
 
-    fn report_scan_progress(&mut self, completed: usize, total: usize, path: &str) {
-        if total == 0 {
-            return;
+impl ProgressEvent<'_> {
+    fn percent(self) -> Option<usize> {
+        if self.total == 0 {
+            return None;
         }
 
-        let percent = completed.saturating_mul(100) / total;
+        Some(self.completed.saturating_mul(PERCENT_SCALE) / self.total)
+    }
+
+    fn detail_suffix(self) -> String {
+        if self.detail.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", self.detail)
+        }
+    }
+
+    fn is_complete(self) -> bool {
+        self.completed == self.total
+    }
+}
+
+pub(crate) trait ProgressSink {
+    fn report(&mut self, message: &str);
+
+    fn report_scan_progress(&mut self, event: ProgressEvent<'_>) {
+        let Some(percent) = event.percent() else {
+            return;
+        };
         self.report(&format!(
-            "[{percent:>3}%] Scanning source files ({completed}/{total}) {path}"
+            "[{percent:>3}%] Scanning source files ({}/{}) {}",
+            event.completed, event.total, event.detail
         ));
     }
 
-    fn report_analysis_progress(
-        &mut self,
-        completed: usize,
-        total: usize,
-        phase: &str,
-        detail: &str,
-    ) {
-        if total == 0 {
+    fn report_analysis_progress(&mut self, event: ProgressEvent<'_>, phase: &str) {
+        let Some(percent) = event.percent() else {
             return;
-        }
-
-        let percent = completed.saturating_mul(100) / total;
-        let detail = if detail.is_empty() {
-            String::new()
-        } else {
-            format!(" {detail}")
         };
+        let detail = event.detail_suffix();
         self.report(&format!(
-            "[{percent:>3}%] Analyzing similar functions: {phase} ({completed}/{total}){detail}"
+            "[{percent:>3}%] Analyzing similar functions: {phase} ({}/{}){detail}",
+            event.completed, event.total
         ));
     }
 
@@ -189,13 +207,7 @@ impl StderrProgress {
         }
     }
 
-    fn report_percent_progress(
-        &mut self,
-        message: &str,
-        percent: usize,
-        completed: usize,
-        total: usize,
-    ) {
+    fn report_percent_progress(&mut self, message: &str, event: ProgressEvent<'_>) {
         if self.dynamic {
             let padding = self.last_dynamic_len.saturating_sub(message.len());
             let mut stderr = std::io::stderr().lock();
@@ -203,8 +215,11 @@ impl StderrProgress {
             let _ = stderr.flush();
             self.last_dynamic_len = message.len();
         } else {
+            let Some(percent) = event.percent() else {
+                return;
+            };
             let bucket = percent / 10;
-            if self.last_bucket != Some(bucket) || completed == total {
+            if self.last_bucket != Some(bucket) || event.is_complete() {
                 self.report(message);
                 self.last_bucket = Some(bucket);
             }
@@ -218,39 +233,29 @@ impl ProgressSink for StderrProgress {
         let _ = writeln!(std::io::stderr(), "{message}");
     }
 
-    fn report_scan_progress(&mut self, completed: usize, total: usize, path: &str) {
-        if total == 0 {
+    fn report_scan_progress(&mut self, event: ProgressEvent<'_>) {
+        let Some(percent) = event.percent() else {
             return;
-        }
-
-        let percent = completed.saturating_mul(100) / total;
-        let message = format!("[{percent:>3}%] Scanning source files ({completed}/{total}) {path}");
-
-        self.report_percent_progress(&message, percent, completed, total);
-    }
-
-    fn report_analysis_progress(
-        &mut self,
-        completed: usize,
-        total: usize,
-        phase: &str,
-        detail: &str,
-    ) {
-        if total == 0 {
-            return;
-        }
-
-        let percent = completed.saturating_mul(100) / total;
-        let detail = if detail.is_empty() {
-            String::new()
-        } else {
-            format!(" {detail}")
         };
         let message = format!(
-            "[{percent:>3}%] Analyzing similar functions: {phase} ({completed}/{total}){detail}"
+            "[{percent:>3}%] Scanning source files ({}/{}) {}",
+            event.completed, event.total, event.detail
         );
 
-        self.report_percent_progress(&message, percent, completed, total);
+        self.report_percent_progress(&message, event);
+    }
+
+    fn report_analysis_progress(&mut self, event: ProgressEvent<'_>, phase: &str) {
+        let Some(percent) = event.percent() else {
+            return;
+        };
+        let detail = event.detail_suffix();
+        let message = format!(
+            "[{percent:>3}%] Analyzing similar functions: {phase} ({}/{}){detail}",
+            event.completed, event.total
+        );
+
+        self.report_percent_progress(&message, event);
     }
 
     fn wants_detailed_progress(&self) -> bool {
@@ -290,12 +295,12 @@ impl<W: Write> ProgressSink for WriterProgress<W> {
 }
 
 #[allow(dead_code)]
-pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
+pub(crate) fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
     let mut progress = NoopProgress;
     Ok(scan_report(args, &mut progress)?.findings)
 }
 
-pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<ScanReport> {
+pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<ScanReport> {
     let started_at = Instant::now();
     let root = resolve_scan_root(args)?;
     let mut scan = SourceScan::default();
@@ -308,9 +313,16 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
 
     report_scan_start(progress, &root, total_source_files);
     scan_sources(&root, args, total_source_files, progress, &mut scan)?;
-    scan_structural_signals(args, progress, &mut scan)?;
-    scan_agent_drift_signals(args, progress, &mut scan);
-    let similar_function_group_count = scan_similarity_signals(args, progress, &mut scan)?;
+    let similar_function_group_count = {
+        let mut signals = ScanSignalContext {
+            args,
+            progress,
+            scan: &mut scan,
+        };
+        signals.scan_structural_signals()?;
+        signals.scan_agent_drift_signals();
+        signals.scan_similarity_signals()?
+    };
 
     let summary = ScanSummary {
         scanned_files: scan.stats.source_files_scanned,
@@ -332,23 +344,85 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
     })
 }
 
-fn scan_agent_drift_signals(
-    args: &ScanArgs,
-    progress: &mut dyn ProgressSink,
-    scan: &mut SourceScan,
-) {
-    progress.report(&format!(
-        "Analyzing agent drift signals in {} files",
-        scan.structure_sources.len()
-    ));
-    let options = AgentDriftOptions {
-        min_repeated_occurrences: args.min_repeated_literal_occurrences,
-        min_data_shape_occurrences: args.min_data_clump_occurrences,
-        max_dir_files: args.max_dir_files,
-        include_test_structure: args.include_test_structure,
-    };
-    scan.findings
-        .extend(scan_agent_drift(&scan.structure_sources, &options));
+struct ScanSignalContext<'a> {
+    args: &'a ScanArgs,
+    progress: &'a mut dyn ProgressSink,
+    scan: &'a mut SourceScan,
+}
+
+impl ScanSignalContext<'_> {
+    fn scan_agent_drift_signals(&mut self) {
+        self.progress.report(&format!(
+            "Analyzing agent drift signals in {} files",
+            self.scan.structure_sources.len()
+        ));
+        let options = AgentDriftOptions {
+            min_repeated_occurrences: self.args.min_repeated_literal_occurrences,
+            min_data_shape_occurrences: self.args.min_data_clump_occurrences,
+            max_dir_files: self.args.max_dir_files,
+            include_test_structure: self.args.include_test_structure,
+        };
+        self.scan
+            .findings
+            .extend(scan_agent_drift(&self.scan.structure_sources, &options));
+    }
+
+    fn scan_structural_signals(&mut self) -> Result<()> {
+        self.progress.report(&format!(
+            "Analyzing structural signals in {} files",
+            self.scan.structure_sources.len()
+        ));
+        let structure_options = StructureOptions {
+            max_function_lines: self.args.max_function_lines,
+            max_function_complexity: self.args.max_function_complexity,
+            max_nesting_depth: self.args.max_nesting_depth,
+            max_function_parameters: self.args.max_function_parameters,
+            max_type_lines: self.args.max_type_lines,
+            max_type_members: self.args.max_type_members,
+            max_imports: self.args.max_imports,
+            max_public_items: self.args.max_public_items,
+            min_repeated_literal_occurrences: self.args.min_repeated_literal_occurrences,
+            min_data_clump_occurrences: self.args.min_data_clump_occurrences,
+            max_dir_files: self.args.max_dir_files,
+            include_test_structure: self.args.include_test_structure,
+        };
+        self.scan.findings.extend(scan_structure(
+            &self.scan.structure_sources,
+            &structure_options,
+        )?);
+        Ok(())
+    }
+
+    fn scan_similarity_signals(&mut self) -> Result<usize> {
+        self.progress.report(&format!(
+            "Analyzing similar functions in {} files",
+            self.scan.similarity_sources.len()
+        ));
+
+        let similarity_options = SimilarFunctionOptions {
+            min_group_size: self.args.min_similar_functions,
+            min_tokens: self.args.min_function_tokens,
+            threshold: self.args.function_similarity,
+            include_test_similarity: self.args.include_test_similarity,
+        };
+        let mut similarity_progress = ScanSimilarityProgress {
+            progress: self.progress,
+        };
+        let similarity_scan = scan_similar_functions_report_with_progress(
+            &self.scan.similarity_sources,
+            &similarity_options,
+            &mut similarity_progress,
+        )?;
+        self.scan.stats.function_candidates = similarity_scan.candidate_count;
+        self.scan.findings.extend(similarity_scan.findings);
+
+        Ok(self
+            .scan
+            .findings
+            .iter()
+            .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
+            .count())
+    }
 }
 
 fn resolve_scan_root(args: &ScanArgs) -> Result<PathBuf> {
@@ -423,68 +497,13 @@ fn report_file_scan_progress(
     path: &Path,
 ) {
     if let Some(total) = total_source_files {
-        progress.report_scan_progress(stats.source_files_scanned, total, &display_path(path));
+        let detail = display_path(path);
+        progress.report_scan_progress(ProgressEvent {
+            completed: stats.source_files_scanned,
+            total,
+            detail: &detail,
+        });
     }
-}
-
-fn scan_structural_signals(
-    args: &ScanArgs,
-    progress: &mut dyn ProgressSink,
-    scan: &mut SourceScan,
-) -> Result<()> {
-    progress.report(&format!(
-        "Analyzing structural signals in {} files",
-        scan.structure_sources.len()
-    ));
-    let structure_options = StructureOptions {
-        max_function_lines: args.max_function_lines,
-        max_function_complexity: args.max_function_complexity,
-        max_nesting_depth: args.max_nesting_depth,
-        max_function_parameters: args.max_function_parameters,
-        max_type_lines: args.max_type_lines,
-        max_type_members: args.max_type_members,
-        max_imports: args.max_imports,
-        max_public_items: args.max_public_items,
-        min_repeated_literal_occurrences: args.min_repeated_literal_occurrences,
-        min_data_clump_occurrences: args.min_data_clump_occurrences,
-        max_dir_files: args.max_dir_files,
-        include_test_structure: args.include_test_structure,
-    };
-    scan.findings
-        .extend(scan_structure(&scan.structure_sources, &structure_options)?);
-    Ok(())
-}
-
-fn scan_similarity_signals(
-    args: &ScanArgs,
-    progress: &mut dyn ProgressSink,
-    scan: &mut SourceScan,
-) -> Result<usize> {
-    progress.report(&format!(
-        "Analyzing similar functions in {} files",
-        scan.similarity_sources.len()
-    ));
-
-    let similarity_options = SimilarFunctionOptions {
-        min_group_size: args.min_similar_functions,
-        min_tokens: args.min_function_tokens,
-        threshold: args.function_similarity,
-        include_test_similarity: args.include_test_similarity,
-    };
-    let mut similarity_progress = ScanSimilarityProgress { progress };
-    let similarity_scan = scan_similar_functions_report_with_progress(
-        &scan.similarity_sources,
-        &similarity_options,
-        &mut similarity_progress,
-    )?;
-    scan.stats.function_candidates = similarity_scan.candidate_count;
-    scan.findings.extend(similarity_scan.findings);
-
-    Ok(scan
-        .findings
-        .iter()
-        .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
-        .count())
 }
 
 struct ScanSimilarityProgress<'a> {
@@ -493,13 +512,25 @@ struct ScanSimilarityProgress<'a> {
 
 impl SimilarFunctionProgress for ScanSimilarityProgress<'_> {
     fn report_extract_progress(&mut self, completed: usize, total: usize, path: &str) {
-        self.progress
-            .report_analysis_progress(completed, total, "extracting candidates", path);
+        self.progress.report_analysis_progress(
+            ProgressEvent {
+                completed,
+                total,
+                detail: path,
+            },
+            "extracting candidates",
+        );
     }
 
     fn report_compare_progress(&mut self, completed: usize, total: usize) {
-        self.progress
-            .report_analysis_progress(completed, total, "comparing candidates", "");
+        self.progress.report_analysis_progress(
+            ProgressEvent {
+                completed,
+                total,
+                detail: "",
+            },
+            "comparing candidates",
+        );
     }
 }
 
@@ -689,6 +720,7 @@ pub(crate) fn is_test_source(path: &Path) -> bool {
         || file_name.ends_with("_test.go")
         || file_name.ends_with("_test.py")
         || file_name.ends_with("_test.rs")
+        || file_name.ends_with("_tests.rs")
     {
         return true;
     }
@@ -710,312 +742,5 @@ fn display_path(path: &Path) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    use super::*;
-
-    fn test_root(name: &str) -> std::path::PathBuf {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time should be after unix epoch")
-            .as_nanos();
-        std::env::temp_dir().join(format!("reforge-{name}-{suffix}"))
-    }
-
-    fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
-        ScanArgs {
-            path,
-            max_file_lines: 800,
-            max_dir_files: 40,
-            include_hidden: false,
-            include_generated,
-            min_similar_functions: 3,
-            min_function_tokens: 80,
-            function_similarity: 0.85,
-            include_test_similarity: false,
-            max_function_lines: 80,
-            max_function_complexity: 15,
-            max_nesting_depth: 4,
-            max_function_parameters: 5,
-            max_type_lines: 250,
-            max_type_members: 30,
-            max_imports: 35,
-            max_public_items: 30,
-            min_repeated_literal_occurrences: 4,
-            min_data_clump_occurrences: 3,
-            include_test_structure: false,
-            output: Some(crate::cli::OutputFormat::Human),
-            output_file: None,
-            progress: crate::cli::ProgressMode::Auto,
-            color: crate::cli::ColorMode::Auto,
-        }
-    }
-
-    #[test]
-    fn skips_generated_directories_by_default() -> Result<()> {
-        let root = test_root("skip-generated");
-        fs::create_dir_all(root.join("node_modules/pkg"))?;
-        fs::create_dir_all(root.join("src"))?;
-        fs::write(root.join("node_modules/pkg/index.js"), "// TODO: ignored\n")?;
-        fs::write(root.join("src/main.rs"), "// TODO: reported\n")?;
-
-        let findings = scan_path(&scan_args(root.clone(), false))?;
-
-        fs::remove_dir_all(root)?;
-
-        assert_eq!(findings.len(), 1);
-        assert!(findings[0].path.ends_with("src/main.rs"));
-        Ok(())
-    }
-
-    #[test]
-    fn can_include_generated_directories() -> Result<()> {
-        let root = test_root("include-generated");
-        fs::create_dir_all(root.join("dist"))?;
-        fs::write(root.join("dist/app.js"), "// TODO: reported\n")?;
-
-        let findings = scan_path(&scan_args(root.clone(), true))?;
-
-        fs::remove_dir_all(root)?;
-
-        assert_eq!(findings.len(), 1);
-        assert!(findings[0].path.ends_with("dist/app.js"));
-        Ok(())
-    }
-
-    #[test]
-    fn reports_directories_with_many_source_files() -> Result<()> {
-        let root = test_root("large-directory");
-        let source_dir = root.join("src");
-        fs::create_dir_all(&source_dir)?;
-        fs::write(source_dir.join("one.rs"), "fn one() {}\n")?;
-        fs::write(source_dir.join("two.rs"), "fn two() {}\n")?;
-        fs::write(source_dir.join("three.rs"), "fn three() {}\n")?;
-        fs::write(source_dir.join("notes.md"), "not source\n")?;
-
-        let mut args = scan_args(root.clone(), false);
-        args.max_dir_files = 2;
-        let findings = scan_path(&args)?;
-
-        fs::remove_dir_all(root)?;
-
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].kind, FindingKind::LargeDirectory);
-        assert!(findings[0].path.ends_with("src"));
-        assert_eq!(findings[0].line, None);
-        assert_eq!(findings[0].magnitude, Some(3));
-        assert!(
-            findings[0]
-                .message
-                .contains("directory contains 3 source files")
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn excludes_generated_directories_from_source_file_counts_by_default() -> Result<()> {
-        let root = test_root("directory-count-generated");
-        let dist_dir = root.join("dist");
-        fs::create_dir_all(&dist_dir)?;
-        fs::write(dist_dir.join("one.js"), "const one = 1;\n")?;
-        fs::write(dist_dir.join("two.js"), "const two = 2;\n")?;
-
-        let mut args = scan_args(root.clone(), false);
-        args.max_dir_files = 1;
-        let findings = scan_path(&args)?;
-
-        fs::remove_dir_all(root)?;
-
-        assert!(findings.is_empty());
-        Ok(())
-    }
-
-    #[test]
-    fn reports_similar_functions_using_scan_thresholds() -> Result<()> {
-        let root = test_root("similar-functions");
-        fs::create_dir_all(root.join("src"))?;
-        fs::write(
-            root.join("src/app.js"),
-            r#"
-function alpha(items) {
-  let total = 0;
-  for (const item of items) {
-    if (item.score > 10) {
-      total += item.score * 2;
-    } else {
-      total += item.score;
-    }
-  }
-  return total;
-}
-
-function beta(records) {
-  let sum = 1;
-  for (const record of records) {
-    if (record.score > 20) {
-      sum += record.score * 2;
-    } else {
-      sum += record.score;
-    }
-  }
-  return sum;
-}
-
-function gamma(rows) {
-  let acc = 2;
-  for (const row of rows) {
-    if (row.score > 30) {
-      acc += row.score * 2;
-    } else {
-      acc += row.score;
-    }
-  }
-  return acc;
-}
-"#,
-        )?;
-
-        let mut args = scan_args(root.clone(), false);
-        args.min_function_tokens = 12;
-        let findings = scan_path(&args)?;
-
-        args.min_similar_functions = 4;
-        let stricter_findings = scan_path(&args)?;
-
-        fs::remove_dir_all(root)?;
-
-        let similar_findings = findings
-            .iter()
-            .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
-            .collect::<Vec<_>>();
-        assert_eq!(similar_findings.len(), 1);
-        assert_eq!(similar_findings[0].magnitude, Some(3));
-        assert!(
-            stricter_findings
-                .iter()
-                .all(|finding| !finding.message.contains("structurally similar"))
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn excludes_test_files_from_similarity_by_default() -> Result<()> {
-        let root = test_root("exclude-test-similarity");
-        fs::create_dir_all(root.join("src"))?;
-        fs::write(
-            root.join("src/app_test.go"),
-            r#"
-package app
-
-func Alpha(items []Item) int {
-    total := 0
-    for _, item := range items {
-        if item.Score > 10 {
-            total += item.Score * 2
-        } else {
-            total += item.Score
-        }
-    }
-    return total
-}
-
-func Beta(records []Item) int {
-    sum := 1
-    for _, record := range records {
-        if record.Score > 20 {
-            sum += record.Score * 2
-        } else {
-            sum += record.Score
-        }
-    }
-    return sum
-}
-
-func Gamma(rows []Item) int {
-    acc := 2
-    for _, row := range rows {
-        if row.Score > 30 {
-            acc += row.Score * 2
-        } else {
-            acc += row.Score
-        }
-    }
-    return acc
-}
-"#,
-        )?;
-
-        let mut args = scan_args(root.clone(), false);
-        args.min_function_tokens = 12;
-        let default_findings = scan_path(&args)?;
-
-        args.include_test_similarity = true;
-        let included_findings = scan_path(&args)?;
-
-        fs::remove_dir_all(root)?;
-
-        assert!(
-            default_findings
-                .iter()
-                .all(|finding| finding.kind != FindingKind::SimilarFunctions)
-        );
-        assert!(
-            included_findings
-                .iter()
-                .any(|finding| finding.kind == FindingKind::SimilarFunctions)
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn recognizes_common_test_source_names() {
-        assert!(is_test_source(Path::new("src/app_test.go")));
-        assert!(is_test_source(Path::new("src/app.test.ts")));
-        assert!(is_test_source(Path::new("src/app.spec.tsx")));
-        assert!(is_test_source(Path::new("tests/app.rs")));
-        assert!(is_test_source(Path::new("src/test_app.py")));
-        assert!(!is_test_source(Path::new("src/app.go")));
-    }
-
-    #[test]
-    fn writer_progress_outputs_messages() {
-        let mut progress = WriterProgress::new(Vec::new());
-
-        progress.report("Scanning example");
-        progress.report("Finished scan");
-
-        let output = String::from_utf8(progress.into_inner()).unwrap();
-        assert!(output.contains("Scanning example"));
-        assert!(output.contains("Finished scan"));
-    }
-
-    #[test]
-    fn scan_report_outputs_percent_progress_when_enabled() -> Result<()> {
-        let root = test_root("percent-progress");
-        fs::create_dir_all(root.join("src"))?;
-        fs::write(
-            root.join("src/one.rs"),
-            "fn one() -> i32 { let value = 1; value }\n",
-        )?;
-        fs::write(
-            root.join("src/two.rs"),
-            "fn two() -> i32 { let value = 2; value }\n",
-        )?;
-
-        let mut progress = WriterProgress::new(Vec::new());
-        let mut args = scan_args(root.clone(), false);
-        args.min_function_tokens = 1;
-        let _ = scan_report(&args, &mut progress)?;
-
-        fs::remove_dir_all(root)?;
-
-        let output = String::from_utf8(progress.into_inner()).unwrap();
-        assert!(output.contains("[ 50%] Scanning source files (1/2)"));
-        assert!(output.contains("[100%] Scanning source files (2/2)"));
-        assert!(output.contains("[ 50%] Analyzing similar functions: extracting candidates (1/2)"));
-        assert!(output.contains("[100%] Analyzing similar functions: extracting candidates (2/2)"));
-        assert!(output.contains("[100%] Analyzing similar functions: comparing candidates (1/1)"));
-        Ok(())
-    }
-}
+#[path = "scanner_tests.rs"]
+mod tests;
