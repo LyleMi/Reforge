@@ -23,7 +23,7 @@ Add focused unit tests next to the code they exercise. Name tests by behavior, s
 
 ## Commit & Pull Request Guidelines
 
-Recent history uses short imperative summaries, sometimes with Conventional Commit prefixes, for example `feat: detect directories with many source files` and `Add structured scan reports and faster similarity checks`. Keep commits scoped to one behavior change. Pull requests should describe the user-visible effect, list validation commands run, link related issues, and include sample human or JSON output when report formatting changes.
+Use Conventional Commits for all commit messages, formatted as `<type>(optional-scope): <description>`, for example `feat(scanner): detect directories with many source files` or `fix(report): keep JSON output stable`. Prefer standard types such as `feat`, `fix`, `docs`, `refactor`, `test`, `build`, and `chore`; use an imperative, lowercase description without a trailing period. Keep commits scoped to one behavior change. Pull requests should describe the user-visible effect, list validation commands run, link related issues, and include sample human or JSON output when report formatting changes.
 
 ## Security & Configuration Tips
 
