@@ -32,6 +32,10 @@ duplication is the intended target.
 Use `--output-file <path>` to write either the human or JSON report to a file
 instead of stdout. Existing files are overwritten.
 
+The default human report is compact: repeated TODO/FIXME markers in the same
+file are grouped, and similar-function groups show only a few representative
+locations. Use `--output json` when you need every finding and related location.
+
 ## Roadmap
 
 - Extract language-neutral code structure metrics.

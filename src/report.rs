@@ -5,6 +5,9 @@ use anyhow::Result;
 
 use crate::scanner::{Finding, FindingKind, ScanReport, Severity};
 
+const RELATED_LOCATION_LIMIT: usize = 3;
+const DEBT_MARKER_LINE_LIMIT: usize = 6;
+
 pub fn print_human_report(report: &ScanReport) -> io::Result<()> {
     write_human_report(std::io::stdout().lock(), report)
 }
@@ -48,7 +51,10 @@ pub fn render_human_report(report: &ScanReport) -> String {
         output.push_str(path);
         output.push('\n');
 
-        for finding in findings {
+        for finding in findings
+            .iter()
+            .filter(|finding| finding.kind != FindingKind::DebtMarker)
+        {
             output.push_str("  ");
             output.push_str(&render_finding_line(finding));
             output.push('\n');
@@ -56,6 +62,17 @@ pub fn render_human_report(report: &ScanReport) -> String {
             if finding.kind == FindingKind::SimilarFunctions {
                 output.push_str(&render_related_locations(finding));
             }
+        }
+
+        let debt_markers = findings
+            .iter()
+            .copied()
+            .filter(|finding| finding.kind == FindingKind::DebtMarker)
+            .collect::<Vec<_>>();
+        if !debt_markers.is_empty() {
+            output.push_str("  ");
+            output.push_str(&render_debt_marker_group(&debt_markers));
+            output.push('\n');
         }
     }
 
@@ -86,13 +103,87 @@ fn render_finding_line(finding: &Finding) -> String {
         .line
         .map(|line| format!(":{line}"))
         .unwrap_or_default();
-    format!("[{}]{} {}", finding.severity, location, finding.message)
+    format!(
+        "[{}]{} {}",
+        finding.severity,
+        location,
+        concise_finding_message(finding)
+    )
+}
+
+fn concise_finding_message(finding: &Finding) -> String {
+    match finding.kind {
+        FindingKind::LargeFile => match finding.magnitude {
+            Some(lines) => format!("large file: {lines} lines"),
+            None => finding.message.clone(),
+        },
+        FindingKind::LargeDirectory => match finding.magnitude {
+            Some(files) => format!("large directory: {files} source files"),
+            None => finding.message.clone(),
+        },
+        FindingKind::DebtMarker => "debt marker".to_string(),
+        FindingKind::SimilarFunctions => match finding.magnitude {
+            Some(count) => format!(
+                "similar functions: {count} {}",
+                pluralize(count, "function")
+            ),
+            None => finding.message.clone(),
+        },
+    }
+}
+
+fn render_debt_marker_group(findings: &[&Finding]) -> String {
+    if findings.len() == 1 {
+        let location = findings[0]
+            .line
+            .map(|line| format!(":{line}"))
+            .unwrap_or_default();
+        return format!("[{}]{} debt marker", findings[0].severity, location);
+    }
+
+    let lines = findings
+        .iter()
+        .filter_map(|finding| finding.line)
+        .collect::<Vec<_>>();
+    let mut message = format!("[{}] {} debt markers", findings[0].severity, findings.len());
+
+    if !lines.is_empty() {
+        let shown = lines
+            .iter()
+            .take(DEBT_MARKER_LINE_LIMIT)
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        message.push_str(": lines ");
+        message.push_str(&shown);
+
+        if lines.len() > DEBT_MARKER_LINE_LIMIT {
+            message.push_str(&format!(
+                " (+{} more)",
+                lines.len() - DEBT_MARKER_LINE_LIMIT
+            ));
+        }
+    }
+
+    message
+}
+
+fn pluralize(count: usize, noun: &str) -> String {
+    if count == 1 {
+        noun.to_string()
+    } else {
+        format!("{noun}s")
+    }
 }
 
 fn render_related_locations(finding: &Finding) -> String {
     let mut output = String::new();
 
-    for location in finding.related_locations.iter().take(6) {
+    for location in finding
+        .related_locations
+        .iter()
+        .take(RELATED_LOCATION_LIMIT)
+    {
         output.push_str("    - ");
         output.push_str(&location.path);
         output.push(':');
@@ -104,10 +195,10 @@ fn render_related_locations(finding: &Finding) -> String {
         output.push('\n');
     }
 
-    if finding.related_locations.len() > 6 {
+    if finding.related_locations.len() > RELATED_LOCATION_LIMIT {
         output.push_str(&format!(
             "    +{} more\n",
-            finding.related_locations.len() - 6
+            finding.related_locations.len() - RELATED_LOCATION_LIMIT
         ));
     }
 
@@ -227,8 +318,24 @@ mod tests {
 
         let output = render_human_report(&report(vec![finding]));
 
-        assert!(output.contains("+1 more"));
-        assert!(!output.contains("func_6"));
+        assert!(output.contains("similar functions: 7 functions"));
+        assert!(output.contains("+4 more"));
+        assert!(!output.contains("func_3"));
+    }
+
+    #[test]
+    fn groups_debt_markers_by_path_in_human_report() {
+        let findings = (1..=8)
+            .map(|line| Finding {
+                line: Some(line),
+                ..finding("src/a.rs", None)
+            })
+            .collect::<Vec<_>>();
+
+        let output = render_human_report(&report(findings));
+
+        assert_eq!(output.matches("debt markers").count(), 1);
+        assert!(output.contains("[info] 8 debt markers: lines 1, 2, 3, 4, 5, 6 (+2 more)"));
     }
 
     #[test]
