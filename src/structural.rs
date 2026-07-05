@@ -73,6 +73,13 @@ struct FileSignals {
     directory_files: BTreeMap<PathBuf, BTreeSet<String>>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct StructureTraversal<'a> {
+    source: &'a str,
+    family: LanguageFamily,
+    include_test_structure: bool,
+}
+
 pub fn scan_structure(files: &[SourceFile], options: &StructureOptions) -> Result<Vec<Finding>> {
     let mut signals = FileSignals::default();
 
@@ -156,7 +163,13 @@ fn scan_production_file(
     options: &StructureOptions,
     signals: &mut FileSignals,
 ) {
-    let functions = collect_function_metrics(root, &file.source, family);
+    let traversal = StructureTraversal {
+        source: &file.source,
+        family,
+        include_test_structure: options.include_test_structure,
+    };
+
+    let functions = collect_function_metrics(root, traversal);
     for function in &functions {
         if function.lines > options.max_function_lines {
             signals.findings.push(Finding {
@@ -221,7 +234,7 @@ fn scan_production_file(
         collect_data_clumps(file, function, options, signals);
     }
 
-    for type_metric in collect_type_metrics(root, &file.source, family) {
+    for type_metric in collect_type_metrics(root, traversal) {
         if type_metric.lines > options.max_type_lines
             || type_metric.members > options.max_type_members
         {
@@ -253,7 +266,7 @@ fn scan_production_file(
         });
     }
 
-    let public_items = count_public_items(root, &file.source, family);
+    let public_items = count_public_items(root, traversal);
     if public_items > options.max_public_items {
         signals.findings.push(Finding {
             kind: FindingKind::LargePublicSurface,
@@ -266,43 +279,45 @@ fn scan_production_file(
         });
     }
 
-    collect_repeated_literals(file, root, &file.source, signals);
-    collect_error_patterns(file, root, &file.source, family, signals);
+    collect_repeated_literals(file, root, traversal, signals);
+    collect_error_patterns(file, root, traversal, signals);
     collect_directory_concepts(file, family, signals);
 }
 
 fn collect_function_metrics(
     root: Node<'_>,
-    source: &str,
-    family: LanguageFamily,
+    traversal: StructureTraversal<'_>,
 ) -> Vec<FunctionMetric> {
     let mut functions = Vec::new();
-    collect_function_metrics_from(root, source, family, &mut functions);
+    collect_function_metrics_from(root, traversal, &mut functions);
     functions
 }
 
 fn collect_function_metrics_from(
     node: Node<'_>,
-    source: &str,
-    family: LanguageFamily,
+    traversal: StructureTraversal<'_>,
     functions: &mut Vec<FunctionMetric>,
 ) {
-    if let Some(parts) = function_parts(node, source, family) {
-        let parameter_names = parameter_names(parts.parameters, source, family);
+    if should_skip_rust_test_module(node, traversal) {
+        return;
+    }
+
+    if let Some(parts) = function_parts(node, traversal.source, traversal.family) {
+        let parameter_names = parameter_names(parts.parameters, traversal.source, traversal.family);
         functions.push(FunctionMetric {
             name: parts.name,
             line: node.start_position().row + 1,
             lines: node_line_span(node),
             parameter_count: parameter_names.len(),
             parameter_names,
-            complexity: complexity(parts.body, source, family),
-            nesting_depth: max_nesting_depth(parts.body, family, 0),
+            complexity: complexity(parts.body, traversal.source, traversal.family),
+            nesting_depth: max_nesting_depth(parts.body, traversal.family, 0),
         });
     }
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_function_metrics_from(child, source, family, functions);
+        collect_function_metrics_from(child, traversal, functions);
     }
 }
 
@@ -383,6 +398,7 @@ fn parameter_names(
     };
 
     match family {
+        LanguageFamily::Rust => rust_parameter_names(parameters, source),
         LanguageFamily::Go => go_parameter_names(parameters, source),
         _ => {
             let mut names = Vec::new();
@@ -393,6 +409,25 @@ fn parameter_names(
             names
         }
     }
+}
+
+fn rust_parameter_names(parameters: Node<'_>, source: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut cursor = parameters.walk();
+    for child in parameters.named_children(&mut cursor) {
+        match child.kind() {
+            "self_parameter" => {}
+            "parameter" => {
+                if let Some(pattern) = child.child_by_field_name("pattern") {
+                    collect_parameter_name(pattern, source, &mut names);
+                } else {
+                    collect_parameter_name(child, source, &mut names);
+                }
+            }
+            _ => collect_parameter_name(child, source, &mut names),
+        }
+    }
+    names
 }
 
 fn go_parameter_names(parameters: Node<'_>, source: &str) -> Vec<String> {
@@ -559,25 +594,28 @@ fn is_nesting_node(node: Node<'_>, family: LanguageFamily) -> bool {
     ) || (family == LanguageFamily::Python && kind == "elif_clause")
 }
 
-fn collect_type_metrics(root: Node<'_>, source: &str, family: LanguageFamily) -> Vec<TypeMetric> {
+fn collect_type_metrics(root: Node<'_>, traversal: StructureTraversal<'_>) -> Vec<TypeMetric> {
     let mut types = Vec::new();
-    collect_type_metrics_from(root, source, family, &mut types);
+    collect_type_metrics_from(root, traversal, &mut types);
     types
 }
 
 fn collect_type_metrics_from(
     node: Node<'_>,
-    source: &str,
-    family: LanguageFamily,
+    traversal: StructureTraversal<'_>,
     types: &mut Vec<TypeMetric>,
 ) {
-    if let Some(metric) = type_metric(node, source, family) {
+    if should_skip_rust_test_module(node, traversal) {
+        return;
+    }
+
+    if let Some(metric) = type_metric(node, traversal.source, traversal.family) {
         types.push(metric);
     }
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_type_metrics_from(child, source, family, types);
+        collect_type_metrics_from(child, traversal, types);
     }
 }
 
@@ -673,15 +711,19 @@ fn count_imports(root: Node<'_>, family: LanguageFamily) -> usize {
     count
 }
 
-fn count_public_items(root: Node<'_>, source: &str, family: LanguageFamily) -> usize {
+fn count_public_items(root: Node<'_>, traversal: StructureTraversal<'_>) -> usize {
     let mut count = 0;
     let mut cursor = root.walk();
     for child in root.named_children(&mut cursor) {
-        count += match family {
+        if should_skip_rust_test_module(child, traversal) {
+            continue;
+        }
+
+        count += match traversal.family {
             LanguageFamily::Rust if rust_public_item(child) => 1,
             LanguageFamily::JavaScriptTypeScript if child.kind() == "export_statement" => 1,
-            LanguageFamily::Python if python_public_item(child, source) => 1,
-            LanguageFamily::Go if go_public_item(child, source) => 1,
+            LanguageFamily::Python if python_public_item(child, traversal.source) => 1,
+            LanguageFamily::Go if go_public_item(child, traversal.source) => 1,
             _ => 0,
         };
     }
@@ -700,6 +742,59 @@ fn rust_public_item(node: Node<'_>) -> bool {
             | "static_item"
             | "mod_item"
     ) && node.child_by_field_name("visibility").is_some()
+}
+
+fn should_skip_rust_test_module(node: Node<'_>, traversal: StructureTraversal<'_>) -> bool {
+    traversal.family == LanguageFamily::Rust
+        && !traversal.include_test_structure
+        && node.kind() == "mod_item"
+        && has_cfg_test_attribute(node, traversal.source)
+}
+
+fn has_cfg_test_attribute(node: Node<'_>, source: &str) -> bool {
+    let mut end = node.start_byte().min(source.len());
+    let bytes = source.as_bytes();
+
+    loop {
+        while end > 0 && bytes[end - 1].is_ascii_whitespace() {
+            end -= 1;
+        }
+
+        if end == 0 || bytes[end - 1] != b']' {
+            return false;
+        }
+
+        let Some(start) = source[..end].rfind("#[") else {
+            return false;
+        };
+        let attribute = &source[start..end];
+        if is_cfg_test_attribute(attribute) {
+            return true;
+        }
+
+        end = start;
+    }
+}
+
+fn is_cfg_test_attribute(attribute: &str) -> bool {
+    let compact = attribute
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>();
+    let Some(inner) = compact
+        .strip_prefix("#[cfg(")
+        .and_then(|value| value.strip_suffix(")]"))
+    else {
+        return false;
+    };
+
+    inner == "test"
+        || inner.starts_with("any(test")
+        || inner.starts_with("all(test")
+        || inner.contains("(test,")
+        || inner.contains(",test,")
+        || inner.ends_with(",test")
+        || inner.ends_with(",test)")
 }
 
 fn python_public_item(node: Node<'_>, source: &str) -> bool {
@@ -740,12 +835,16 @@ fn is_exported_go_identifier(name: &str) -> bool {
 fn collect_repeated_literals(
     file: &SourceFile,
     node: Node<'_>,
-    source: &str,
+    traversal: StructureTraversal<'_>,
     signals: &mut FileSignals,
 ) {
+    if should_skip_rust_test_module(node, traversal) {
+        return;
+    }
+
     if is_literal_node(node)
         && !has_literal_ancestor(node)
-        && let Ok(text) = node.utf8_text(source.as_bytes())
+        && let Ok(text) = node.utf8_text(traversal.source.as_bytes())
         && let Some(literal) = normalize_literal(text)
     {
         signals.literals.push((
@@ -760,7 +859,7 @@ fn collect_repeated_literals(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_repeated_literals(file, child, source, signals);
+        collect_repeated_literals(file, child, traversal, signals);
     }
 }
 
@@ -811,12 +910,15 @@ fn normalize_literal(text: &str) -> Option<String> {
 fn collect_error_patterns(
     file: &SourceFile,
     node: Node<'_>,
-    source: &str,
-    family: LanguageFamily,
+    traversal: StructureTraversal<'_>,
     signals: &mut FileSignals,
 ) {
-    if is_error_pattern_node(node, source, family)
-        && let Ok(text) = node.utf8_text(source.as_bytes())
+    if should_skip_rust_test_module(node, traversal) {
+        return;
+    }
+
+    if is_error_pattern_node(node, traversal.source, traversal.family)
+        && let Ok(text) = node.utf8_text(traversal.source.as_bytes())
     {
         signals.error_patterns.push((
             normalize_pattern(text),
@@ -830,7 +932,7 @@ fn collect_error_patterns(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_error_patterns(file, child, source, family, signals);
+        collect_error_patterns(file, child, traversal, signals);
     }
 }
 
@@ -1160,6 +1262,31 @@ pub fn process(a: i32, b: i32, c: i32, d: i32) -> i32 {
     }
 
     #[test]
+    fn counts_rust_parameter_patterns_without_type_identifiers() -> Result<()> {
+        let source = r#"
+fn collect_named_functions(
+    node: Node<'_>,
+    extraction: CandidateExtraction<'_>,
+    interner: &mut TokenInterner,
+    candidates: &mut Vec<FunctionCandidate>,
+) {
+}
+"#;
+        let mut opts = options();
+        opts.max_function_parameters = 4;
+
+        let findings = scan_structure(&[source_file("src/lib.rs", source)], &opts)?;
+
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.kind == FindingKind::ManyParameters),
+            "{findings:#?}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn reports_typescript_module_level_signals() -> Result<()> {
         let source = r#"
 import a from "a";
@@ -1305,6 +1432,59 @@ test("three", () => {
             included
                 .iter()
                 .any(|finding| finding.kind == FindingKind::RepeatedLiteral)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn skips_rust_cfg_test_modules_for_structure_by_default() -> Result<()> {
+        let source = r#"
+pub fn production() -> &'static str {
+    "production"
+}
+
+#[cfg(test)]
+mod tests {
+    fn one(customer_id: i32, account_id: i32, region_id: i32) -> &'static str {
+        "shared test literal"
+    }
+
+    fn two(customer_id: i32, account_id: i32, region_id: i32) -> &'static str {
+        "shared test literal"
+    }
+
+    fn three(customer_id: i32, account_id: i32, region_id: i32) -> &'static str {
+        "shared test literal"
+    }
+}
+"#;
+
+        let findings = scan_structure(&[source_file("src/lib.rs", source)], &options())?;
+
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.kind == FindingKind::RepeatedLiteral)
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.kind == FindingKind::DataClump)
+        );
+
+        let mut opts = options();
+        opts.include_test_structure = true;
+        let included = scan_structure(&[source_file("src/lib.rs", source)], &opts)?;
+
+        assert!(
+            included
+                .iter()
+                .any(|finding| finding.kind == FindingKind::RepeatedLiteral)
+        );
+        assert!(
+            included
+                .iter()
+                .any(|finding| finding.kind == FindingKind::DataClump)
         );
         Ok(())
     }

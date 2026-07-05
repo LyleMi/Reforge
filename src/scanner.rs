@@ -379,6 +379,7 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
         min_group_size: args.min_similar_functions,
         min_tokens: args.min_function_tokens,
         threshold: args.function_similarity,
+        include_test_similarity: args.include_test_similarity,
     };
     let mut similarity_progress = ScanSimilarityProgress { progress };
     let similarity_scan = scan_similar_functions_report_with_progress(

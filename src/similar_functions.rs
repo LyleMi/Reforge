@@ -13,6 +13,7 @@ pub struct SimilarFunctionOptions {
     pub min_group_size: usize,
     pub min_tokens: usize,
     pub threshold: f64,
+    pub include_test_similarity: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +68,15 @@ enum FunctionCategory {
 struct LanguageAdapter {
     family: LanguageFamily,
     language: fn() -> Language,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CandidateExtraction<'a> {
+    source: &'a str,
+    file: &'a SourceFile,
+    family: LanguageFamily,
+    min_tokens: usize,
+    include_test_similarity: bool,
 }
 
 #[derive(Debug, Default)]
@@ -124,6 +134,7 @@ pub fn scan_similar_functions_report_with_progress(
                 file,
                 adapter,
                 options.min_tokens,
+                options.include_test_similarity,
                 &mut interner,
             )?);
         }
@@ -185,6 +196,7 @@ fn extract_candidates(
     file: &SourceFile,
     adapter: LanguageAdapter,
     min_tokens: usize,
+    include_test_similarity: bool,
     interner: &mut TokenInterner,
 ) -> Result<Vec<FunctionCandidate>> {
     let mut parser = Parser::new();
@@ -200,37 +212,39 @@ fn extract_candidates(
         return Ok(Vec::new());
     }
 
-    let mut candidates = Vec::new();
-    collect_named_functions(
-        tree.root_node(),
-        &file.source,
+    let extraction = CandidateExtraction {
+        source: &file.source,
         file,
-        adapter.family,
+        family: adapter.family,
         min_tokens,
-        interner,
-        &mut candidates,
-    );
+        include_test_similarity,
+    };
+    let mut candidates = Vec::new();
+    collect_named_functions(tree.root_node(), extraction, interner, &mut candidates);
     Ok(candidates)
 }
 
 fn collect_named_functions(
     node: Node<'_>,
-    source: &str,
-    file: &SourceFile,
-    family: LanguageFamily,
-    min_tokens: usize,
+    extraction: CandidateExtraction<'_>,
     interner: &mut TokenInterner,
     candidates: &mut Vec<FunctionCandidate>,
 ) {
-    if let Some((name, category, body)) = extract_function_parts(node, source, family) {
-        let tokens = normalize_tokens(body, source.as_bytes(), interner);
-        if tokens.len() >= min_tokens {
+    if should_skip_rust_test_module(node, extraction) {
+        return;
+    }
+
+    if let Some((name, category, body)) =
+        extract_function_parts(node, extraction.source, extraction.family)
+    {
+        let tokens = normalize_tokens(body, extraction.source.as_bytes(), interner);
+        if tokens.len() >= extraction.min_tokens {
             let token_counts = token_counts(&tokens);
             candidates.push(FunctionCandidate {
-                family,
+                family: extraction.family,
                 category,
                 name,
-                path: file.display_path.clone(),
+                path: extraction.file.display_path.clone(),
                 line: node.start_position().row + 1,
                 tokens,
                 token_counts,
@@ -240,9 +254,7 @@ fn collect_named_functions(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_named_functions(
-            child, source, file, family, min_tokens, interner, candidates,
-        );
+        collect_named_functions(child, extraction, interner, candidates);
     }
 }
 
@@ -319,6 +331,59 @@ fn has_ancestor_kind(mut node: Node<'_>, kind: &str) -> bool {
     }
 
     false
+}
+
+fn should_skip_rust_test_module(node: Node<'_>, extraction: CandidateExtraction<'_>) -> bool {
+    extraction.family == LanguageFamily::Rust
+        && !extraction.include_test_similarity
+        && node.kind() == "mod_item"
+        && has_cfg_test_attribute(node, extraction.source)
+}
+
+fn has_cfg_test_attribute(node: Node<'_>, source: &str) -> bool {
+    let mut end = node.start_byte().min(source.len());
+    let bytes = source.as_bytes();
+
+    loop {
+        while end > 0 && bytes[end - 1].is_ascii_whitespace() {
+            end -= 1;
+        }
+
+        if end == 0 || bytes[end - 1] != b']' {
+            return false;
+        }
+
+        let Some(start) = source[..end].rfind("#[") else {
+            return false;
+        };
+        let attribute = &source[start..end];
+        if is_cfg_test_attribute(attribute) {
+            return true;
+        }
+
+        end = start;
+    }
+}
+
+fn is_cfg_test_attribute(attribute: &str) -> bool {
+    let compact = attribute
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>();
+    let Some(inner) = compact
+        .strip_prefix("#[cfg(")
+        .and_then(|value| value.strip_suffix(")]"))
+    else {
+        return false;
+    };
+
+    inner == "test"
+        || inner.starts_with("any(test")
+        || inner.starts_with("all(test")
+        || inner.contains("(test,")
+        || inner.contains(",test,")
+        || inner.ends_with(",test")
+        || inner.ends_with(",test)")
 }
 
 fn normalize_tokens(node: Node<'_>, source: &[u8], interner: &mut TokenInterner) -> Vec<TokenId> {
@@ -656,6 +721,7 @@ mod tests {
             min_group_size: 3,
             min_tokens: 12,
             threshold: 0.80,
+            include_test_similarity: false,
         }
     }
 
@@ -703,6 +769,68 @@ fn gamma(numbers: &[i32]) -> i32 {
 
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].magnitude, Some(3));
+        Ok(())
+    }
+
+    #[test]
+    fn skips_rust_cfg_test_modules_for_similarity_by_default() -> Result<()> {
+        let source = r#"
+fn production() -> i32 {
+    1
+}
+
+#[cfg(test)]
+mod tests {
+    fn alpha(items: &[i32]) -> i32 {
+        let mut total = 0;
+        for item in items {
+            if *item > 10 {
+                total += *item * 2;
+            } else {
+                total += *item;
+            }
+        }
+        total
+    }
+
+    fn beta(values: &[i32]) -> i32 {
+        let mut sum = 0;
+        for value in values {
+            if *value > 20 {
+                sum += *value * 2;
+            } else {
+                sum += *value;
+            }
+        }
+        sum
+    }
+
+    fn gamma(numbers: &[i32]) -> i32 {
+        let mut acc = 0;
+        for number in numbers {
+            if *number > 30 {
+                acc += *number * 2;
+            } else {
+                acc += *number;
+            }
+        }
+        acc
+    }
+}
+"#;
+
+        let scan = scan_similar_functions_report(&[source_file("src/lib.rs", source)], &options())?;
+
+        assert_eq!(scan.candidate_count, 0);
+        assert!(scan.findings.is_empty());
+
+        let mut opts = options();
+        opts.include_test_similarity = true;
+        let included = scan_similar_functions_report(&[source_file("src/lib.rs", source)], &opts)?;
+
+        assert_eq!(included.candidate_count, 3);
+        assert_eq!(included.findings.len(), 1);
+        assert_eq!(included.findings[0].magnitude, Some(3));
         Ok(())
     }
 
