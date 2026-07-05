@@ -477,6 +477,25 @@ fn group_candidates(
     options: &SimilarFunctionOptions,
     progress: &mut dyn SimilarFunctionProgress,
 ) -> Vec<Finding> {
+    let buckets = candidate_buckets(candidates);
+    let mut comparison_progress = ComparisonProgress::new(progress, total_comparisons(&buckets));
+    let mut findings = Vec::new();
+
+    for indexes in buckets.values() {
+        findings.extend(group_candidate_bucket(
+            candidates,
+            indexes,
+            options,
+            &mut comparison_progress,
+        ));
+    }
+
+    findings
+}
+
+fn candidate_buckets(
+    candidates: &[FunctionCandidate],
+) -> BTreeMap<(LanguageFamily, FunctionCategory), Vec<usize>> {
     let mut buckets: BTreeMap<(LanguageFamily, FunctionCategory), Vec<usize>> = BTreeMap::new();
     for (index, candidate) in candidates.iter().enumerate() {
         buckets
@@ -484,103 +503,138 @@ fn group_candidates(
             .or_default()
             .push(index);
     }
+    buckets
+}
 
-    let total_comparisons = buckets
-        .values()
-        .map(|indexes| {
-            indexes
-                .len()
-                .saturating_mul(indexes.len().saturating_sub(1))
-                / 2
-        })
-        .sum();
-    let mut completed_comparisons = 0;
-    let mut last_reported_percent = None;
+fn total_comparisons(buckets: &BTreeMap<(LanguageFamily, FunctionCategory), Vec<usize>>) -> usize {
+    buckets.values().map(|indexes| pair_count(indexes)).sum()
+}
 
+fn pair_count(indexes: &[usize]) -> usize {
+    indexes
+        .len()
+        .saturating_mul(indexes.len().saturating_sub(1))
+        / 2
+}
+
+fn group_candidate_bucket(
+    candidates: &[FunctionCandidate],
+    indexes: &[usize],
+    options: &SimilarFunctionOptions,
+    progress: &mut ComparisonProgress<'_>,
+) -> Vec<Finding> {
     let mut findings = Vec::new();
-    for indexes in buckets.values() {
-        let mut used = vec![false; candidates.len()];
+    let mut used = vec![false; candidates.len()];
+    let bucket = CandidateBucket {
+        candidates,
+        indexes,
+        threshold: options.threshold,
+    };
 
-        for (representative_position, &representative_index) in indexes.iter().enumerate() {
-            if used[representative_index] {
-                let skipped = indexes.len().saturating_sub(representative_position + 1);
-                completed_comparisons += skipped;
-                report_compare_progress(
-                    progress,
-                    completed_comparisons,
-                    total_comparisons,
-                    &mut last_reported_percent,
-                );
-                continue;
+    for (representative_position, &representative_index) in indexes.iter().enumerate() {
+        if used[representative_index] {
+            progress.advance_by(indexes.len().saturating_sub(representative_position + 1));
+            continue;
+        }
+
+        let group = collect_similar_group(
+            &bucket,
+            &used,
+            representative_position,
+            representative_index,
+            progress,
+        );
+
+        if group.len() >= options.min_group_size {
+            for &index in &group {
+                used[index] = true;
             }
-
-            let representative = &candidates[representative_index];
-            let mut group = vec![representative_index];
-
-            for &candidate_index in indexes.iter().skip(representative_position + 1) {
-                if used[candidate_index] {
-                    completed_comparisons += 1;
-                    report_compare_progress(
-                        progress,
-                        completed_comparisons,
-                        total_comparisons,
-                        &mut last_reported_percent,
-                    );
-                    continue;
-                }
-
-                let candidate = &candidates[candidate_index];
-                if length_ratio(representative.tokens.len(), candidate.tokens.len())
-                    >= options.threshold
-                    && multiset_dice_upper_bound(representative, candidate) >= options.threshold
-                    && token_similarity_reaches(
-                        &representative.tokens,
-                        &candidate.tokens,
-                        options.threshold,
-                    )
-                {
-                    group.push(candidate_index);
-                }
-
-                completed_comparisons += 1;
-                report_compare_progress(
-                    progress,
-                    completed_comparisons,
-                    total_comparisons,
-                    &mut last_reported_percent,
-                );
-            }
-
-            if group.len() >= options.min_group_size {
-                for &index in &group {
-                    used[index] = true;
-                }
-                findings.push(similar_function_finding(
-                    candidates,
-                    &group,
-                    options.threshold,
-                ));
-            }
+            findings.push(similar_function_finding(
+                candidates,
+                &group,
+                options.threshold,
+            ));
         }
     }
 
     findings
 }
 
-fn report_compare_progress(
-    progress: &mut dyn SimilarFunctionProgress,
-    completed: usize,
-    total: usize,
-    last_reported_percent: &mut Option<usize>,
-) {
-    if total == 0 {
-        return;
+struct CandidateBucket<'a> {
+    candidates: &'a [FunctionCandidate],
+    indexes: &'a [usize],
+    threshold: f64,
+}
+
+fn collect_similar_group(
+    bucket: &CandidateBucket<'_>,
+    used: &[bool],
+    representative_position: usize,
+    representative_index: usize,
+    progress: &mut ComparisonProgress<'_>,
+) -> Vec<usize> {
+    let representative = &bucket.candidates[representative_index];
+    let mut group = vec![representative_index];
+
+    for &candidate_index in bucket.indexes.iter().skip(representative_position + 1) {
+        if !used[candidate_index]
+            && candidates_are_similar(
+                representative,
+                &bucket.candidates[candidate_index],
+                bucket.threshold,
+            )
+        {
+            group.push(candidate_index);
+        }
+        progress.advance();
     }
 
-    let percent = completed.saturating_mul(100) / total;
-    if *last_reported_percent != Some(percent) || completed == total {
-        progress.report_compare_progress(completed, total);
-        *last_reported_percent = Some(percent);
+    group
+}
+
+fn candidates_are_similar(
+    representative: &FunctionCandidate,
+    candidate: &FunctionCandidate,
+    threshold: f64,
+) -> bool {
+    length_ratio(representative.tokens.len(), candidate.tokens.len()) >= threshold
+        && multiset_dice_upper_bound(representative, candidate) >= threshold
+        && token_similarity_reaches(&representative.tokens, &candidate.tokens, threshold)
+}
+
+struct ComparisonProgress<'a> {
+    progress: &'a mut dyn SimilarFunctionProgress,
+    total: usize,
+    completed: usize,
+    last_reported_percent: Option<usize>,
+}
+
+impl<'a> ComparisonProgress<'a> {
+    fn new(progress: &'a mut dyn SimilarFunctionProgress, total: usize) -> Self {
+        Self {
+            progress,
+            total,
+            completed: 0,
+            last_reported_percent: None,
+        }
+    }
+
+    fn advance(&mut self) {
+        self.advance_by(1);
+    }
+
+    fn advance_by(&mut self, amount: usize) {
+        if amount == 0 || self.total == 0 {
+            return;
+        }
+
+        self.completed += amount;
+        let percent = self.completed.saturating_mul(100) / self.total;
+        if self.last_reported_percent != Some(percent) || self.completed == self.total {
+            self.progress
+                .report_compare_progress(self.completed, self.total);
+            self.last_reported_percent = Some(percent);
+        }
     }
 }
 

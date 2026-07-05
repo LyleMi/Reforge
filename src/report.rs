@@ -59,6 +59,21 @@ pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
     let mut output = String::new();
     let breakdown = FindingBreakdown::from_findings(&report.findings);
 
+    render_report_header(&mut output, report, color);
+    render_report_summary(&mut output, report, color);
+    render_signal_breakdown(&mut output, &breakdown, color);
+
+    if report.findings.is_empty() {
+        output.push('\n');
+        output.push_str("No refactoring signals found.\n");
+        return output;
+    }
+
+    render_findings(&mut output, report, color);
+    output
+}
+
+fn render_report_header(output: &mut String, report: &ScanReport, color: bool) {
     output.push_str(&paint(color, "Reforge scan report", AnsiStyle::Header));
     output.push('\n');
     output.push_str(&format!(
@@ -68,6 +83,9 @@ pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
         report.summary.finding_count,
         report.summary.similar_function_group_count
     ));
+}
+
+fn render_report_summary(output: &mut String, report: &ScanReport, color: bool) {
     output.push('\n');
     output.push_str(&paint(color, "Summary", AnsiStyle::Section));
     output.push('\n');
@@ -77,6 +95,9 @@ pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
         report.stats.directories_scanned,
         report.stats.function_candidates
     ));
+}
+
+fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, color: bool) {
     output.push('\n');
     output.push_str(&paint(color, "Signals", AnsiStyle::Section));
     output.push('\n');
@@ -84,30 +105,26 @@ pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
         "  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Directory drift: {}\n  Data clumps: {}\n",
         breakdown.warnings,
         breakdown.info,
-        breakdown.large_files,
-        breakdown.large_directories,
-        breakdown.debt_markers,
-        breakdown.similar_functions,
-        breakdown.long_functions,
-        breakdown.complex_functions,
-        breakdown.deep_nesting,
-        breakdown.many_parameters,
-        breakdown.large_types,
-        breakdown.large_public_surfaces,
-        breakdown.import_heavy_files,
-        breakdown.repeated_literals,
-        breakdown.repeated_error_patterns,
-        breakdown.test_duplication,
-        breakdown.directory_drift,
-        breakdown.data_clumps
+        breakdown.count(FindingKind::LargeFile),
+        breakdown.count(FindingKind::LargeDirectory),
+        breakdown.count(FindingKind::DebtMarker),
+        breakdown.count(FindingKind::SimilarFunctions),
+        breakdown.count(FindingKind::LongFunction),
+        breakdown.count(FindingKind::ComplexFunction),
+        breakdown.count(FindingKind::DeepNesting),
+        breakdown.count(FindingKind::ManyParameters),
+        breakdown.count(FindingKind::LargeType),
+        breakdown.count(FindingKind::LargePublicSurface),
+        breakdown.count(FindingKind::ImportHeavyFile),
+        breakdown.count(FindingKind::RepeatedLiteral),
+        breakdown.count(FindingKind::RepeatedErrorPattern),
+        breakdown.count(FindingKind::TestDuplication),
+        breakdown.count(FindingKind::DirectoryDrift),
+        breakdown.count(FindingKind::DataClump)
     ));
+}
 
-    if report.findings.is_empty() {
-        output.push('\n');
-        output.push_str("No refactoring signals found.\n");
-        return output;
-    }
-
+fn render_findings(output: &mut String, report: &ScanReport, color: bool) {
     let mut by_path: BTreeMap<&str, Vec<&Finding>> = BTreeMap::new();
     for finding in sorted_findings(&report.findings) {
         by_path.entry(&finding.path).or_default().push(finding);
@@ -146,8 +163,6 @@ pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
             output.push('\n');
         }
     }
-
-    output
 }
 
 fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
@@ -183,71 +198,17 @@ fn render_finding_line(finding: &Finding, color: bool) -> String {
 }
 
 fn concise_finding_message(finding: &Finding) -> String {
-    match finding.kind {
-        FindingKind::LargeFile => match finding.magnitude {
-            Some(lines) => format!("large file: {lines} lines"),
-            None => finding.message.clone(),
-        },
-        FindingKind::LargeDirectory => match finding.magnitude {
-            Some(files) => format!("large directory: {files} source files"),
-            None => finding.message.clone(),
-        },
-        FindingKind::DebtMarker => "debt marker".to_string(),
-        FindingKind::SimilarFunctions => match finding.magnitude {
-            Some(count) => format!(
-                "similar functions: {count} {}",
-                pluralize(count, "function")
-            ),
-            None => finding.message.clone(),
-        },
-        FindingKind::LongFunction => match finding.magnitude {
-            Some(lines) => format!("long function: {lines} lines"),
-            None => finding.message.clone(),
-        },
-        FindingKind::ComplexFunction => match finding.magnitude {
-            Some(complexity) => format!("complex function: complexity {complexity}"),
-            None => finding.message.clone(),
-        },
-        FindingKind::DeepNesting => match finding.magnitude {
-            Some(depth) => format!("deep nesting: {depth} levels"),
-            None => finding.message.clone(),
-        },
-        FindingKind::ManyParameters => match finding.magnitude {
-            Some(parameters) => format!("many parameters: {parameters} parameters"),
-            None => finding.message.clone(),
-        },
-        FindingKind::LargeType => match finding.magnitude {
-            Some(size) => format!("large type: size {size}"),
-            None => finding.message.clone(),
-        },
-        FindingKind::LargePublicSurface => match finding.magnitude {
-            Some(items) => format!("large public surface: {items} items"),
-            None => finding.message.clone(),
-        },
-        FindingKind::ImportHeavyFile => match finding.magnitude {
-            Some(imports) => format!("import-heavy file: {imports} imports"),
-            None => finding.message.clone(),
-        },
-        FindingKind::RepeatedLiteral => match finding.magnitude {
-            Some(count) => format!("repeated literal: {count} occurrences"),
-            None => finding.message.clone(),
-        },
-        FindingKind::RepeatedErrorPattern => match finding.magnitude {
-            Some(count) => format!("repeated error pattern: {count} occurrences"),
-            None => finding.message.clone(),
-        },
-        FindingKind::TestDuplication => match finding.magnitude {
-            Some(count) => format!("test duplication: {count} occurrences"),
-            None => finding.message.clone(),
-        },
-        FindingKind::DirectoryDrift => match finding.magnitude {
-            Some(concepts) => format!("directory drift: {concepts} concepts"),
-            None => finding.message.clone(),
-        },
-        FindingKind::DataClump => match finding.magnitude {
-            Some(count) => format!("data clump: {count} occurrences"),
-            None => finding.message.clone(),
-        },
+    let display = display_for_kind(finding.kind);
+    if let Some(magnitude) = finding.magnitude
+        && let Some(phrase) = display.magnitude
+    {
+        return render_magnitude(display.label, magnitude, phrase);
+    }
+
+    if finding.message.is_empty() || finding.kind == FindingKind::DebtMarker {
+        display.label.to_string()
+    } else {
+        finding.message.clone()
     }
 }
 
@@ -350,22 +311,7 @@ fn render_related_locations(finding: &Finding, color: bool) -> String {
 struct FindingBreakdown {
     warnings: usize,
     info: usize,
-    large_files: usize,
-    large_directories: usize,
-    debt_markers: usize,
-    similar_functions: usize,
-    long_functions: usize,
-    complex_functions: usize,
-    deep_nesting: usize,
-    many_parameters: usize,
-    large_types: usize,
-    large_public_surfaces: usize,
-    import_heavy_files: usize,
-    repeated_literals: usize,
-    repeated_error_patterns: usize,
-    test_duplication: usize,
-    directory_drift: usize,
-    data_clumps: usize,
+    by_kind: BTreeMap<FindingKind, usize>,
 }
 
 impl FindingBreakdown {
@@ -378,27 +324,144 @@ impl FindingBreakdown {
                 Severity::Info => breakdown.info += 1,
             }
 
-            match finding.kind {
-                FindingKind::LargeFile => breakdown.large_files += 1,
-                FindingKind::LargeDirectory => breakdown.large_directories += 1,
-                FindingKind::DebtMarker => breakdown.debt_markers += 1,
-                FindingKind::SimilarFunctions => breakdown.similar_functions += 1,
-                FindingKind::LongFunction => breakdown.long_functions += 1,
-                FindingKind::ComplexFunction => breakdown.complex_functions += 1,
-                FindingKind::DeepNesting => breakdown.deep_nesting += 1,
-                FindingKind::ManyParameters => breakdown.many_parameters += 1,
-                FindingKind::LargeType => breakdown.large_types += 1,
-                FindingKind::LargePublicSurface => breakdown.large_public_surfaces += 1,
-                FindingKind::ImportHeavyFile => breakdown.import_heavy_files += 1,
-                FindingKind::RepeatedLiteral => breakdown.repeated_literals += 1,
-                FindingKind::RepeatedErrorPattern => breakdown.repeated_error_patterns += 1,
-                FindingKind::TestDuplication => breakdown.test_duplication += 1,
-                FindingKind::DirectoryDrift => breakdown.directory_drift += 1,
-                FindingKind::DataClump => breakdown.data_clumps += 1,
-            }
+            *breakdown.by_kind.entry(finding.kind).or_insert(0) += 1;
         }
 
         breakdown
+    }
+
+    fn count(&self, kind: FindingKind) -> usize {
+        self.by_kind.get(&kind).copied().unwrap_or(0)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MagnitudePhrase {
+    Lines,
+    SourceFiles,
+    Functions,
+    Complexity,
+    Levels,
+    Parameters,
+    Size,
+    Items,
+    Imports,
+    Occurrences,
+    Concepts,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FindingKindDisplay {
+    kind: FindingKind,
+    label: &'static str,
+    magnitude: Option<MagnitudePhrase>,
+}
+
+const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
+    FindingKindDisplay {
+        kind: FindingKind::LargeFile,
+        label: "large file",
+        magnitude: Some(MagnitudePhrase::Lines),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::LargeDirectory,
+        label: "large directory",
+        magnitude: Some(MagnitudePhrase::SourceFiles),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::DebtMarker,
+        label: "debt marker",
+        magnitude: None,
+    },
+    FindingKindDisplay {
+        kind: FindingKind::SimilarFunctions,
+        label: "similar functions",
+        magnitude: Some(MagnitudePhrase::Functions),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::LongFunction,
+        label: "long function",
+        magnitude: Some(MagnitudePhrase::Lines),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::ComplexFunction,
+        label: "complex function",
+        magnitude: Some(MagnitudePhrase::Complexity),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::DeepNesting,
+        label: "deep nesting",
+        magnitude: Some(MagnitudePhrase::Levels),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::ManyParameters,
+        label: "many parameters",
+        magnitude: Some(MagnitudePhrase::Parameters),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::LargeType,
+        label: "large type",
+        magnitude: Some(MagnitudePhrase::Size),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::LargePublicSurface,
+        label: "large public surface",
+        magnitude: Some(MagnitudePhrase::Items),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::ImportHeavyFile,
+        label: "import-heavy file",
+        magnitude: Some(MagnitudePhrase::Imports),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::RepeatedLiteral,
+        label: "repeated literal",
+        magnitude: Some(MagnitudePhrase::Occurrences),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::RepeatedErrorPattern,
+        label: "repeated error pattern",
+        magnitude: Some(MagnitudePhrase::Occurrences),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::TestDuplication,
+        label: "test duplication",
+        magnitude: Some(MagnitudePhrase::Occurrences),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::DirectoryDrift,
+        label: "directory drift",
+        magnitude: Some(MagnitudePhrase::Concepts),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::DataClump,
+        label: "data clump",
+        magnitude: Some(MagnitudePhrase::Occurrences),
+    },
+];
+
+fn display_for_kind(kind: FindingKind) -> &'static FindingKindDisplay {
+    FINDING_KIND_DISPLAYS
+        .iter()
+        .find(|display| display.kind == kind)
+        .expect("every finding kind should have display metadata")
+}
+
+fn render_magnitude(label: &str, magnitude: usize, phrase: MagnitudePhrase) -> String {
+    match phrase {
+        MagnitudePhrase::Lines => format!("{label}: {magnitude} lines"),
+        MagnitudePhrase::SourceFiles => format!("{label}: {magnitude} source files"),
+        MagnitudePhrase::Functions => {
+            format!("{label}: {magnitude} {}", pluralize(magnitude, "function"))
+        }
+        MagnitudePhrase::Complexity => format!("{label}: complexity {magnitude}"),
+        MagnitudePhrase::Levels => format!("{label}: {magnitude} levels"),
+        MagnitudePhrase::Parameters => format!("{label}: {magnitude} parameters"),
+        MagnitudePhrase::Size => format!("{label}: size {magnitude}"),
+        MagnitudePhrase::Items => format!("{label}: {magnitude} items"),
+        MagnitudePhrase::Imports => format!("{label}: {magnitude} imports"),
+        MagnitudePhrase::Occurrences => format!("{label}: {magnitude} occurrences"),
+        MagnitudePhrase::Concepts => format!("{label}: {magnitude} concepts"),
     }
 }
 

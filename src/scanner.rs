@@ -28,7 +28,7 @@ const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     ".vite",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingKind {
     LargeFile,
@@ -49,7 +49,7 @@ pub enum FindingKind {
     DataClump,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
@@ -94,6 +94,20 @@ pub struct ScanReport {
     pub summary: ScanSummary,
     pub stats: ScanStats,
     pub findings: Vec<Finding>,
+}
+
+#[derive(Debug, Default)]
+struct SourceScan {
+    findings: Vec<Finding>,
+    similarity_sources: Vec<SourceFile>,
+    structure_sources: Vec<SourceFile>,
+    stats: ScanStats,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FileScanOptions {
+    max_file_lines: usize,
+    include_test_similarity: bool,
 }
 
 pub trait ProgressSink {
@@ -275,15 +289,8 @@ pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
 
 pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<ScanReport> {
     let started_at = Instant::now();
-    let root = args
-        .path
-        .canonicalize()
-        .with_context(|| format!("failed to resolve path {}", args.path.display()))?;
-
-    let mut findings = Vec::new();
-    let mut similarity_sources = Vec::new();
-    let mut structure_sources = Vec::new();
-    let mut stats = ScanStats::default();
+    let root = resolve_scan_root(args)?;
+    let mut scan = SourceScan::default();
 
     let total_source_files = if progress.wants_detailed_progress() {
         Some(count_source_files(&root, args)?)
@@ -291,68 +298,115 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
         None
     };
 
+    report_scan_start(progress, &root, total_source_files);
+    scan_sources(&root, args, total_source_files, progress, &mut scan)?;
+    scan_structural_signals(args, progress, &mut scan)?;
+    let similar_function_group_count = scan_similarity_signals(args, progress, &mut scan)?;
+
+    let summary = ScanSummary {
+        scanned_files: scan.stats.source_files_scanned,
+        finding_count: scan.findings.len(),
+        similar_function_group_count,
+        duration_ms: started_at.elapsed().as_millis(),
+    };
+
+    progress.report(&format!(
+        "Finished scan: {} files, {} findings",
+        summary.scanned_files, summary.finding_count
+    ));
+    progress.finish();
+
+    Ok(ScanReport {
+        summary,
+        stats: scan.stats,
+        findings: scan.findings,
+    })
+}
+
+fn resolve_scan_root(args: &ScanArgs) -> Result<PathBuf> {
+    args.path
+        .canonicalize()
+        .with_context(|| format!("failed to resolve path {}", args.path.display()))
+}
+
+fn report_scan_start(
+    progress: &mut dyn ProgressSink,
+    root: &Path,
+    total_source_files: Option<usize>,
+) {
     match total_source_files {
         Some(total) => progress.report(&format!(
             "Scanning {} ({total} source {})",
-            display_path(&root),
+            display_path(root),
             pluralize(total, "file")
         )),
-        None => progress.report(&format!("Scanning {}", display_path(&root))),
+        None => progress.report(&format!("Scanning {}", display_path(root))),
     }
+}
+
+fn scan_sources(
+    root: &Path,
+    args: &ScanArgs,
+    total_source_files: Option<usize>,
+    progress: &mut dyn ProgressSink,
+    scan: &mut SourceScan,
+) -> Result<()> {
+    let file_options = FileScanOptions {
+        max_file_lines: args.max_file_lines,
+        include_test_similarity: args.include_test_similarity,
+    };
 
     if root.is_file() {
-        scan_file(
-            &root,
-            args.max_file_lines,
-            args.include_test_similarity,
-            &mut findings,
-            &mut similarity_sources,
-            &mut structure_sources,
-            &mut stats,
-        )?;
-        if let Some(total) = total_source_files {
-            progress.report_scan_progress(stats.source_files_scanned, total, &display_path(&root));
-        }
-    } else {
-        let mut directory_source_files = BTreeMap::new();
-
-        for entry in WalkDir::new(&root)
-            .into_iter()
-            .filter_entry(|entry| should_visit_entry(entry, &root, args))
-        {
-            let entry = entry?;
-
-            if entry.file_type().is_dir() {
-                stats.directories_scanned += 1;
-            }
-
-            if entry.file_type().is_file() && is_supported_source(entry.path()) {
-                scan_file(
-                    entry.path(),
-                    args.max_file_lines,
-                    args.include_test_similarity,
-                    &mut findings,
-                    &mut similarity_sources,
-                    &mut structure_sources,
-                    &mut stats,
-                )?;
-                if let Some(total) = total_source_files {
-                    progress.report_scan_progress(
-                        stats.source_files_scanned,
-                        total,
-                        &display_path(entry.path()),
-                    );
-                }
-                count_source_file_parent(entry.path(), &mut directory_source_files);
-            }
-        }
-
-        scan_directories(&directory_source_files, args.max_dir_files, &mut findings);
+        scan_file(root, file_options, scan)?;
+        report_file_scan_progress(progress, &scan.stats, total_source_files, root);
+        return Ok(());
     }
 
+    let mut directory_source_files = BTreeMap::new();
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_entry(|entry| should_visit_entry(entry, root, args))
+    {
+        let entry = entry?;
+
+        if entry.file_type().is_dir() {
+            scan.stats.directories_scanned += 1;
+        }
+
+        if entry.file_type().is_file() && is_supported_source(entry.path()) {
+            scan_file(entry.path(), file_options, scan)?;
+            report_file_scan_progress(progress, &scan.stats, total_source_files, entry.path());
+            count_source_file_parent(entry.path(), &mut directory_source_files);
+        }
+    }
+
+    scan_directories(
+        &directory_source_files,
+        args.max_dir_files,
+        &mut scan.findings,
+    );
+    Ok(())
+}
+
+fn report_file_scan_progress(
+    progress: &mut dyn ProgressSink,
+    stats: &ScanStats,
+    total_source_files: Option<usize>,
+    path: &Path,
+) {
+    if let Some(total) = total_source_files {
+        progress.report_scan_progress(stats.source_files_scanned, total, &display_path(path));
+    }
+}
+
+fn scan_structural_signals(
+    args: &ScanArgs,
+    progress: &mut dyn ProgressSink,
+    scan: &mut SourceScan,
+) -> Result<()> {
     progress.report(&format!(
         "Analyzing structural signals in {} files",
-        structure_sources.len()
+        scan.structure_sources.len()
     ));
     let structure_options = StructureOptions {
         max_function_lines: args.max_function_lines,
@@ -368,11 +422,19 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
         max_dir_files: args.max_dir_files,
         include_test_structure: args.include_test_structure,
     };
-    findings.extend(scan_structure(&structure_sources, &structure_options)?);
+    scan.findings
+        .extend(scan_structure(&scan.structure_sources, &structure_options)?);
+    Ok(())
+}
 
+fn scan_similarity_signals(
+    args: &ScanArgs,
+    progress: &mut dyn ProgressSink,
+    scan: &mut SourceScan,
+) -> Result<usize> {
     progress.report(&format!(
         "Analyzing similar functions in {} files",
-        similarity_sources.len()
+        scan.similarity_sources.len()
     ));
 
     let similarity_options = SimilarFunctionOptions {
@@ -383,35 +445,18 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
     };
     let mut similarity_progress = ScanSimilarityProgress { progress };
     let similarity_scan = scan_similar_functions_report_with_progress(
-        &similarity_sources,
+        &scan.similarity_sources,
         &similarity_options,
         &mut similarity_progress,
     )?;
-    stats.function_candidates = similarity_scan.candidate_count;
-    findings.extend(similarity_scan.findings);
+    scan.stats.function_candidates = similarity_scan.candidate_count;
+    scan.findings.extend(similarity_scan.findings);
 
-    let similar_function_group_count = findings
+    Ok(scan
+        .findings
         .iter()
         .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
-        .count();
-    let summary = ScanSummary {
-        scanned_files: stats.source_files_scanned,
-        finding_count: findings.len(),
-        similar_function_group_count,
-        duration_ms: started_at.elapsed().as_millis(),
-    };
-
-    progress.report(&format!(
-        "Finished scan: {} files, {} findings",
-        summary.scanned_files, summary.finding_count
-    ));
-    progress.finish();
-
-    Ok(ScanReport {
-        summary,
-        stats,
-        findings,
-    })
+        .count())
 }
 
 struct ScanSimilarityProgress<'a> {
@@ -449,27 +494,19 @@ fn count_source_files(root: &Path, args: &ScanArgs) -> Result<usize> {
     Ok(count)
 }
 
-fn scan_file(
-    path: &Path,
-    max_file_lines: usize,
-    include_test_similarity: bool,
-    findings: &mut Vec<Finding>,
-    similarity_sources: &mut Vec<SourceFile>,
-    structure_sources: &mut Vec<SourceFile>,
-    stats: &mut ScanStats,
-) -> Result<()> {
+fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Result<()> {
     if !is_supported_source(path) {
         return Ok(());
     }
 
-    stats.source_files_scanned += 1;
+    scan.stats.source_files_scanned += 1;
 
     let source = fs::read_to_string(path)
         .with_context(|| format!("failed to read source file {}", path.display()))?;
     let line_count = source.lines().count();
 
-    if line_count > max_file_lines {
-        findings.push(Finding {
+    if line_count > options.max_file_lines {
+        scan.findings.push(Finding {
             kind: FindingKind::LargeFile,
             severity: Severity::Warning,
             path: display_path(path),
@@ -482,7 +519,7 @@ fn scan_file(
 
     for (index, line) in source.lines().enumerate() {
         if has_debt_marker(line) {
-            findings.push(Finding {
+            scan.findings.push(Finding {
                 kind: FindingKind::DebtMarker,
                 severity: Severity::Info,
                 path: display_path(path),
@@ -496,15 +533,17 @@ fn scan_file(
 
     let display_path = display_path(path);
     if is_supported_structure_source(path) {
-        structure_sources.push(SourceFile {
+        scan.structure_sources.push(SourceFile {
             path: path.to_path_buf(),
             display_path: display_path.clone(),
             source: source.clone(),
         });
     }
 
-    if is_supported_similarity_source(path) && (include_test_similarity || !is_test_source(path)) {
-        similarity_sources.push(SourceFile {
+    if is_supported_similarity_source(path)
+        && (options.include_test_similarity || !is_test_source(path))
+    {
+        scan.similarity_sources.push(SourceFile {
             path: path.to_path_buf(),
             display_path,
             source,

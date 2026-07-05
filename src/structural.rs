@@ -170,7 +170,19 @@ fn scan_production_file(
     };
 
     let functions = collect_function_metrics(root, traversal);
-    for function in &functions {
+    scan_function_metrics(file, &functions, options, signals);
+    scan_type_metrics(file, root, traversal, options, signals);
+    scan_file_metrics(file, root, traversal, options, signals);
+    collect_cross_file_patterns(file, root, traversal, signals);
+}
+
+fn scan_function_metrics(
+    file: &SourceFile,
+    functions: &[FunctionMetric],
+    options: &StructureOptions,
+    signals: &mut FileSignals,
+) {
+    for function in functions {
         if function.lines > options.max_function_lines {
             signals.findings.push(Finding {
                 kind: FindingKind::LongFunction,
@@ -233,7 +245,15 @@ fn scan_production_file(
 
         collect_data_clumps(file, function, options, signals);
     }
+}
 
+fn scan_type_metrics(
+    file: &SourceFile,
+    root: Node<'_>,
+    traversal: StructureTraversal<'_>,
+    options: &StructureOptions,
+    signals: &mut FileSignals,
+) {
     for type_metric in collect_type_metrics(root, traversal) {
         if type_metric.lines > options.max_type_lines
             || type_metric.members > options.max_type_members
@@ -252,8 +272,16 @@ fn scan_production_file(
             });
         }
     }
+}
 
-    let imports = count_imports(root, family);
+fn scan_file_metrics(
+    file: &SourceFile,
+    root: Node<'_>,
+    traversal: StructureTraversal<'_>,
+    options: &StructureOptions,
+    signals: &mut FileSignals,
+) {
+    let imports = count_imports(root, traversal.family);
     if imports > options.max_imports {
         signals.findings.push(Finding {
             kind: FindingKind::ImportHeavyFile,
@@ -278,10 +306,17 @@ fn scan_production_file(
             related_locations: Vec::new(),
         });
     }
+}
 
+fn collect_cross_file_patterns(
+    file: &SourceFile,
+    root: Node<'_>,
+    traversal: StructureTraversal<'_>,
+    signals: &mut FileSignals,
+) {
     collect_repeated_literals(file, root, traversal, signals);
     collect_error_patterns(file, root, traversal, signals);
-    collect_directory_concepts(file, family, signals);
+    collect_directory_concepts(file, traversal.family, signals);
 }
 
 fn collect_function_metrics(
@@ -493,20 +528,14 @@ fn collect_data_clumps(
         return;
     }
 
-    for first in 0..names.len() - 2 {
-        for second in first + 1..names.len() - 1 {
-            for third in second + 1..names.len() {
-                signals.data_clumps.push((
-                    format!("{}, {}, {}", names[first], names[second], names[third]),
-                    Occurrence {
-                        path: file.display_path.clone(),
-                        line: function.line,
-                        name: Some(function.name.clone()),
-                    },
-                ));
-            }
-        }
-    }
+    signals.data_clumps.push((
+        names.join(", "),
+        Occurrence {
+            path: file.display_path.clone(),
+            line: function.line,
+            name: Some(function.name.clone()),
+        },
+    ));
 }
 
 fn complexity(node: Node<'_>, source: &str, family: LanguageFamily) -> usize {
@@ -838,28 +867,42 @@ fn collect_repeated_literals(
     traversal: StructureTraversal<'_>,
     signals: &mut FileSignals,
 ) {
-    if should_skip_rust_test_module(node, traversal) {
-        return;
-    }
+    walk_structure_nodes(file, node, traversal, signals, collect_literal_occurrence);
+}
 
+fn collect_literal_occurrence(
+    file: &SourceFile,
+    node: Node<'_>,
+    traversal: StructureTraversal<'_>,
+    signals: &mut FileSignals,
+) {
     if is_literal_node(node)
         && !has_literal_ancestor(node)
         && let Ok(text) = node.utf8_text(traversal.source.as_bytes())
         && let Some(literal) = normalize_literal(text)
     {
-        signals.literals.push((
-            literal,
-            Occurrence {
-                path: file.display_path.clone(),
-                line: node.start_position().row + 1,
-                name: None,
-            },
-        ));
+        signals
+            .literals
+            .push((literal, occurrence(file, node, None)));
     }
+}
+
+fn walk_structure_nodes(
+    file: &SourceFile,
+    node: Node<'_>,
+    traversal: StructureTraversal<'_>,
+    signals: &mut FileSignals,
+    visit: fn(&SourceFile, Node<'_>, StructureTraversal<'_>, &mut FileSignals),
+) {
+    if should_skip_rust_test_module(node, traversal) {
+        return;
+    }
+
+    visit(file, node, traversal, signals);
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_repeated_literals(file, child, traversal, signals);
+        walk_structure_nodes(file, child, traversal, signals, visit);
     }
 }
 
@@ -913,26 +956,21 @@ fn collect_error_patterns(
     traversal: StructureTraversal<'_>,
     signals: &mut FileSignals,
 ) {
-    if should_skip_rust_test_module(node, traversal) {
-        return;
-    }
+    walk_structure_nodes(file, node, traversal, signals, collect_error_occurrence);
+}
 
+fn collect_error_occurrence(
+    file: &SourceFile,
+    node: Node<'_>,
+    traversal: StructureTraversal<'_>,
+    signals: &mut FileSignals,
+) {
     if is_error_pattern_node(node, traversal.source, traversal.family)
         && let Ok(text) = node.utf8_text(traversal.source.as_bytes())
     {
-        signals.error_patterns.push((
-            normalize_pattern(text),
-            Occurrence {
-                path: file.display_path.clone(),
-                line: node.start_position().row + 1,
-                name: None,
-            },
-        ));
-    }
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_error_patterns(file, child, traversal, signals);
+        signals
+            .error_patterns
+            .push((normalize_pattern(text), occurrence(file, node, None)));
     }
 }
 
@@ -958,25 +996,40 @@ fn is_error_pattern_node(node: Node<'_>, source: &str, family: LanguageFamily) -
 }
 
 fn collect_test_setup_patterns(file: &SourceFile, node: Node<'_>, signals: &mut FileSignals) {
+    walk_file_nodes(file, node, signals, collect_test_setup_occurrence);
+}
+
+fn collect_test_setup_occurrence(file: &SourceFile, node: Node<'_>, signals: &mut FileSignals) {
     if matches!(node.kind(), "call_expression" | "call")
         && let Ok(text) = node.utf8_text(file.source.as_bytes())
     {
         let normalized = normalize_pattern(text);
         if is_setup_pattern(&normalized) {
-            signals.test_setups.push((
-                normalized,
-                Occurrence {
-                    path: file.display_path.clone(),
-                    line: node.start_position().row + 1,
-                    name: None,
-                },
-            ));
+            signals
+                .test_setups
+                .push((normalized, occurrence(file, node, None)));
         }
     }
+}
 
+fn walk_file_nodes(
+    file: &SourceFile,
+    node: Node<'_>,
+    signals: &mut FileSignals,
+    visit: fn(&SourceFile, Node<'_>, &mut FileSignals),
+) {
+    visit(file, node, signals);
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_test_setup_patterns(file, child, signals);
+        walk_file_nodes(file, child, signals, visit);
+    }
+}
+
+fn occurrence(file: &SourceFile, node: Node<'_>, name: Option<String>) -> Occurrence {
+    Occurrence {
+        path: file.display_path.clone(),
+        line: node.start_position().row + 1,
+        name,
     }
 }
 
@@ -1064,8 +1117,8 @@ fn group_occurrences(
 
         let representative = &group[0];
         findings.push(Finding {
-            kind: kind.clone(),
-            severity: severity.clone(),
+            kind,
+            severity,
             path: representative.path.clone(),
             line: Some(representative.line),
             magnitude: Some(group.len()),
