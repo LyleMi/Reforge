@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
-use tree_sitter::{Node, Parser};
+use anyhow::Result;
+use tree_sitter::Node;
 
 use crate::language::{
     ARROW_FUNCTION, BODY_FIELD, FUNCTION_DECLARATION, FUNCTION_DEFINITION, FUNCTION_ITEM,
@@ -12,7 +12,7 @@ use crate::language::{
 use crate::scanner::{
     Finding, FindingKind, RelatedLocation, Severity, is_test_source, severity_for_threshold,
 };
-use crate::similar_functions::SourceFile;
+use crate::similar_functions::{ParsedSourceFile, SourceFile, parse_source_files};
 
 #[derive(Debug, Clone)]
 pub struct StructureOptions {
@@ -80,6 +80,12 @@ struct FileSignals {
     directory_files: BTreeMap<PathBuf, BTreeSet<String>>,
 }
 
+#[derive(Debug, Default)]
+struct ProductionAstSignals {
+    functions: Vec<FunctionMetric>,
+    types: Vec<TypeMetric>,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct StructureTraversal<'a> {
     source: &'a str,
@@ -93,42 +99,35 @@ struct StructureSignalCollector<'a, 'signals> {
     signals: &'signals mut FileSignals,
 }
 
+#[allow(dead_code)]
 pub fn scan_structure(files: &[SourceFile], options: &StructureOptions) -> Result<Vec<Finding>> {
+    let parsed_files = parse_source_files(files)?;
+    scan_parsed_structure(&parsed_files, options)
+}
+
+pub(crate) fn scan_parsed_structure(
+    files: &[ParsedSourceFile],
+    options: &StructureOptions,
+) -> Result<Vec<Finding>> {
     let mut signals = FileSignals::default();
 
     for file in files {
-        let Some(adapter) = adapter_for_path(&file.path) else {
-            continue;
-        };
-        collect_file_naming_style(file, &mut signals);
+        collect_file_naming_style(&file.file, &mut signals);
 
-        let mut parser = Parser::new();
-        parser
-            .set_language(&adapter.language())
-            .with_context(|| format!("failed to load parser for {}", file.display_path))?;
-
-        let Some(tree) = parser.parse(file.source.as_ref(), None) else {
-            continue;
-        };
-
-        if tree.root_node().has_error() {
-            continue;
-        }
-
-        let is_test = is_test_source(&file.path);
+        let is_test = is_test_source(&file.file.path);
         if !is_test || options.include_test_structure {
             scan_production_file(
-                file,
-                adapter.family,
-                tree.root_node(),
+                &file.file,
+                file.family,
+                file.tree.root_node(),
                 options,
                 &mut signals,
             );
         }
 
         if is_test {
-            collect_test_setup_patterns(file, tree.root_node(), &mut signals);
-            collect_happy_path_test_risk(file, adapter.family, &mut signals);
+            collect_test_setup_patterns(&file.file, file.tree.root_node(), &mut signals);
+            collect_happy_path_test_risk(&file.file, file.family, &mut signals);
         }
     }
 
@@ -190,9 +189,9 @@ fn scan_production_file(
         include_test_structure: options.include_test_structure,
     };
 
-    let functions = collect_function_metrics(root, traversal);
-    scan_function_metrics(file, &functions, options, signals);
-    scan_type_metrics(file, root, traversal, options, signals);
+    let ast_signals = collect_production_ast_signals(file, root, traversal, signals);
+    scan_function_metrics(file, &ast_signals.functions, options, signals);
+    scan_type_metrics(file, &ast_signals.types, options, signals);
     scan_file_metrics(file, root, traversal, options, signals);
     collect_cross_file_patterns(file, root, traversal, signals);
 }
@@ -276,12 +275,11 @@ fn scan_function_metrics(
 
 fn scan_type_metrics(
     file: &SourceFile,
-    root: Node<'_>,
-    traversal: StructureTraversal<'_>,
+    types: &[TypeMetric],
     options: &StructureOptions,
     signals: &mut FileSignals,
 ) {
-    for type_metric in collect_type_metrics(root, traversal) {
+    for type_metric in types {
         if type_metric.lines > options.max_type_lines
             || type_metric.members > options.max_type_members
         {
@@ -350,33 +348,34 @@ fn scan_file_metrics(
 
 fn collect_cross_file_patterns(
     file: &SourceFile,
-    root: Node<'_>,
+    _root: Node<'_>,
     traversal: StructureTraversal<'_>,
     signals: &mut FileSignals,
 ) {
+    collect_directory_concepts(file, traversal.family, signals);
+}
+
+fn collect_production_ast_signals(
+    file: &SourceFile,
+    root: Node<'_>,
+    traversal: StructureTraversal<'_>,
+    signals: &mut FileSignals,
+) -> ProductionAstSignals {
+    let mut ast_signals = ProductionAstSignals::default();
     let mut collector = StructureSignalCollector {
         file,
         traversal,
         signals,
     };
-    collector.collect_repeated_literals(root);
-    collector.collect_error_patterns(root);
-    collect_directory_concepts(file, traversal.family, signals);
+    collect_production_ast_signals_from(root, traversal, &mut collector, &mut ast_signals);
+    ast_signals
 }
 
-fn collect_function_metrics(
-    root: Node<'_>,
-    traversal: StructureTraversal<'_>,
-) -> Vec<FunctionMetric> {
-    let mut functions = Vec::new();
-    collect_function_metrics_from(root, traversal, &mut functions);
-    functions
-}
-
-fn collect_function_metrics_from(
+fn collect_production_ast_signals_from(
     node: Node<'_>,
     traversal: StructureTraversal<'_>,
-    functions: &mut Vec<FunctionMetric>,
+    collector: &mut StructureSignalCollector<'_, '_>,
+    ast_signals: &mut ProductionAstSignals,
 ) {
     if should_skip_rust_test_module(node, traversal) {
         return;
@@ -384,7 +383,7 @@ fn collect_function_metrics_from(
 
     if let Some(parts) = function_parts(node, traversal) {
         let parameter_names = parameter_names(parts.parameters, traversal.source, traversal.family);
-        functions.push(FunctionMetric {
+        ast_signals.functions.push(FunctionMetric {
             name: parts.name,
             line: node.start_position().row + 1,
             lines: node_line_span(node),
@@ -395,9 +394,16 @@ fn collect_function_metrics_from(
         });
     }
 
+    if let Some(metric) = type_metric(node, traversal) {
+        ast_signals.types.push(metric);
+    }
+
+    collector.collect_literal_occurrence(node);
+    collector.collect_error_occurrence(node);
+
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_function_metrics_from(child, traversal, functions);
+        collect_production_ast_signals_from(child, traversal, collector, ast_signals);
     }
 }
 
@@ -668,31 +674,6 @@ fn is_nesting_node(node: Node<'_>, family: LanguageFamily) -> bool {
             | "catch_clause"
             | "except_clause"
     ) || (family == LanguageFamily::Python && kind == "elif_clause")
-}
-
-fn collect_type_metrics(root: Node<'_>, traversal: StructureTraversal<'_>) -> Vec<TypeMetric> {
-    let mut types = Vec::new();
-    collect_type_metrics_from(root, traversal, &mut types);
-    types
-}
-
-fn collect_type_metrics_from(
-    node: Node<'_>,
-    traversal: StructureTraversal<'_>,
-    types: &mut Vec<TypeMetric>,
-) {
-    if should_skip_rust_test_module(node, traversal) {
-        return;
-    }
-
-    if let Some(metric) = type_metric(node, traversal) {
-        types.push(metric);
-    }
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_type_metrics_from(child, traversal, types);
-    }
 }
 
 include!("structural_analysis.rs");

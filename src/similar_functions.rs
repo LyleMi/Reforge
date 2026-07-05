@@ -1,14 +1,14 @@
 use std::collections::{BTreeMap, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use tree_sitter::{Node, Parser};
+use tree_sitter::{Node, Parser, Tree};
 
 use crate::language::{
     BODY_FIELD, FUNCTION_DECLARATION, FUNCTION_DEFINITION, FUNCTION_ITEM,
-    GENERATOR_FUNCTION_DECLARATION, LanguageAdapter, LanguageFamily, METHOD_DECLARATION,
-    METHOD_DEFINITION, NAME_FIELD, adapter_for_path,
+    GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
+    NAME_FIELD, adapter_for_path,
 };
 use crate::scanner::{Finding, FindingKind, RelatedLocation, severity_for_threshold};
 
@@ -27,6 +27,13 @@ pub struct SourceFile {
     pub path: PathBuf,
     pub display_path: String,
     pub source: Arc<str>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ParsedSourceFile {
+    pub file: SourceFile,
+    pub family: LanguageFamily,
+    pub tree: Tree,
 }
 
 #[derive(Debug, Clone)]
@@ -109,6 +116,15 @@ pub fn scan_similar_functions_report_with_progress(
     options: &SimilarFunctionOptions,
     progress: &mut dyn SimilarFunctionProgress,
 ) -> Result<SimilarFunctionScan> {
+    let parsed_files = parse_source_files(files)?;
+    scan_parsed_similar_functions_report_with_progress(&parsed_files, options, progress)
+}
+
+pub(crate) fn scan_parsed_similar_functions_report_with_progress(
+    files: &[ParsedSourceFile],
+    options: &SimilarFunctionOptions,
+    progress: &mut dyn SimilarFunctionProgress,
+) -> Result<SimilarFunctionScan> {
     validate_options(options)?;
 
     if options.min_group_size == 0 {
@@ -121,16 +137,15 @@ pub fn scan_similar_functions_report_with_progress(
     let mut candidates = Vec::new();
     let mut interner = TokenInterner::default();
     for (index, file) in files.iter().enumerate() {
-        if let Some(adapter) = adapter_for_path(&file.path) {
-            candidates.extend(extract_candidates(
+        if options.include_test_similarity || !crate::scanner::is_test_source(&file.file.path) {
+            candidates.extend(extract_candidates_from_parsed(
                 file,
-                adapter,
                 options.min_tokens,
                 options.include_test_similarity,
                 &mut interner,
-            )?);
+            ));
         }
-        progress.report_extract_progress(index + 1, files.len(), &file.display_path);
+        progress.report_extract_progress(index + 1, files.len(), &file.file.display_path);
     }
 
     let candidate_count = candidates.len();
@@ -140,8 +155,36 @@ pub fn scan_similar_functions_report_with_progress(
     })
 }
 
-pub fn is_supported_similarity_source(path: &Path) -> bool {
-    adapter_for_path(path).is_some()
+pub(crate) fn parse_source_files(files: &[SourceFile]) -> Result<Vec<ParsedSourceFile>> {
+    files
+        .iter()
+        .filter_map(|file| parse_source_file(file.clone()).transpose())
+        .collect()
+}
+
+pub(crate) fn parse_source_file(file: SourceFile) -> Result<Option<ParsedSourceFile>> {
+    let Some(adapter) = adapter_for_path(&file.path) else {
+        return Ok(None);
+    };
+
+    let mut parser = Parser::new();
+    parser
+        .set_language(&adapter.language())
+        .with_context(|| format!("failed to load parser for {}", file.display_path))?;
+
+    let Some(tree) = parser.parse(file.source.as_ref(), None) else {
+        return Ok(None);
+    };
+
+    if tree.root_node().has_error() {
+        return Ok(None);
+    }
+
+    Ok(Some(ParsedSourceFile {
+        file,
+        family: adapter.family,
+        tree,
+    }))
 }
 
 fn validate_options(options: &SimilarFunctionOptions) -> Result<()> {
@@ -152,36 +195,22 @@ fn validate_options(options: &SimilarFunctionOptions) -> Result<()> {
     Ok(())
 }
 
-fn extract_candidates(
-    file: &SourceFile,
-    adapter: LanguageAdapter,
+fn extract_candidates_from_parsed(
+    file: &ParsedSourceFile,
     min_tokens: usize,
     include_test_similarity: bool,
     interner: &mut TokenInterner,
-) -> Result<Vec<FunctionCandidate>> {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&adapter.language())
-        .with_context(|| format!("failed to load parser for {}", file.display_path))?;
-
-    let Some(tree) = parser.parse(file.source.as_ref(), None) else {
-        return Ok(Vec::new());
-    };
-
-    if tree.root_node().has_error() {
-        return Ok(Vec::new());
-    }
-
+) -> Vec<FunctionCandidate> {
     let extraction = CandidateExtraction {
-        source: &file.source,
-        file,
-        family: adapter.family,
+        source: &file.file.source,
+        file: &file.file,
+        family: file.family,
         min_tokens,
         include_test_similarity,
     };
     let mut candidates = Vec::new();
-    collect_named_functions(tree.root_node(), extraction, interner, &mut candidates);
-    Ok(candidates)
+    collect_named_functions(file.tree.root_node(), extraction, interner, &mut candidates);
+    candidates
 }
 
 fn collect_named_functions(

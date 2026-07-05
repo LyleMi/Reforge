@@ -12,10 +12,10 @@ use walkdir::{DirEntry, WalkDir};
 use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
 use crate::cli::ScanArgs;
 use crate::similar_functions::{
-    SimilarFunctionOptions, SimilarFunctionProgress, SourceFile, is_supported_similarity_source,
-    scan_similar_functions_report_with_progress,
+    ParsedSourceFile, SimilarFunctionOptions, SimilarFunctionProgress, SourceFile,
+    parse_source_file, scan_parsed_similar_functions_report_with_progress,
 };
-use crate::structural::{StructureOptions, is_supported_structure_source, scan_structure};
+use crate::structural::{StructureOptions, is_supported_structure_source};
 
 const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     "node_modules",
@@ -140,7 +140,7 @@ pub struct ScanReport {
 #[derive(Debug, Default)]
 struct SourceScan {
     findings: Vec<Finding>,
-    similarity_sources: Vec<SourceFile>,
+    parsed_sources: Vec<ParsedSourceFile>,
     structure_sources: Vec<SourceFile>,
     stats: ScanStats,
 }
@@ -155,7 +155,6 @@ struct SourceScanPlan {
 #[derive(Debug, Clone, Copy)]
 struct FileScanOptions {
     max_file_lines: usize,
-    include_test_similarity: bool,
 }
 
 pub(crate) fn severity_for_threshold(value: usize, threshold: usize) -> Severity {
@@ -416,7 +415,7 @@ impl ScanSignalContext<'_> {
     fn scan_structural_signals(&mut self) -> Result<()> {
         self.progress.report(&format!(
             "Analyzing structural signals in {} files",
-            self.scan.structure_sources.len()
+            self.scan.parsed_sources.len()
         ));
         let structure_options = StructureOptions {
             max_function_lines: self.args.max_function_lines,
@@ -432,17 +431,19 @@ impl ScanSignalContext<'_> {
             max_dir_files: self.args.max_dir_files,
             include_test_structure: self.args.include_test_structure,
         };
-        self.scan.findings.extend(scan_structure(
-            &self.scan.structure_sources,
-            &structure_options,
-        )?);
+        self.scan
+            .findings
+            .extend(crate::structural::scan_parsed_structure(
+                &self.scan.parsed_sources,
+                &structure_options,
+            )?);
         Ok(())
     }
 
     fn scan_similarity_signals(&mut self) -> Result<usize> {
         self.progress.report(&format!(
             "Analyzing similar functions in {} files",
-            self.scan.similarity_sources.len()
+            self.scan.parsed_sources.len()
         ));
 
         let similarity_options = SimilarFunctionOptions {
@@ -454,8 +455,8 @@ impl ScanSignalContext<'_> {
         let mut similarity_progress = ScanSimilarityProgress {
             progress: self.progress,
         };
-        let similarity_scan = scan_similar_functions_report_with_progress(
-            &self.scan.similarity_sources,
+        let similarity_scan = scan_parsed_similar_functions_report_with_progress(
+            &self.scan.parsed_sources,
             &similarity_options,
             &mut similarity_progress,
         )?;
@@ -501,7 +502,6 @@ fn scan_sources(
 ) -> Result<()> {
     let file_options = FileScanOptions {
         max_file_lines: args.max_file_lines,
-        include_test_similarity: args.include_test_similarity,
     };
 
     scan.stats.directories_scanned = source_plan.directories_scanned;
@@ -629,21 +629,17 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
 
     let display_path = display_path(path);
     if is_supported_structure_source(path) {
-        scan.structure_sources.push(SourceFile {
+        let source_file = SourceFile {
             path: path.to_path_buf(),
             display_path: display_path.clone(),
             source: Arc::clone(&source),
-        });
-    }
+        };
 
-    if is_supported_similarity_source(path)
-        && (options.include_test_similarity || !is_test_source(path))
-    {
-        scan.similarity_sources.push(SourceFile {
-            path: path.to_path_buf(),
-            display_path,
-            source,
-        });
+        if let Some(parsed) = parse_source_file(source_file.clone())? {
+            scan.parsed_sources.push(parsed);
+        }
+
+        scan.structure_sources.push(source_file);
     }
 
     Ok(())

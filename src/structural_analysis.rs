@@ -211,18 +211,6 @@ fn is_exported_go_identifier(name: &str) -> bool {
 }
 
 impl StructureSignalCollector<'_, '_> {
-    fn collect_repeated_literals(&mut self, node: Node<'_>) {
-        if self.should_skip(node) {
-            return;
-        }
-
-        self.collect_literal_occurrence(node);
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            self.collect_repeated_literals(child);
-        }
-    }
-
     fn collect_literal_occurrence(&mut self, node: Node<'_>) {
         if is_literal_node(node)
             && !has_literal_ancestor(node)
@@ -235,18 +223,6 @@ impl StructureSignalCollector<'_, '_> {
         }
     }
 
-    fn collect_error_patterns(&mut self, node: Node<'_>) {
-        if self.should_skip(node) {
-            return;
-        }
-
-        self.collect_error_occurrence(node);
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            self.collect_error_patterns(child);
-        }
-    }
-
     fn collect_error_occurrence(&mut self, node: Node<'_>) {
         if is_error_pattern_node(node, self.traversal)
             && let Ok(text) = node.utf8_text(self.traversal.source.as_bytes())
@@ -255,10 +231,6 @@ impl StructureSignalCollector<'_, '_> {
                 .error_patterns
                 .push((normalize_pattern(text), occurrence(self.file, node, None)));
         }
-    }
-
-    fn should_skip(&self, node: Node<'_>) -> bool {
-        should_skip_rust_test_module(node, self.traversal)
     }
 }
 
