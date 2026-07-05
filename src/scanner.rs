@@ -30,6 +30,7 @@ const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     ".vite",
 ];
 const PERCENT_SCALE: usize = 100;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 2;
 const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -77,13 +78,41 @@ pub struct RelatedLocation {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FindingMetric {
+    pub name: String,
+    pub value: usize,
+    pub threshold: Option<usize>,
+    pub unit: String,
+    pub excess_ratio: Option<f64>,
+}
+
+impl FindingMetric {
+    pub fn threshold(
+        name: impl Into<String>,
+        value: usize,
+        threshold: usize,
+        unit: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            value,
+            threshold: Some(threshold),
+            unit: unit.into(),
+            excess_ratio: (threshold > 0).then_some(value as f64 / threshold as f64),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Finding {
     pub kind: FindingKind,
     pub severity: Severity,
     pub path: String,
     pub line: Option<usize>,
-    pub magnitude: Option<usize>,
+    pub metrics: Vec<FindingMetric>,
+    pub score: u8,
+    pub confidence: f64,
     pub message: String,
     pub related_locations: Vec<RelatedLocation>,
 }
@@ -93,12 +122,14 @@ impl Serialize for Finding {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("Finding", 7)?;
+        let mut state = serializer.serialize_struct("Finding", 9)?;
         state.serialize_field("kind", &self.kind)?;
         state.serialize_field("severity", &self.severity)?;
         state.serialize_field("path", &self.path)?;
         state.serialize_field("line", &self.line)?;
-        state.serialize_field("magnitude", &self.magnitude)?;
+        state.serialize_field("metrics", &self.metrics)?;
+        state.serialize_field("score", &self.score)?;
+        state.serialize_field("confidence", &self.confidence)?;
         state.serialize_field("message", &self.message)?;
         state.serialize_field("related_locations", serialized_related_locations(self))?;
         state.end()
@@ -112,6 +143,147 @@ fn serialized_related_locations(finding: &Finding) -> &[RelatedLocation] {
         &finding.related_locations[..SERIALIZED_SIMILAR_LOCATION_LIMIT]
     } else {
         &finding.related_locations
+    }
+}
+
+pub fn finding(
+    kind: FindingKind,
+    path: impl Into<String>,
+    line: Option<usize>,
+    message: impl Into<String>,
+    metrics: Vec<FindingMetric>,
+    related_locations: Vec<RelatedLocation>,
+) -> Finding {
+    scored_finding(
+        kind,
+        path,
+        line,
+        message,
+        metrics,
+        default_confidence(kind),
+        related_locations,
+    )
+}
+
+pub fn scored_finding(
+    kind: FindingKind,
+    path: impl Into<String>,
+    line: Option<usize>,
+    message: impl Into<String>,
+    metrics: Vec<FindingMetric>,
+    confidence: f64,
+    related_locations: Vec<RelatedLocation>,
+) -> Finding {
+    let path = path.into();
+    let score = priority_score(kind, &metrics, confidence, &related_locations);
+    Finding {
+        kind,
+        severity: severity_for_score(score),
+        path,
+        line,
+        metrics,
+        score,
+        confidence,
+        message: message.into(),
+        related_locations,
+    }
+}
+
+pub fn severity_for_score(score: u8) -> Severity {
+    match score {
+        0..=39 => Severity::Info,
+        40..=74 => Severity::Warning,
+        75..=u8::MAX => Severity::Critical,
+    }
+}
+
+pub fn priority_score(
+    kind: FindingKind,
+    metrics: &[FindingMetric],
+    confidence: f64,
+    related_locations: &[RelatedLocation],
+) -> u8 {
+    let score = base_weight(kind)
+        * intensity_factor(metrics)
+        * spread_factor(related_locations)
+        * confidence.clamp(0.0, 1.0);
+    score.round().clamp(0.0, 100.0) as u8
+}
+
+fn intensity_factor(metrics: &[FindingMetric]) -> f64 {
+    metrics
+        .iter()
+        .filter_map(|metric| metric.excess_ratio)
+        .map(|ratio| ratio.clamp(1.0, 2.0))
+        .max_by(f64::total_cmp)
+        .unwrap_or(1.0)
+}
+
+fn spread_factor(related_locations: &[RelatedLocation]) -> f64 {
+    let unique_related_files = related_locations
+        .iter()
+        .map(|location| location.path.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    1.0 + (0.05 * unique_related_files.saturating_sub(1) as f64).min(0.30)
+}
+
+pub fn default_confidence(kind: FindingKind) -> f64 {
+    match kind {
+        FindingKind::SimilarFunctions => 0.85,
+        FindingKind::RepeatedLiteral
+        | FindingKind::RepeatedErrorPattern
+        | FindingKind::TestDuplication
+        | FindingKind::DataClump
+        | FindingKind::ConfigKeyDrift
+        | FindingKind::FixtureFactoryDrift => 0.85,
+        FindingKind::DuplicateTypeShape | FindingKind::AdapterBoundaryBypass => 0.80,
+        FindingKind::GenericBucketDrift => 0.70,
+        FindingKind::HappyPathOnlyTests => 0.60,
+        FindingKind::FileNamingDrift
+        | FindingKind::DirectoryDrift
+        | FindingKind::ParallelImplementation
+        | FindingKind::ShadowedAbstraction => 0.65,
+        FindingKind::DebtMarker
+        | FindingKind::LargeFile
+        | FindingKind::LargeDirectory
+        | FindingKind::LongFunction
+        | FindingKind::ComplexFunction
+        | FindingKind::DeepNesting
+        | FindingKind::ManyParameters
+        | FindingKind::LargeType
+        | FindingKind::LargePublicSurface
+        | FindingKind::ImportHeavyFile => 1.0,
+    }
+}
+
+fn base_weight(kind: FindingKind) -> f64 {
+    match kind {
+        FindingKind::DebtMarker => 20.0,
+        FindingKind::RepeatedLiteral
+        | FindingKind::HappyPathOnlyTests
+        | FindingKind::FileNamingDrift
+        | FindingKind::ShadowedAbstraction
+        | FindingKind::ConfigKeyDrift
+        | FindingKind::FixtureFactoryDrift => 35.0,
+        FindingKind::LargeFile
+        | FindingKind::LargeDirectory
+        | FindingKind::LongFunction
+        | FindingKind::DeepNesting
+        | FindingKind::ManyParameters
+        | FindingKind::LargeType
+        | FindingKind::LargePublicSurface
+        | FindingKind::ImportHeavyFile
+        | FindingKind::RepeatedErrorPattern
+        | FindingKind::TestDuplication
+        | FindingKind::DirectoryDrift
+        | FindingKind::DataClump
+        | FindingKind::DuplicateTypeShape
+        | FindingKind::GenericBucketDrift => 45.0,
+        FindingKind::ComplexFunction
+        | FindingKind::SimilarFunctions
+        | FindingKind::ParallelImplementation
+        | FindingKind::AdapterBoundaryBypass => 60.0,
     }
 }
 
@@ -130,8 +302,9 @@ pub struct ScanStats {
     pub function_candidates: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ScanReport {
+    pub schema_version: u8,
     pub summary: ScanSummary,
     pub stats: ScanStats,
     pub findings: Vec<Finding>,
@@ -155,14 +328,6 @@ struct SourceScanPlan {
 #[derive(Debug, Clone, Copy)]
 struct FileScanOptions {
     max_file_lines: usize,
-}
-
-pub(crate) fn severity_for_threshold(value: usize, threshold: usize) -> Severity {
-    if threshold > 0 && value >= threshold.saturating_mul(2) {
-        Severity::Critical
-    } else {
-        Severity::Warning
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -383,6 +548,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     progress.finish();
 
     Ok(ScanReport {
+        schema_version: SCAN_REPORT_SCHEMA_VERSION,
         summary,
         stats: scan.stats,
         findings: scan.findings,
@@ -602,28 +768,31 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
     let line_count = source.lines().count();
 
     if line_count > options.max_file_lines {
-        scan.findings.push(Finding {
-            kind: FindingKind::LargeFile,
-            severity: severity_for_threshold(line_count, options.max_file_lines),
-            path: display_path(path),
-            line: Some(1),
-            magnitude: Some(line_count),
-            message: format!("file has {line_count} lines; consider splitting responsibilities"),
-            related_locations: Vec::new(),
-        });
+        scan.findings.push(finding(
+            FindingKind::LargeFile,
+            display_path(path),
+            Some(1),
+            format!("file has {line_count} lines; consider splitting responsibilities"),
+            vec![FindingMetric::threshold(
+                "file_lines",
+                line_count,
+                options.max_file_lines,
+                "lines",
+            )],
+            Vec::new(),
+        ));
     }
 
     for (index, line) in source.lines().enumerate() {
         if has_debt_marker(line) {
-            scan.findings.push(Finding {
-                kind: FindingKind::DebtMarker,
-                severity: Severity::Info,
-                path: display_path(path),
-                line: Some(index + 1),
-                magnitude: None,
-                message: "technical-debt marker found".to_string(),
-                related_locations: Vec::new(),
-            });
+            scan.findings.push(finding(
+                FindingKind::DebtMarker,
+                display_path(path),
+                Some(index + 1),
+                "technical-debt marker found",
+                Vec::new(),
+                Vec::new(),
+            ));
         }
     }
 
@@ -660,17 +829,21 @@ fn scan_directories(
 ) {
     for (directory, file_count) in directory_source_files {
         if *file_count > max_dir_files {
-            findings.push(Finding {
-                kind: FindingKind::LargeDirectory,
-                severity: severity_for_threshold(*file_count, max_dir_files),
-                path: display_path(directory),
-                line: None,
-                magnitude: Some(*file_count),
-                message: format!(
+            findings.push(finding(
+                FindingKind::LargeDirectory,
+                display_path(directory),
+                None,
+                format!(
                     "directory contains {file_count} source files; consider grouping related responsibilities"
                 ),
-                related_locations: Vec::new(),
-            });
+                vec![FindingMetric::threshold(
+                    "directory_files",
+                    *file_count,
+                    max_dir_files,
+                    "source files",
+                )],
+                Vec::new(),
+            ));
         }
     }
 }

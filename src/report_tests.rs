@@ -1,28 +1,12 @@
 use super::*;
-use crate::scanner::{RelatedLocation, ScanStats, ScanSummary};
-
-fn finding(path: &str, magnitude: Option<usize>) -> Finding {
-    Finding {
-        kind: if magnitude.is_some() {
-            FindingKind::LargeFile
-        } else {
-            FindingKind::DebtMarker
-        },
-        severity: if magnitude.is_some() {
-            Severity::Warning
-        } else {
-            Severity::Info
-        },
-        path: path.to_string(),
-        line: Some(1),
-        magnitude,
-        message: String::new(),
-        related_locations: Vec::new(),
-    }
-}
+use crate::scanner::{
+    FindingMetric, RelatedLocation, SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary,
+    finding as make_finding, scored_finding, severity_for_score,
+};
 
 fn report(findings: Vec<Finding>) -> ScanReport {
     ScanReport {
+        schema_version: SCAN_REPORT_SCHEMA_VERSION,
         summary: ScanSummary {
             scanned_files: 2,
             finding_count: findings.len(),
@@ -37,31 +21,91 @@ fn report(findings: Vec<Finding>) -> ScanReport {
     }
 }
 
+fn large_file(path: &str, lines: usize) -> Finding {
+    make_finding(
+        FindingKind::LargeFile,
+        path,
+        Some(1),
+        "",
+        vec![FindingMetric::threshold("file_lines", lines, 800, "lines")],
+        Vec::new(),
+    )
+}
+
 #[test]
-fn sorts_by_path_then_large_findings_before_line_findings() {
-    let findings = vec![
-        finding("src/small_todo.rs", None),
-        finding("src/large.rs", Some(900)),
-        finding("src/largest.rs", Some(1_200)),
-        finding("src/medium.rs", Some(1_000)),
-        finding("src/another_todo.rs", None),
-    ];
+fn maps_score_to_severity() {
+    assert_eq!(severity_for_score(39), Severity::Info);
+    assert_eq!(severity_for_score(40), Severity::Warning);
+    assert_eq!(severity_for_score(74), Severity::Warning);
+    assert_eq!(severity_for_score(75), Severity::Critical);
+}
 
-    let paths: Vec<&str> = sorted_findings(&findings)
-        .iter()
-        .map(|finding| finding.path.as_str())
-        .collect();
+#[test]
+fn calculates_threshold_excess_ratio() {
+    let metric = FindingMetric::threshold("file_lines", 1_200, 800, "lines");
 
-    assert_eq!(
-        paths,
-        vec![
-            "src/another_todo.rs",
-            "src/large.rs",
-            "src/largest.rs",
-            "src/medium.rs",
-            "src/small_todo.rs",
-        ]
+    assert_eq!(metric.threshold, Some(800));
+    assert_eq!(metric.excess_ratio, Some(1.5));
+}
+
+#[test]
+fn spread_factor_increases_score_for_cross_file_groups() {
+    let local = make_finding(
+        FindingKind::SimilarFunctions,
+        "src/a.rs",
+        Some(1),
+        "similar",
+        vec![FindingMetric::threshold("group_size", 3, 3, "functions")],
+        vec![RelatedLocation {
+            path: "src/a.rs".to_string(),
+            line: 1,
+            name: None,
+        }],
     );
+    let spread = make_finding(
+        FindingKind::SimilarFunctions,
+        "src/a.rs",
+        Some(1),
+        "similar",
+        vec![FindingMetric::threshold("group_size", 3, 3, "functions")],
+        vec![
+            RelatedLocation {
+                path: "src/a.rs".to_string(),
+                line: 1,
+                name: None,
+            },
+            RelatedLocation {
+                path: "src/b.rs".to_string(),
+                line: 1,
+                name: None,
+            },
+            RelatedLocation {
+                path: "src/c.rs".to_string(),
+                line: 1,
+                name: None,
+            },
+        ],
+    );
+
+    assert!(spread.score > local.score);
+}
+
+#[test]
+fn large_type_scores_from_strongest_metric() {
+    let finding = make_finding(
+        FindingKind::LargeType,
+        "src/types.rs",
+        Some(1),
+        "large type",
+        vec![
+            FindingMetric::threshold("type_lines", 260, 250, "lines"),
+            FindingMetric::threshold("type_members", 60, 30, "members"),
+        ],
+        Vec::new(),
+    );
+
+    assert_eq!(finding.score, 90);
+    assert_eq!(finding.severity, Severity::Critical);
 }
 
 #[test]
@@ -76,119 +120,97 @@ fn renders_empty_human_report_clearly() {
 }
 
 #[test]
-fn renders_multiple_findings_grouped_by_path() {
-    let output = render_human_report(&report(vec![
-        finding("src/a.rs", Some(900)),
-        finding("src/a.rs", None),
-    ]));
+fn human_report_sorts_by_score_and_renders_score_confidence_and_metrics() {
+    let critical = make_finding(
+        FindingKind::ComplexFunction,
+        "src/critical.rs",
+        Some(10),
+        "complex",
+        vec![FindingMetric::threshold(
+            "function_complexity",
+            30,
+            15,
+            "complexity",
+        )],
+        Vec::new(),
+    );
+    let warning = large_file("src/warning.rs", 1_200);
+    let info = make_finding(
+        FindingKind::DebtMarker,
+        "src/info.rs",
+        Some(3),
+        "technical-debt marker found",
+        Vec::new(),
+        Vec::new(),
+    );
 
-    assert_eq!(output.matches("src/a.rs").count(), 1);
-    assert_eq!(output.matches("[warning]").count(), 1);
-    assert_eq!(output.matches("[info]").count(), 1);
-}
+    let output = render_human_report(&report(vec![info, warning, critical]));
 
-#[test]
-fn truncates_similar_function_locations() {
-    let mut finding = finding("src/a.rs", Some(7));
-    finding.kind = FindingKind::SimilarFunctions;
-    finding.message =
-        "7 structurally similar functions/methods found at similarity >= 0.80".to_string();
-    finding.related_locations = (0..7)
-        .map(|index| RelatedLocation {
-            path: format!("src/{index}.rs"),
-            line: index + 1,
-            name: Some(format!("func_{index}")),
-        })
-        .collect();
-
-    let output = render_human_report(&report(vec![finding]));
-
-    assert!(output.contains("similar functions: 7 functions"));
-    assert!(output.contains("+4 more"));
-    assert!(!output.contains("func_3"));
-}
-
-#[test]
-fn groups_debt_markers_by_path_in_human_report() {
-    let findings = (1..=8)
-        .map(|line| Finding {
-            line: Some(line),
-            ..finding("src/a.rs", None)
-        })
-        .collect::<Vec<_>>();
-
-    let output = render_human_report(&report(findings));
-
-    assert!(output.contains("Debt markers: 8"));
-    assert!(output.contains("[info] 8 debt markers: lines 1, 2, 3, 4, 5, 6 (+2 more)"));
+    let critical_index = output.find("src/critical.rs:10").unwrap();
+    let warning_index = output.find("src/warning.rs:1").unwrap();
+    let info_index = output.find("src/info.rs:3").unwrap();
+    assert!(critical_index < warning_index);
+    assert!(warning_index < info_index);
+    assert!(output.contains("[critical score=100 confidence=1.00]"));
+    assert!(output.contains("[warning score=68 confidence=1.00]"));
+    assert!(output.contains("file_lines=1200/800 lines"));
 }
 
 #[test]
 fn renders_colored_human_report_when_enabled() {
-    let output = render_human_report_colored(&report(vec![finding("src/a.rs", Some(900))]), true);
+    let output = render_human_report_colored(&report(vec![large_file("src/a.rs", 900)]), true);
 
     assert!(output.contains("\u{1b}[1;36mReforge scan report\u{1b}[0m"));
-    assert!(output.contains("\u{1b}[33m[warning]\u{1b}[0m"));
+    assert!(output.contains("\u{1b}[33m[warning score=51 confidence=1.00]\u{1b}[0m"));
 }
 
 #[test]
-fn renders_json_report_shape() {
-    let report = ScanReport {
-        summary: ScanSummary {
-            scanned_files: 1,
-            finding_count: 1,
-            similar_function_group_count: 1,
-            duration_ms: 1,
-        },
-        stats: ScanStats {
-            source_files_scanned: 1,
-            directories_scanned: 1,
-            function_candidates: 3,
-        },
-        findings: vec![Finding {
-            kind: FindingKind::SimilarFunctions,
-            severity: Severity::Warning,
+fn renders_json_report_schema_v2_without_magnitude() {
+    let scan_report = report(vec![make_finding(
+        FindingKind::SimilarFunctions,
+        "src/a.rs",
+        Some(1),
+        "similar",
+        vec![FindingMetric::threshold("group_size", 3, 3, "functions")],
+        vec![RelatedLocation {
             path: "src/a.rs".to_string(),
-            line: Some(1),
-            magnitude: Some(3),
-            message: "similar".to_string(),
-            related_locations: vec![RelatedLocation {
-                path: "src/a.rs".to_string(),
-                line: 1,
-                name: Some("alpha".to_string()),
-            }],
+            line: 1,
+            name: Some("alpha".to_string()),
         }],
-    };
+    )]);
 
     let value: serde_json::Value =
-        serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+        serde_json::from_str(&serde_json::to_string(&scan_report).unwrap()).unwrap();
 
-    assert_eq!(value["summary"]["scanned_files"], 1);
-    assert_eq!(value["stats"]["function_candidates"], 3);
+    assert_eq!(value["schema_version"], 2);
+    assert_eq!(value["summary"]["scanned_files"], 2);
     assert_eq!(value["findings"][0]["kind"], "similar_functions");
-    assert_eq!(
-        value["findings"][0]["related_locations"][0]["name"],
-        "alpha"
-    );
+    assert_eq!(value["findings"][0]["metrics"][0]["name"], "group_size");
+    assert_eq!(value["findings"][0]["score"], 51);
+    assert!(value["findings"][0].get("magnitude").is_none());
 }
 
 #[test]
 fn caps_serialized_similar_function_locations() {
-    let mut finding = finding("src/a.rs", Some(75));
-    finding.kind = FindingKind::SimilarFunctions;
-    finding.related_locations = (0..75)
-        .map(|index| RelatedLocation {
-            path: format!("src/{index}.rs"),
-            line: index + 1,
-            name: Some(format!("func_{index}")),
-        })
-        .collect();
-    let report = report(vec![finding]);
+    let scan_report = report(vec![scored_finding(
+        FindingKind::SimilarFunctions,
+        "src/a.rs",
+        Some(1),
+        "similar",
+        vec![FindingMetric::threshold("group_size", 75, 3, "functions")],
+        0.85,
+        (0..75)
+            .map(|index| RelatedLocation {
+                path: format!("src/{index}.rs"),
+                line: index + 1,
+                name: Some(format!("func_{index}")),
+            })
+            .collect(),
+    )]);
 
     let value: serde_json::Value =
-        serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+        serde_json::from_str(&serde_json::to_string(&scan_report).unwrap()).unwrap();
 
-    assert_eq!(value["findings"][0]["magnitude"], 75);
     assert_eq!(
         value["findings"][0]["related_locations"]
             .as_array()
@@ -196,66 +218,6 @@ fn caps_serialized_similar_function_locations() {
             .len(),
         50
     );
-}
-
-#[test]
-fn renders_agent_drift_signal_counts_and_related_locations() {
-    let kinds = [
-        FindingKind::ParallelImplementation,
-        FindingKind::ShadowedAbstraction,
-        FindingKind::DuplicateTypeShape,
-        FindingKind::ConfigKeyDrift,
-        FindingKind::FixtureFactoryDrift,
-        FindingKind::GenericBucketDrift,
-        FindingKind::AdapterBoundaryBypass,
-    ];
-    let findings = kinds
-        .iter()
-        .enumerate()
-        .map(|(index, kind)| Finding {
-            kind: *kind,
-            severity: Severity::Warning,
-            path: "src/agent.rs".to_string(),
-            line: Some(index + 1),
-            magnitude: Some(index + 2),
-            message: String::new(),
-            related_locations: vec![RelatedLocation {
-                path: format!("src/related_{index}.rs"),
-                line: index + 10,
-                name: Some(format!("related_{index}")),
-            }],
-        })
-        .collect::<Vec<_>>();
-
-    let output = render_human_report(&report(findings));
-
-    assert!(output.contains("Parallel implementations: 1"));
-    assert!(output.contains("Shadowed abstractions: 1"));
-    assert!(output.contains("Duplicate type shapes: 1"));
-    assert!(output.contains("Config key drift: 1"));
-    assert!(output.contains("Fixture factory drift: 1"));
-    assert!(output.contains("Generic bucket drift: 1"));
-    assert!(output.contains("Adapter boundary bypasses: 1"));
-    assert!(output.contains("parallel implementation: 2 implementations"));
-    assert!(output.contains("src/related_0.rs:10 related_0"));
-}
-
-#[test]
-fn serializes_agent_drift_kind_as_snake_case() {
-    let report = report(vec![Finding {
-        kind: FindingKind::ParallelImplementation,
-        severity: Severity::Warning,
-        path: "src/agent.rs".to_string(),
-        line: Some(1),
-        magnitude: Some(2),
-        message: String::new(),
-        related_locations: Vec::new(),
-    }]);
-
-    let value: serde_json::Value =
-        serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
-
-    assert_eq!(value["findings"][0]["kind"], "parallel_implementation");
 }
 
 #[test]
@@ -267,7 +229,7 @@ fn writes_json_report_to_writer() {
     let output = String::from_utf8(output).unwrap();
     assert!(output.ends_with('\n'));
     assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&output).unwrap()["summary"]["scanned_files"],
+        serde_json::from_str::<serde_json::Value>(&output).unwrap()["schema_version"],
         2
     );
 }
@@ -281,64 +243,7 @@ fn writes_yaml_report_to_writer() {
     let output = String::from_utf8(output).unwrap();
     assert!(output.ends_with('\n'));
     assert_eq!(
-        serde_yaml::from_str::<serde_yaml::Value>(&output).unwrap()["summary"]["scanned_files"],
+        serde_yaml::from_str::<serde_yaml::Value>(&output).unwrap()["schema_version"],
         2
     );
-}
-
-#[test]
-fn renders_new_signal_counts_and_snake_case_json_kind() {
-    let finding = Finding {
-        kind: FindingKind::LongFunction,
-        severity: Severity::Warning,
-        path: "src/a.rs".to_string(),
-        line: Some(10),
-        magnitude: Some(90),
-        message: "long".to_string(),
-        related_locations: Vec::new(),
-    };
-    let report = report(vec![finding]);
-
-    let human = render_human_report(&report);
-    assert!(human.contains("Long functions: 1"));
-    assert!(human.contains("long function: 90 lines"));
-
-    let value: serde_json::Value =
-        serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
-    assert_eq!(value["findings"][0]["kind"], "long_function");
-}
-
-#[test]
-fn renders_test_and_naming_signal_counts() {
-    let report = report(vec![
-        Finding {
-            kind: FindingKind::HappyPathOnlyTests,
-            severity: Severity::Info,
-            path: "tests/user.test.js".to_string(),
-            line: Some(2),
-            magnitude: Some(3),
-            message: String::new(),
-            related_locations: Vec::new(),
-        },
-        Finding {
-            kind: FindingKind::FileNamingDrift,
-            severity: Severity::Warning,
-            path: "src/payments".to_string(),
-            line: None,
-            magnitude: Some(3),
-            message: String::new(),
-            related_locations: Vec::new(),
-        },
-    ]);
-
-    let human = render_human_report(&report);
-    assert!(human.contains("Happy-path-only tests: 1"));
-    assert!(human.contains("File naming drift: 1"));
-    assert!(human.contains("happy-path-only tests: 3 test cases"));
-    assert!(human.contains("file naming drift: 3 naming styles"));
-
-    let value: serde_json::Value =
-        serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
-    assert_eq!(value["findings"][0]["kind"], "happy_path_only_tests");
-    assert_eq!(value["findings"][1]["kind"], "file_naming_drift");
 }

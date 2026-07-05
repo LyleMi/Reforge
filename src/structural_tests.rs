@@ -1,4 +1,5 @@
 use super::*;
+use crate::scanner::Severity;
 
 fn source_file(path: &str, source: &str) -> SourceFile {
     SourceFile {
@@ -23,6 +24,14 @@ fn options() -> StructureOptions {
         max_dir_files: 3,
         include_test_structure: false,
     }
+}
+
+fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
+    finding
+        .metrics
+        .iter()
+        .find(|metric| metric.name == name)
+        .map(|metric| metric.value)
 }
 
 #[test]
@@ -261,7 +270,7 @@ test("loads user", () => {
         .expect("happy-path-only test risk should be reported");
 
     assert_eq!(finding.severity, Severity::Info);
-    assert_eq!(finding.magnitude, Some(3));
+    assert_eq!(metric_value(finding, "group_size"), Some(3));
     assert_eq!(finding.related_locations.len(), 3);
     Ok(())
 }
@@ -380,9 +389,9 @@ fn reports_file_naming_drift_within_directory() -> Result<()> {
         .find(|finding| finding.kind == FindingKind::FileNamingDrift)
         .expect("file naming drift should be reported");
 
-    assert_eq!(finding.severity, Severity::Warning);
+    assert_eq!(finding.severity, Severity::Info);
     assert_eq!(finding.path, "src/payments");
-    assert_eq!(finding.magnitude, Some(3));
+    assert_eq!(metric_value(finding, "group_size"), Some(3));
     assert_eq!(finding.related_locations.len(), 2);
     Ok(())
 }

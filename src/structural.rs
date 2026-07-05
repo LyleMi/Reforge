@@ -9,9 +9,7 @@ use crate::language::{
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
     NAME_FIELD, PARAMETERS_FIELD, adapter_for_path,
 };
-use crate::scanner::{
-    Finding, FindingKind, RelatedLocation, Severity, is_test_source, severity_for_threshold,
-};
+use crate::scanner::{Finding, FindingKind, FindingMetric, RelatedLocation, is_test_source};
 use crate::similar_functions::{ParsedSourceFile, SourceFile, parse_source_files};
 
 #[derive(Debug, Clone)]
@@ -135,28 +133,24 @@ pub(crate) fn scan_parsed_structure(
         signals.literals,
         options.min_repeated_literal_occurrences,
         FindingKind::RepeatedLiteral,
-        Severity::Info,
         |literal, count| format!("literal {literal:?} is repeated {count} times"),
     ));
     signals.findings.extend(group_occurrences(
         signals.error_patterns,
         options.min_repeated_literal_occurrences,
         FindingKind::RepeatedErrorPattern,
-        Severity::Info,
         |_, count| format!("error-handling pattern is repeated {count} times"),
     ));
     signals.findings.extend(group_occurrences(
         signals.data_clumps,
         options.min_data_clump_occurrences,
         FindingKind::DataClump,
-        Severity::Info,
         |clump, count| format!("parameter group ({clump}) appears in {count} functions"),
     ));
     signals.findings.extend(group_occurrences(
         signals.test_setups,
         options.min_data_clump_occurrences,
         FindingKind::TestDuplication,
-        Severity::Warning,
         |_, count| format!("test setup pattern is repeated {count} times"),
     ));
     signals
@@ -204,69 +198,79 @@ fn scan_function_metrics(
 ) {
     for function in functions {
         if function.lines > options.max_function_lines {
-            signals.findings.push(Finding {
-                kind: FindingKind::LongFunction,
-                severity: severity_for_threshold(function.lines, options.max_function_lines),
-                path: file.display_path.clone(),
-                line: Some(function.line),
-                magnitude: Some(function.lines),
-                message: format!(
+            signals.findings.push(crate::scanner::finding(
+                FindingKind::LongFunction,
+                file.display_path.clone(),
+                Some(function.line),
+                format!(
                     "function `{}` spans {} lines; consider extracting smaller steps",
                     function.name, function.lines
                 ),
-                related_locations: Vec::new(),
-            });
+                vec![FindingMetric::threshold(
+                    "function_lines",
+                    function.lines,
+                    options.max_function_lines,
+                    "lines",
+                )],
+                Vec::new(),
+            ));
         }
 
         if function.complexity > options.max_function_complexity {
-            signals.findings.push(Finding {
-                kind: FindingKind::ComplexFunction,
-                severity: severity_for_threshold(
-                    function.complexity,
-                    options.max_function_complexity,
-                ),
-                path: file.display_path.clone(),
-                line: Some(function.line),
-                magnitude: Some(function.complexity),
-                message: format!(
+            signals.findings.push(crate::scanner::finding(
+                FindingKind::ComplexFunction,
+                file.display_path.clone(),
+                Some(function.line),
+                format!(
                     "function `{}` has estimated complexity {}; consider reducing branches",
                     function.name, function.complexity
                 ),
-                related_locations: Vec::new(),
-            });
+                vec![FindingMetric::threshold(
+                    "function_complexity",
+                    function.complexity,
+                    options.max_function_complexity,
+                    "complexity",
+                )],
+                Vec::new(),
+            ));
         }
 
         if function.nesting_depth > options.max_nesting_depth {
-            signals.findings.push(Finding {
-                kind: FindingKind::DeepNesting,
-                severity: severity_for_threshold(function.nesting_depth, options.max_nesting_depth),
-                path: file.display_path.clone(),
-                line: Some(function.line),
-                magnitude: Some(function.nesting_depth),
-                message: format!(
+            signals.findings.push(crate::scanner::finding(
+                FindingKind::DeepNesting,
+                file.display_path.clone(),
+                Some(function.line),
+                format!(
                     "function `{}` nests control flow {} levels deep",
                     function.name, function.nesting_depth
                 ),
-                related_locations: Vec::new(),
-            });
+                vec![FindingMetric::threshold(
+                    "nesting_depth",
+                    function.nesting_depth,
+                    options.max_nesting_depth,
+                    "levels",
+                )],
+                Vec::new(),
+            ));
         }
 
         if function.parameter_count > options.max_function_parameters {
-            signals.findings.push(Finding {
-                kind: FindingKind::ManyParameters,
-                severity: severity_for_threshold(
-                    function.parameter_count,
-                    options.max_function_parameters,
-                ),
-                path: file.display_path.clone(),
-                line: Some(function.line),
-                magnitude: Some(function.parameter_count),
-                message: format!(
+            signals.findings.push(crate::scanner::finding(
+                FindingKind::ManyParameters,
+                file.display_path.clone(),
+                Some(function.line),
+                format!(
                     "function `{}` has {} parameters; consider grouping related data",
                     function.name, function.parameter_count
                 ),
-                related_locations: Vec::new(),
-            });
+                vec![FindingMetric::threshold(
+                    "function_parameters",
+                    function.parameter_count,
+                    options.max_function_parameters,
+                    "parameters",
+                )],
+                Vec::new(),
+            ));
         }
 
         collect_data_clumps(file, function, options, signals);
@@ -283,31 +287,30 @@ fn scan_type_metrics(
         if type_metric.lines > options.max_type_lines
             || type_metric.members > options.max_type_members
         {
-            let mut severity = Severity::Warning;
-            if type_metric.lines > options.max_type_lines {
-                severity = severity.max(severity_for_threshold(
-                    type_metric.lines,
-                    options.max_type_lines,
-                ));
-            }
-            if type_metric.members > options.max_type_members {
-                severity = severity.max(severity_for_threshold(
-                    type_metric.members,
-                    options.max_type_members,
-                ));
-            }
-            signals.findings.push(Finding {
-                kind: FindingKind::LargeType,
-                severity,
-                path: file.display_path.clone(),
-                line: Some(type_metric.line),
-                magnitude: Some(type_metric.lines.max(type_metric.members)),
-                message: format!(
+            signals.findings.push(crate::scanner::finding(
+                FindingKind::LargeType,
+                file.display_path.clone(),
+                Some(type_metric.line),
+                format!(
                     "type `{}` spans {} lines and has {} members; consider splitting responsibilities",
                     type_metric.name, type_metric.lines, type_metric.members
                 ),
-                related_locations: Vec::new(),
-            });
+                vec![
+                    FindingMetric::threshold(
+                        "type_lines",
+                        type_metric.lines,
+                        options.max_type_lines,
+                        "lines",
+                    ),
+                    FindingMetric::threshold(
+                        "type_members",
+                        type_metric.members,
+                        options.max_type_members,
+                        "members",
+                    ),
+                ],
+                Vec::new(),
+            ));
         }
     }
 }
@@ -321,28 +324,36 @@ fn scan_file_metrics(
 ) {
     let imports = count_imports(root, traversal.family);
     if imports > options.max_imports {
-        signals.findings.push(Finding {
-            kind: FindingKind::ImportHeavyFile,
-            severity: severity_for_threshold(imports, options.max_imports),
-            path: file.display_path.clone(),
-            line: Some(1),
-            magnitude: Some(imports),
-            message: format!("file has {imports} imports; consider reducing module coupling"),
-            related_locations: Vec::new(),
-        });
+        signals.findings.push(crate::scanner::finding(
+            FindingKind::ImportHeavyFile,
+            file.display_path.clone(),
+            Some(1),
+            format!("file has {imports} imports; consider reducing module coupling"),
+            vec![FindingMetric::threshold(
+                "imports",
+                imports,
+                options.max_imports,
+                "imports",
+            )],
+            Vec::new(),
+        ));
     }
 
     let public_items = count_public_items(root, traversal);
     if public_items > options.max_public_items {
-        signals.findings.push(Finding {
-            kind: FindingKind::LargePublicSurface,
-            severity: severity_for_threshold(public_items, options.max_public_items),
-            path: file.display_path.clone(),
-            line: Some(1),
-            magnitude: Some(public_items),
-            message: format!("file exposes {public_items} public/exported items"),
-            related_locations: Vec::new(),
-        });
+        signals.findings.push(crate::scanner::finding(
+            FindingKind::LargePublicSurface,
+            file.display_path.clone(),
+            Some(1),
+            format!("file exposes {public_items} public/exported items"),
+            vec![FindingMetric::threshold(
+                "public_items",
+                public_items,
+                options.max_public_items,
+                "items",
+            )],
+            Vec::new(),
+        ));
     }
 }
 

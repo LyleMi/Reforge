@@ -371,17 +371,16 @@ fn happy_path_test_findings(test_files: Vec<(usize, Vec<Occurrence>)>) -> Vec<Fi
         .into_iter()
         .filter_map(|(test_count, locations)| {
             let representative = locations.first()?;
-            Some(Finding {
-                kind: FindingKind::HappyPathOnlyTests,
-                severity: Severity::Info,
-                path: representative.path.clone(),
-                line: Some(representative.line),
-                magnitude: Some(test_count),
-                message: format!(
+            Some(crate::scanner::finding(
+                FindingKind::HappyPathOnlyTests,
+                representative.path.clone(),
+                Some(representative.line),
+                format!(
                     "test file has {test_count} cases but no negative, error, or boundary assertions were detected"
                 ),
-                related_locations: locations,
-            })
+                vec![FindingMetric::threshold("group_size", test_count, 3, "test cases")],
+                locations,
+            ))
         })
         .collect()
 }
@@ -553,26 +552,24 @@ fn file_naming_drift_findings(
             continue;
         }
 
-        let severity = if related_locations.len() >= 2 || styles.len() >= 3 {
-            Severity::Warning
-        } else {
-            Severity::Info
-        };
-
-        findings.push(Finding {
-            kind: FindingKind::FileNamingDrift,
-            severity,
-            path: directory.display_path.clone(),
-            line: None,
-            magnitude: Some(styles.len()),
-            message: format!(
+        findings.push(crate::scanner::finding(
+            FindingKind::FileNamingDrift,
+            directory.display_path.clone(),
+            None,
+            format!(
                 "directory uses {} file naming styles across {total_files} files; dominant style is {} with {} files",
                 styles.len(),
                 dominant_style.label(),
                 dominant_locations.len()
             ),
+            vec![FindingMetric::threshold(
+                "group_size",
+                styles.len(),
+                2,
+                "naming styles",
+            )],
             related_locations,
-        });
+        ));
     }
 
     findings
@@ -765,18 +762,22 @@ fn directory_drift_findings(
     for (directory, concepts) in directories {
         let threshold = options.max_dir_files.max(4);
         if concepts.len() > threshold {
-            findings.push(Finding {
-                kind: FindingKind::DirectoryDrift,
-                severity: Severity::Info,
-                path: directory.to_string_lossy().replace('\\', "/"),
-                line: None,
-                magnitude: Some(concepts.len()),
-                message: format!(
+            findings.push(crate::scanner::finding(
+                FindingKind::DirectoryDrift,
+                directory.to_string_lossy().replace('\\', "/"),
+                None,
+                format!(
                     "directory mixes {} naming/language concepts; consider grouping cohesive responsibilities",
                     concepts.len()
                 ),
-                related_locations: Vec::new(),
-            });
+                vec![FindingMetric::threshold(
+                    "group_size",
+                    concepts.len(),
+                    threshold,
+                    "concepts",
+                )],
+                Vec::new(),
+            ));
         }
     }
     findings
@@ -786,7 +787,6 @@ fn group_occurrences(
     occurrences: Vec<(String, Occurrence)>,
     min_occurrences: usize,
     kind: FindingKind,
-    severity: Severity,
     message: impl Fn(&str, usize) -> String,
 ) -> Vec<Finding> {
     if min_occurrences == 0 {
@@ -806,22 +806,27 @@ fn group_occurrences(
         }
 
         let representative = &group[0];
-        findings.push(Finding {
-            kind,
-            severity,
-            path: representative.path.clone(),
-            line: Some(representative.line),
-            magnitude: Some(group.len()),
-            message: message(&key, group.len()),
-            related_locations: group
+        let related_locations = group
                 .iter()
                 .map(|occurrence| RelatedLocation {
                     path: occurrence.path.clone(),
                     line: occurrence.line,
                     name: occurrence.name.clone(),
                 })
-                .collect(),
-        });
+                .collect::<Vec<_>>();
+        findings.push(crate::scanner::finding(
+            kind,
+            representative.path.clone(),
+            Some(representative.line),
+            message(&key, group.len()),
+            vec![FindingMetric::threshold(
+                "group_size",
+                group.len(),
+                min_occurrences,
+                "occurrences",
+            )],
+            related_locations,
+        ));
     }
 
     findings

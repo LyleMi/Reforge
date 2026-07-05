@@ -6,7 +6,6 @@ use anyhow::Result;
 use crate::scanner::{Finding, FindingKind, ScanReport, Severity};
 
 const RELATED_LOCATION_LIMIT: usize = 3;
-const DEBT_MARKER_LINE_LIMIT: usize = 6;
 
 pub fn print_human_report(report: &ScanReport) -> io::Result<()> {
     write_human_report_colored(std::io::stdout().lock(), report, false)
@@ -112,47 +111,20 @@ impl ReportRenderContext<'_> {
     }
 
     fn render_findings(&mut self) {
-        let mut by_path: BTreeMap<&str, Vec<&Finding>> = BTreeMap::new();
-        for finding in sorted_findings(&self.report.findings) {
-            by_path.entry(&finding.path).or_default().push(finding);
-        }
-
         self.output.push('\n');
         self.output
             .push_str(&paint(self.color, "Findings", AnsiStyle::Section));
         self.output.push('\n');
 
-        for (path, findings) in by_path {
-            self.output.push('\n');
+        for finding in sorted_findings(&self.report.findings) {
+            self.output.push_str("  ");
             self.output
-                .push_str(&paint(self.color, path, AnsiStyle::Path));
+                .push_str(&render_finding_line(finding, self.color));
             self.output.push('\n');
 
-            for finding in findings
-                .iter()
-                .filter(|finding| finding.kind != FindingKind::DebtMarker)
-            {
-                self.output.push_str("  ");
+            if has_related_location_details(finding) {
                 self.output
-                    .push_str(&render_finding_line(finding, self.color));
-                self.output.push('\n');
-
-                if has_related_location_details(finding) {
-                    self.output
-                        .push_str(&render_related_locations(finding, self.color));
-                }
-            }
-
-            let debt_markers = findings
-                .iter()
-                .copied()
-                .filter(|finding| finding.kind == FindingKind::DebtMarker)
-                .collect::<Vec<_>>();
-            if !debt_markers.is_empty() {
-                self.output.push_str("  ");
-                self.output
-                    .push_str(&render_debt_marker_group(&debt_markers, self.color));
-                self.output.push('\n');
+                    .push_str(&render_related_locations(finding, self.color));
             }
         }
     }
@@ -196,50 +168,93 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
 }
 
 fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
-    let mut sorted: Vec<&Finding> = findings.iter().collect();
-
+    let mut sorted = findings.iter().collect::<Vec<_>>();
     sorted.sort_by(|left, right| {
-        left.path
-            .cmp(&right.path)
-            .then_with(|| match (left.magnitude, right.magnitude) {
-                (Some(left_magnitude), Some(right_magnitude)) => right_magnitude
-                    .cmp(&left_magnitude)
-                    .then_with(|| left.line.cmp(&right.line)),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => left.line.cmp(&right.line),
-            })
+        right
+            .score
+            .cmp(&left.score)
+            .then_with(|| left.path.cmp(&right.path))
+            .then_with(|| left.line.cmp(&right.line))
     });
-
     sorted
 }
 
 fn render_finding_line(finding: &Finding, color: bool) -> String {
     let location = finding
         .line
-        .map(|line| format!(":{line}"))
-        .unwrap_or_default();
-    let severity = render_severity(&finding.severity, color);
+        .map(|line| format!("{}:{line}", finding.path))
+        .unwrap_or_else(|| finding.path.clone());
+    let metrics = render_metric_summary(finding);
     format!(
-        "{severity}{} {}",
-        location,
-        concise_finding_message(finding)
+        "{} {location} {}{}",
+        render_severity(finding, color),
+        concise_finding_message(finding),
+        metrics
+            .map(|metrics| format!(" ({metrics})"))
+            .unwrap_or_default()
+    )
+}
+
+fn render_metric_summary(finding: &Finding) -> Option<String> {
+    if finding.metrics.is_empty() {
+        return None;
+    }
+
+    Some(
+        finding
+            .metrics
+            .iter()
+            .map(|metric| {
+                let value = if let Some(threshold) = metric.threshold {
+                    format!("{}={}/{}", metric.name, metric.value, threshold)
+                } else {
+                    format!("{}={}", metric.name, metric.value)
+                };
+
+                if metric.unit.is_empty() {
+                    value
+                } else {
+                    format!("{value} {}", metric.unit)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", "),
     )
 }
 
 fn concise_finding_message(finding: &Finding) -> String {
-    let display = display_for_kind(finding.kind);
-    if let Some(magnitude) = finding.magnitude
-        && let Some(phrase) = display.magnitude
-    {
-        return render_magnitude(display.label, magnitude, phrase);
+    if !finding.message.is_empty() && finding.kind != FindingKind::DebtMarker {
+        return finding.message.clone();
     }
 
-    if finding.message.is_empty() || finding.kind == FindingKind::DebtMarker {
-        display.label.to_string()
-    } else {
-        finding.message.clone()
-    }
+    let display = display_for_kind(finding.kind);
+    render_kind_metric_message(finding, display).unwrap_or_else(|| display.label.to_string())
+}
+
+fn render_kind_metric_message(finding: &Finding, display: &FindingKindDisplay) -> Option<String> {
+    let value = match display.metric {
+        Some(DisplayMetric::Primary) => primary_metric_value(finding),
+        Some(DisplayMetric::GroupSize) => group_size(finding),
+        Some(DisplayMetric::Named(name)) => metric_value(finding, name),
+        None => None,
+    }?;
+    Some(display.format.render(display.label, value))
+}
+
+fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
+    finding
+        .metrics
+        .iter()
+        .find(|metric| metric.name == name)
+        .map(|metric| metric.value)
+}
+
+fn primary_metric_value(finding: &Finding) -> Option<usize> {
+    finding.metrics.first().map(|metric| metric.value)
+}
+
+fn group_size(finding: &Finding) -> Option<usize> {
+    metric_value(finding, "group_size").or_else(|| primary_metric_value(finding))
 }
 
 fn has_related_location_details(finding: &Finding) -> bool {
@@ -260,58 +275,6 @@ fn has_related_location_details(finding: &Finding) -> bool {
             | FindingKind::GenericBucketDrift
             | FindingKind::AdapterBoundaryBypass
     )
-}
-
-fn render_debt_marker_group(findings: &[&Finding], color: bool) -> String {
-    if findings.len() == 1 {
-        let location = findings[0]
-            .line
-            .map(|line| format!(":{line}"))
-            .unwrap_or_default();
-        return format!(
-            "{}{} debt marker",
-            render_severity(&findings[0].severity, color),
-            location
-        );
-    }
-
-    let lines = findings
-        .iter()
-        .filter_map(|finding| finding.line)
-        .collect::<Vec<_>>();
-    let mut message = format!(
-        "{} {} debt markers",
-        render_severity(&findings[0].severity, color),
-        findings.len()
-    );
-
-    if !lines.is_empty() {
-        let shown = lines
-            .iter()
-            .take(DEBT_MARKER_LINE_LIMIT)
-            .map(|line| line.to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
-        message.push_str(": lines ");
-        message.push_str(&shown);
-
-        if lines.len() > DEBT_MARKER_LINE_LIMIT {
-            message.push_str(&format!(
-                " (+{} more)",
-                lines.len() - DEBT_MARKER_LINE_LIMIT
-            ));
-        }
-    }
-
-    message
-}
-
-fn pluralize(count: usize, noun: &str) -> String {
-    if count == 1 {
-        noun.to_string()
-    } else {
-        format!("{noun}s")
-    }
 }
 
 fn render_related_locations(finding: &Finding, color: bool) -> String {
@@ -377,38 +340,14 @@ impl FindingBreakdown {
 }
 
 #[derive(Debug, Clone, Copy)]
-#[repr(usize)]
-enum MagnitudePhrase {
-    Lines,
-    SourceFiles,
-    Functions,
-    Complexity,
-    Levels,
-    Parameters,
-    Size,
-    Items,
-    Imports,
-    Occurrences,
-    Concepts,
-    Implementations,
-    TypeShapes,
-    ConfigKeys,
-    Factories,
-    Bypasses,
-    TestCases,
-    Styles,
-}
-
-const MAGNITUDE_PHRASE_COUNT: usize = MagnitudePhrase::Styles as usize + 1;
-
-impl MagnitudePhrase {
-    fn format(self) -> MagnitudeFormat {
-        MAGNITUDE_FORMATS[self as usize]
-    }
+enum DisplayMetric {
+    Primary,
+    GroupSize,
+    Named(&'static str),
 }
 
 #[derive(Debug, Clone, Copy)]
-enum MagnitudeFormat {
+enum MetricFormat {
     Count(&'static str),
     PluralCount(&'static str),
     PrefixedPluralCount {
@@ -418,201 +357,218 @@ enum MagnitudeFormat {
     NamedValue(&'static str),
 }
 
-impl MagnitudeFormat {
-    fn render(self, label: &str, magnitude: usize) -> String {
+impl MetricFormat {
+    fn render(self, label: &str, value: usize) -> String {
         match self {
-            Self::Count(unit) => render_count_magnitude(label, magnitude, unit),
+            Self::Count(unit) => format!("{label}: {value} {unit}"),
             Self::PluralCount(noun) => {
-                render_count_magnitude(label, magnitude, &pluralize(magnitude, noun))
+                format!("{label}: {value} {}", pluralize(value, noun))
             }
-            Self::PrefixedPluralCount { prefix, noun } => render_count_magnitude(
-                label,
-                magnitude,
-                &format!("{prefix}{}", pluralize(magnitude, noun)),
-            ),
-            Self::NamedValue(name) => format!("{label}: {name} {magnitude}"),
+            Self::PrefixedPluralCount { prefix, noun } => {
+                format!("{label}: {value} {prefix}{}", pluralize(value, noun))
+            }
+            Self::NamedValue(name) => format!("{label}: {name} {value}"),
         }
     }
 }
 
-const MAGNITUDE_FORMATS: [MagnitudeFormat; MAGNITUDE_PHRASE_COUNT] = [
-    MagnitudeFormat::Count("lines"),
-    MagnitudeFormat::Count("source files"),
-    MagnitudeFormat::PluralCount("function"),
-    MagnitudeFormat::NamedValue("complexity"),
-    MagnitudeFormat::Count("levels"),
-    MagnitudeFormat::Count("parameters"),
-    MagnitudeFormat::NamedValue("size"),
-    MagnitudeFormat::Count("items"),
-    MagnitudeFormat::Count("imports"),
-    MagnitudeFormat::Count("occurrences"),
-    MagnitudeFormat::Count("concepts"),
-    MagnitudeFormat::PluralCount("implementation"),
-    MagnitudeFormat::PluralCount("type shape"),
-    MagnitudeFormat::PrefixedPluralCount {
-        prefix: "config ",
-        noun: "key",
-    },
-    MagnitudeFormat::PluralCount("factory"),
-    MagnitudeFormat::PluralCount("bypass"),
-    MagnitudeFormat::PrefixedPluralCount {
-        prefix: "test ",
-        noun: "case",
-    },
-    MagnitudeFormat::PrefixedPluralCount {
-        prefix: "naming ",
-        noun: "style",
-    },
-];
+fn pluralize(count: usize, noun: &str) -> String {
+    if count == 1 {
+        noun.to_string()
+    } else {
+        format!("{noun}s")
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct FindingKindDisplay {
     kind: FindingKind,
     label: &'static str,
-    magnitude: Option<MagnitudePhrase>,
+    metric: Option<DisplayMetric>,
+    format: MetricFormat,
 }
 
 const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
-    FindingKindDisplay {
-        kind: FindingKind::LargeFile,
-        label: "large file",
-        magnitude: Some(MagnitudePhrase::Lines),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::LargeDirectory,
-        label: "large directory",
-        magnitude: Some(MagnitudePhrase::SourceFiles),
-    },
+    display(
+        FindingKind::LargeFile,
+        "large file",
+        DisplayMetric::Primary,
+        MetricFormat::Count("lines"),
+    ),
+    display(
+        FindingKind::LargeDirectory,
+        "large directory",
+        DisplayMetric::Primary,
+        MetricFormat::Count("source files"),
+    ),
     FindingKindDisplay {
         kind: FindingKind::DebtMarker,
         label: "debt marker",
-        magnitude: None,
+        metric: None,
+        format: MetricFormat::Count(""),
     },
-    FindingKindDisplay {
-        kind: FindingKind::SimilarFunctions,
-        label: "similar functions",
-        magnitude: Some(MagnitudePhrase::Functions),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::LongFunction,
-        label: "long function",
-        magnitude: Some(MagnitudePhrase::Lines),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::ComplexFunction,
-        label: "complex function",
-        magnitude: Some(MagnitudePhrase::Complexity),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::DeepNesting,
-        label: "deep nesting",
-        magnitude: Some(MagnitudePhrase::Levels),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::ManyParameters,
-        label: "many parameters",
-        magnitude: Some(MagnitudePhrase::Parameters),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::LargeType,
-        label: "large type",
-        magnitude: Some(MagnitudePhrase::Size),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::LargePublicSurface,
-        label: "large public surface",
-        magnitude: Some(MagnitudePhrase::Items),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::ImportHeavyFile,
-        label: "import-heavy file",
-        magnitude: Some(MagnitudePhrase::Imports),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::RepeatedLiteral,
-        label: "repeated literal",
-        magnitude: Some(MagnitudePhrase::Occurrences),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::RepeatedErrorPattern,
-        label: "repeated error pattern",
-        magnitude: Some(MagnitudePhrase::Occurrences),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::TestDuplication,
-        label: "test duplication",
-        magnitude: Some(MagnitudePhrase::Occurrences),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::HappyPathOnlyTests,
-        label: "happy-path-only tests",
-        magnitude: Some(MagnitudePhrase::TestCases),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::FileNamingDrift,
-        label: "file naming drift",
-        magnitude: Some(MagnitudePhrase::Styles),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::DirectoryDrift,
-        label: "directory drift",
-        magnitude: Some(MagnitudePhrase::Concepts),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::DataClump,
-        label: "data clump",
-        magnitude: Some(MagnitudePhrase::Occurrences),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::ParallelImplementation,
-        label: "parallel implementation",
-        magnitude: Some(MagnitudePhrase::Implementations),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::ShadowedAbstraction,
-        label: "shadowed abstraction",
-        magnitude: Some(MagnitudePhrase::Occurrences),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::DuplicateTypeShape,
-        label: "duplicate type shape",
-        magnitude: Some(MagnitudePhrase::TypeShapes),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::ConfigKeyDrift,
-        label: "config key drift",
-        magnitude: Some(MagnitudePhrase::ConfigKeys),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::FixtureFactoryDrift,
-        label: "fixture factory drift",
-        magnitude: Some(MagnitudePhrase::Factories),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::GenericBucketDrift,
-        label: "generic bucket drift",
-        magnitude: Some(MagnitudePhrase::Concepts),
-    },
-    FindingKindDisplay {
-        kind: FindingKind::AdapterBoundaryBypass,
-        label: "adapter boundary bypass",
-        magnitude: Some(MagnitudePhrase::Bypasses),
-    },
+    display(
+        FindingKind::SimilarFunctions,
+        "similar functions",
+        DisplayMetric::GroupSize,
+        MetricFormat::PluralCount("function"),
+    ),
+    display(
+        FindingKind::LongFunction,
+        "long function",
+        DisplayMetric::Primary,
+        MetricFormat::Count("lines"),
+    ),
+    display(
+        FindingKind::ComplexFunction,
+        "complex function",
+        DisplayMetric::Primary,
+        MetricFormat::NamedValue("complexity"),
+    ),
+    display(
+        FindingKind::DeepNesting,
+        "deep nesting",
+        DisplayMetric::Primary,
+        MetricFormat::Count("levels"),
+    ),
+    display(
+        FindingKind::ManyParameters,
+        "many parameters",
+        DisplayMetric::Primary,
+        MetricFormat::Count("parameters"),
+    ),
+    display(
+        FindingKind::LargeType,
+        "large type",
+        DisplayMetric::Named("type_lines"),
+        MetricFormat::NamedValue("lines"),
+    ),
+    display(
+        FindingKind::LargePublicSurface,
+        "large public surface",
+        DisplayMetric::Primary,
+        MetricFormat::Count("items"),
+    ),
+    display(
+        FindingKind::ImportHeavyFile,
+        "import-heavy file",
+        DisplayMetric::Primary,
+        MetricFormat::Count("imports"),
+    ),
+    display(
+        FindingKind::RepeatedLiteral,
+        "repeated literal",
+        DisplayMetric::GroupSize,
+        MetricFormat::Count("occurrences"),
+    ),
+    display(
+        FindingKind::RepeatedErrorPattern,
+        "repeated error pattern",
+        DisplayMetric::GroupSize,
+        MetricFormat::Count("occurrences"),
+    ),
+    display(
+        FindingKind::TestDuplication,
+        "test duplication",
+        DisplayMetric::GroupSize,
+        MetricFormat::Count("occurrences"),
+    ),
+    display(
+        FindingKind::HappyPathOnlyTests,
+        "happy-path-only tests",
+        DisplayMetric::GroupSize,
+        MetricFormat::PrefixedPluralCount {
+            prefix: "test ",
+            noun: "case",
+        },
+    ),
+    display(
+        FindingKind::FileNamingDrift,
+        "file naming drift",
+        DisplayMetric::GroupSize,
+        MetricFormat::PrefixedPluralCount {
+            prefix: "naming ",
+            noun: "style",
+        },
+    ),
+    display(
+        FindingKind::DirectoryDrift,
+        "directory drift",
+        DisplayMetric::GroupSize,
+        MetricFormat::Count("concepts"),
+    ),
+    display(
+        FindingKind::DataClump,
+        "data clump",
+        DisplayMetric::GroupSize,
+        MetricFormat::Count("occurrences"),
+    ),
+    display(
+        FindingKind::ParallelImplementation,
+        "parallel implementation",
+        DisplayMetric::GroupSize,
+        MetricFormat::PluralCount("implementation"),
+    ),
+    display(
+        FindingKind::ShadowedAbstraction,
+        "shadowed abstraction",
+        DisplayMetric::GroupSize,
+        MetricFormat::Count("occurrences"),
+    ),
+    display(
+        FindingKind::DuplicateTypeShape,
+        "duplicate type shape",
+        DisplayMetric::GroupSize,
+        MetricFormat::PluralCount("type shape"),
+    ),
+    display(
+        FindingKind::ConfigKeyDrift,
+        "config key drift",
+        DisplayMetric::GroupSize,
+        MetricFormat::PrefixedPluralCount {
+            prefix: "config ",
+            noun: "key",
+        },
+    ),
+    display(
+        FindingKind::FixtureFactoryDrift,
+        "fixture factory drift",
+        DisplayMetric::GroupSize,
+        MetricFormat::PluralCount("factory"),
+    ),
+    display(
+        FindingKind::GenericBucketDrift,
+        "generic bucket drift",
+        DisplayMetric::GroupSize,
+        MetricFormat::Count("concepts"),
+    ),
+    display(
+        FindingKind::AdapterBoundaryBypass,
+        "adapter boundary bypass",
+        DisplayMetric::GroupSize,
+        MetricFormat::PluralCount("bypass"),
+    ),
 ];
+
+const fn display(
+    kind: FindingKind,
+    label: &'static str,
+    metric: DisplayMetric,
+    format: MetricFormat,
+) -> FindingKindDisplay {
+    FindingKindDisplay {
+        kind,
+        label,
+        metric: Some(metric),
+        format,
+    }
+}
 
 fn display_for_kind(kind: FindingKind) -> &'static FindingKindDisplay {
     FINDING_KIND_DISPLAYS
         .iter()
         .find(|display| display.kind == kind)
         .expect("every finding kind should have display metadata")
-}
-
-fn render_magnitude(label: &str, magnitude: usize, phrase: MagnitudePhrase) -> String {
-    phrase.format().render(label, magnitude)
-}
-
-fn render_count_magnitude(label: &str, magnitude: usize, unit: &str) -> String {
-    format!("{label}: {magnitude} {unit}")
 }
 
 enum AnsiStyle {
@@ -625,9 +581,12 @@ enum AnsiStyle {
     Info,
 }
 
-fn render_severity(severity: &Severity, color: bool) -> String {
-    let label = format!("[{severity}]");
-    let style = match severity {
+fn render_severity(finding: &Finding, color: bool) -> String {
+    let label = format!(
+        "[{} score={} confidence={:.2}]",
+        finding.severity, finding.score, finding.confidence
+    );
+    let style = match finding.severity {
         Severity::Critical => AnsiStyle::Critical,
         Severity::Warning => AnsiStyle::Warning,
         Severity::Info => AnsiStyle::Info,

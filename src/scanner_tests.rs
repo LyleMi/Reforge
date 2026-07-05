@@ -39,6 +39,14 @@ fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
     }
 }
 
+fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
+    finding
+        .metrics
+        .iter()
+        .find(|metric| metric.name == name)
+        .map(|metric| metric.value)
+}
+
 #[test]
 fn skips_generated_directories_by_default() -> Result<()> {
     let root = test_root("skip-generated");
@@ -91,7 +99,7 @@ fn reports_directories_with_many_source_files() -> Result<()> {
     assert_eq!(findings[0].kind, FindingKind::LargeDirectory);
     assert!(findings[0].path.ends_with("src"));
     assert_eq!(findings[0].line, None);
-    assert_eq!(findings[0].magnitude, Some(3));
+    assert_eq!(metric_value(&findings[0], "directory_files"), Some(3));
     assert!(
         findings[0]
             .message
@@ -177,7 +185,7 @@ function gamma(rows) {
         .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
         .collect::<Vec<_>>();
     assert_eq!(similar_findings.len(), 1);
-    assert_eq!(similar_findings[0].magnitude, Some(3));
+    assert_eq!(metric_value(similar_findings[0], "group_size"), Some(3));
     assert!(
         stricter_findings
             .iter()

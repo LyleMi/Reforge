@@ -1,9 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::scanner::{
-    Finding, FindingKind, RelatedLocation, Severity, is_test_source, severity_for_threshold,
-};
+use crate::scanner::{Finding, FindingKind, FindingMetric, RelatedLocation, is_test_source};
 use crate::similar_functions::SourceFile;
 
 #[derive(Debug, Clone)]
@@ -74,7 +72,6 @@ struct BypassRule {
 struct OccurrenceGroupSpec {
     threshold: usize,
     kind: FindingKind,
-    severity: Severity,
     message: fn(&str, usize) -> String,
     require_cross_file: bool,
 }
@@ -99,7 +96,6 @@ pub fn scan_agent_drift(files: &[SourceFile], options: &AgentDriftOptions) -> Ve
         OccurrenceGroupSpec {
             threshold: options.min_repeated_occurrences.max(2),
             kind: FindingKind::ConfigKeyDrift,
-            severity: Severity::Info,
             message: config_key_drift_message,
             require_cross_file: true,
         },
@@ -109,7 +105,6 @@ pub fn scan_agent_drift(files: &[SourceFile], options: &AgentDriftOptions) -> Ve
         OccurrenceGroupSpec {
             threshold: options.min_data_shape_occurrences.max(2),
             kind: FindingKind::FixtureFactoryDrift,
-            severity: Severity::Info,
             message: fixture_factory_drift_message,
             require_cross_file: true,
         },
@@ -452,7 +447,6 @@ fn parallel_implementation_findings(
         OccurrenceGroupSpec {
             threshold,
             kind: FindingKind::ParallelImplementation,
-            severity: Severity::Warning,
             message: parallel_implementation_message,
             require_cross_file: true,
         },
@@ -490,7 +484,6 @@ fn shadowed_abstraction_findings(
         OccurrenceGroupSpec {
             threshold,
             kind: FindingKind::ShadowedAbstraction,
-            severity: Severity::Info,
             message: shadowed_abstraction_message,
             require_cross_file: true,
         },
@@ -548,22 +541,26 @@ fn duplicate_type_shape_findings(
 
         let fields = shared_fields(&group);
         let representative = &group[0].occurrence;
-        findings.push(Finding {
-            kind: FindingKind::DuplicateTypeShape,
-            severity: repeated_signal_severity(group.len(), threshold, Severity::Info),
-            path: representative.path.clone(),
-            line: Some(representative.line),
-            magnitude: Some(group.len()),
-            message: format!(
+        findings.push(crate::scanner::finding(
+            FindingKind::DuplicateTypeShape,
+            representative.path.clone(),
+            Some(representative.line),
+            format!(
                 "{} type shapes share fields: {}",
                 group.len(),
                 fields.into_iter().take(6).collect::<Vec<_>>().join(", ")
             ),
-            related_locations: group
+            vec![FindingMetric::threshold(
+                "group_size",
+                group.len(),
+                threshold,
+                "type shapes",
+            )],
+            group
                 .iter()
                 .map(|shape| related_location(&shape.occurrence))
                 .collect(),
-        });
+        ));
     }
 
     findings
@@ -582,22 +579,22 @@ fn generic_bucket_findings(
             continue;
         }
 
-        findings.push(Finding {
-            kind: FindingKind::GenericBucketDrift,
-            severity: repeated_signal_severity(
-                directory.concepts.len(),
-                concept_threshold,
-                Severity::Info,
-            ),
-            path: directory.display_path.clone(),
-            line: None,
-            magnitude: Some(directory.concepts.len()),
-            message: format!(
+        findings.push(crate::scanner::finding(
+            FindingKind::GenericBucketDrift,
+            directory.display_path.clone(),
+            None,
+            format!(
                 "generic bucket mixes {} source concepts across {} files",
                 directory.concepts.len(),
                 directory.files.len()
             ),
-            related_locations: directory
+            vec![FindingMetric::threshold(
+                "group_size",
+                directory.concepts.len(),
+                concept_threshold,
+                "concepts",
+            )],
+            directory
                 .files
                 .iter()
                 .map(|path| RelatedLocation {
@@ -606,19 +603,24 @@ fn generic_bucket_findings(
                     name: None,
                 })
                 .collect(),
-        });
+        ));
     }
 
     for (concepts, occurrence) in generic_files {
-        findings.push(Finding {
-            kind: FindingKind::GenericBucketDrift,
-            severity: Severity::Info,
-            path: occurrence.path.clone(),
-            line: Some(occurrence.line),
-            magnitude: Some(concepts.split(", ").count()),
-            message: format!("generic file accumulates unrelated concepts: {concepts}"),
-            related_locations: vec![related_location(occurrence)],
-        });
+        let concept_count = concepts.split(", ").count();
+        findings.push(crate::scanner::finding(
+            FindingKind::GenericBucketDrift,
+            occurrence.path.clone(),
+            Some(occurrence.line),
+            format!("generic file accumulates unrelated concepts: {concepts}"),
+            vec![FindingMetric::threshold(
+                "group_size",
+                concept_count,
+                4,
+                "concepts",
+            )],
+            vec![related_location(occurrence)],
+        ));
     }
 
     findings
@@ -644,19 +646,23 @@ fn adapter_boundary_bypass_findings(
         }
 
         let representative = &group[0];
-        findings.push(Finding {
-            kind: FindingKind::AdapterBoundaryBypass,
-            severity: severity_for_threshold(group.len(), 2),
-            path: representative.path.clone(),
-            line: Some(representative.line),
-            magnitude: Some(group.len()),
-            message: format!(
+        findings.push(crate::scanner::finding(
+            FindingKind::AdapterBoundaryBypass,
+            representative.path.clone(),
+            Some(representative.line),
+            format!(
                 "{} direct {} calls bypass existing boundary files",
                 group.len(),
                 kind.label()
             ),
-            related_locations: group.iter().map(related_location).collect(),
-        });
+            vec![FindingMetric::threshold(
+                "group_size",
+                group.len(),
+                2,
+                "bypasses",
+            )],
+            group.iter().map(related_location).collect(),
+        ));
     }
 
     findings
@@ -696,29 +702,22 @@ fn groups_to_findings(
         }
 
         let representative = &group[0];
-        findings.push(Finding {
-            kind: spec.kind,
-            severity: repeated_signal_severity(group.len(), spec.threshold, spec.severity),
-            path: representative.path.clone(),
-            line: Some(representative.line),
-            magnitude: Some(group.len()),
-            message: (spec.message)(&key, group.len()),
-            related_locations: group.iter().map(related_location).collect(),
-        });
+        findings.push(crate::scanner::finding(
+            spec.kind,
+            representative.path.clone(),
+            Some(representative.line),
+            (spec.message)(&key, group.len()),
+            vec![FindingMetric::threshold(
+                "group_size",
+                group.len(),
+                spec.threshold,
+                "occurrences",
+            )],
+            group.iter().map(related_location).collect(),
+        ));
     }
 
     findings
-}
-
-fn repeated_signal_severity(count: usize, threshold: usize, base: Severity) -> Severity {
-    match base {
-        Severity::Critical => Severity::Critical,
-        Severity::Warning => severity_for_threshold(count, threshold),
-        Severity::Info if threshold > 0 && count >= threshold.saturating_mul(2) => {
-            Severity::Warning
-        }
-        Severity::Info => Severity::Info,
-    }
 }
 
 include!("agent_drift_analysis.rs");
