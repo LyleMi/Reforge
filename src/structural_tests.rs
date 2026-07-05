@@ -165,6 +165,58 @@ def three(customer_id, account_id, region_id):
 }
 
 #[test]
+fn skips_report_label_repeated_literals() -> Result<()> {
+    let source = r#"
+def one():
+    return "group_size"
+
+def two():
+    return "group_size"
+
+def three():
+    return "group_size"
+"#;
+
+    let findings = scan_structure(&[source_file("src/app.py", source)], &options())?;
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::RepeatedLiteral),
+        "{findings:#?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn keeps_cross_file_domain_repeated_literals() -> Result<()> {
+    let files = [
+        source_file(
+            "src/billing/a.py",
+            "def one():\n    return \"tenant_enterprise_plan\"\n",
+        ),
+        source_file(
+            "src/billing/b.py",
+            "def two():\n    return \"tenant_enterprise_plan\"\n",
+        ),
+        source_file(
+            "src/billing/c.py",
+            "def three():\n    return \"tenant_enterprise_plan\"\n",
+        ),
+    ];
+
+    let findings = scan_structure(&files, &options())?;
+    let finding = findings
+        .iter()
+        .find(|finding| finding.kind == FindingKind::RepeatedLiteral)
+        .expect("domain repeated literal should be reported");
+
+    assert_eq!(metric_value(finding, "group_size"), Some(3));
+    assert!(finding.confidence >= 0.80);
+    Ok(())
+}
+
+#[test]
 fn reports_go_repeated_error_patterns() -> Result<()> {
     let source = r#"
 package app

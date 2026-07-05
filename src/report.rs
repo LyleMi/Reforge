@@ -186,13 +186,22 @@ fn render_finding_line(finding: &Finding, color: bool) -> String {
         .unwrap_or_else(|| finding.path.clone());
     let metrics = render_metric_summary(finding);
     format!(
-        "{} {location} {}{}",
+        "{} {location} {}{}{}",
         render_severity(finding, color),
         concise_finding_message(finding),
         metrics
             .map(|metrics| format!(" ({metrics})"))
-            .unwrap_or_default()
+            .unwrap_or_default(),
+        render_rank_reason(finding)
     )
+}
+
+fn render_rank_reason(finding: &Finding) -> String {
+    if finding.rank_reason.is_empty() {
+        String::new()
+    } else {
+        format!(" - {}", finding.rank_reason)
+    }
 }
 
 fn render_metric_summary(finding: &Finding) -> Option<String> {

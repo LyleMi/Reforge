@@ -30,8 +30,9 @@ const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     ".vite",
 ];
 const PERCENT_SCALE: usize = 100;
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 2;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 3;
 const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
+const PERCENTILE_MIN_SAMPLE: usize = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -71,6 +72,17 @@ pub enum Severity {
     Critical,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricDimension {
+    Size,
+    Complexity,
+    Coupling,
+    Duplication,
+    Drift,
+    TestRisk,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RelatedLocation {
     pub path: String,
@@ -85,6 +97,8 @@ pub struct FindingMetric {
     pub threshold: Option<usize>,
     pub unit: String,
     pub excess_ratio: Option<f64>,
+    pub dimension: MetricDimension,
+    pub normalized: Option<f64>,
 }
 
 impl FindingMetric {
@@ -100,7 +114,15 @@ impl FindingMetric {
             threshold: Some(threshold),
             unit: unit.into(),
             excess_ratio: (threshold > 0).then_some(value as f64 / threshold as f64),
+            dimension: MetricDimension::Size,
+            normalized: (threshold > 0)
+                .then_some(normalized_threshold_excess(value as f64 / threshold as f64)),
         }
+    }
+
+    fn with_kind_context(mut self, kind: FindingKind) -> Self {
+        self.dimension = metric_dimension(kind, &self.name);
+        self
     }
 }
 
@@ -113,8 +135,19 @@ pub struct Finding {
     pub metrics: Vec<FindingMetric>,
     pub score: u8,
     pub confidence: f64,
+    pub score_breakdown: ScoreBreakdown,
+    pub rank_reason: String,
     pub message: String,
     pub related_locations: Vec<RelatedLocation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ScoreBreakdown {
+    pub impact: f64,
+    pub intensity: f64,
+    pub spread: f64,
+    pub confidence: f64,
+    pub actionability: f64,
 }
 
 impl Serialize for Finding {
@@ -122,7 +155,7 @@ impl Serialize for Finding {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("Finding", 9)?;
+        let mut state = serializer.serialize_struct("Finding", 11)?;
         state.serialize_field("kind", &self.kind)?;
         state.serialize_field("severity", &self.severity)?;
         state.serialize_field("path", &self.path)?;
@@ -130,6 +163,8 @@ impl Serialize for Finding {
         state.serialize_field("metrics", &self.metrics)?;
         state.serialize_field("score", &self.score)?;
         state.serialize_field("confidence", &self.confidence)?;
+        state.serialize_field("score_breakdown", &self.score_breakdown)?;
+        state.serialize_field("rank_reason", &self.rank_reason)?;
         state.serialize_field("message", &self.message)?;
         state.serialize_field("related_locations", serialized_related_locations(self))?;
         state.end()
@@ -175,7 +210,13 @@ pub fn scored_finding(
     related_locations: Vec<RelatedLocation>,
 ) -> Finding {
     let path = path.into();
-    let score = priority_score(kind, &metrics, confidence, &related_locations);
+    let metrics = metrics
+        .into_iter()
+        .map(|metric| metric.with_kind_context(kind))
+        .collect::<Vec<_>>();
+    let score_breakdown = score_breakdown(kind, &metrics, confidence, &related_locations);
+    let score = priority_score_from_breakdown(&score_breakdown);
+    let rank_reason = rank_reason(kind, &score_breakdown, &related_locations);
     Finding {
         kind,
         severity: severity_for_score(score),
@@ -184,6 +225,8 @@ pub fn scored_finding(
         metrics,
         score,
         confidence,
+        score_breakdown,
+        rank_reason,
         message: message.into(),
         related_locations,
     }
@@ -191,52 +234,78 @@ pub fn scored_finding(
 
 pub fn severity_for_score(score: u8) -> Severity {
     match score {
-        0..=39 => Severity::Info,
-        40..=74 => Severity::Warning,
-        75..=u8::MAX => Severity::Critical,
+        0..=34 => Severity::Info,
+        35..=69 => Severity::Warning,
+        70..=u8::MAX => Severity::Critical,
     }
 }
 
+#[allow(dead_code)]
 pub fn priority_score(
     kind: FindingKind,
     metrics: &[FindingMetric],
     confidence: f64,
     related_locations: &[RelatedLocation],
 ) -> u8 {
-    let score = base_weight(kind)
-        * intensity_factor(metrics)
-        * spread_factor(related_locations)
-        * confidence.clamp(0.0, 1.0);
-    score.round().clamp(0.0, 100.0) as u8
+    let breakdown = score_breakdown(kind, metrics, confidence, related_locations);
+    priority_score_from_breakdown(&breakdown)
 }
 
-fn intensity_factor(metrics: &[FindingMetric]) -> f64 {
-    metrics
+fn score_breakdown(
+    kind: FindingKind,
+    metrics: &[FindingMetric],
+    confidence: f64,
+    related_locations: &[RelatedLocation],
+) -> ScoreBreakdown {
+    ScoreBreakdown {
+        impact: impact_score(kind),
+        intensity: intensity_score(metrics),
+        spread: spread_score(related_locations),
+        confidence: confidence.clamp(0.0, 1.0),
+        actionability: actionability_score(kind),
+    }
+}
+
+fn priority_score_from_breakdown(breakdown: &ScoreBreakdown) -> u8 {
+    let weighted = (breakdown.impact * 0.50)
+        + (breakdown.intensity * 0.30)
+        + (breakdown.spread * 0.10)
+        + (breakdown.actionability * 0.10);
+    (weighted * breakdown.confidence).round().clamp(0.0, 100.0) as u8
+}
+
+fn intensity_score(metrics: &[FindingMetric]) -> f64 {
+    let strongest = metrics
         .iter()
-        .filter_map(|metric| metric.excess_ratio)
-        .map(|ratio| ratio.clamp(1.0, 2.0))
+        .filter_map(|metric| metric.normalized)
         .max_by(f64::total_cmp)
-        .unwrap_or(1.0)
+        .unwrap_or(0.20);
+    (strongest * 100.0).clamp(0.0, 100.0)
 }
 
-fn spread_factor(related_locations: &[RelatedLocation]) -> f64 {
+fn spread_score(related_locations: &[RelatedLocation]) -> f64 {
     let unique_related_files = related_locations
         .iter()
         .map(|location| location.path.as_str())
         .collect::<std::collections::BTreeSet<_>>()
         .len();
-    1.0 + (0.05 * unique_related_files.saturating_sub(1) as f64).min(0.30)
+    if unique_related_files <= 1 {
+        return 0.0;
+    }
+
+    let file_spread = (unique_related_files as f64).ln_1p() / 8.0_f64.ln_1p();
+    (35.0 + file_spread * 50.0).min(85.0)
 }
 
 pub fn default_confidence(kind: FindingKind) -> f64 {
     match kind {
         FindingKind::SimilarFunctions => 0.85,
-        FindingKind::RepeatedLiteral
-        | FindingKind::RepeatedErrorPattern
+        FindingKind::RepeatedErrorPattern
         | FindingKind::TestDuplication
         | FindingKind::DataClump
         | FindingKind::ConfigKeyDrift
         | FindingKind::FixtureFactoryDrift => 0.85,
+        FindingKind::RepeatedLiteral => 0.75,
         FindingKind::DuplicateTypeShape | FindingKind::AdapterBoundaryBypass => 0.80,
         FindingKind::GenericBucketDrift => 0.70,
         FindingKind::HappyPathOnlyTests => 0.60,
@@ -257,34 +326,231 @@ pub fn default_confidence(kind: FindingKind) -> f64 {
     }
 }
 
-fn base_weight(kind: FindingKind) -> f64 {
+fn impact_score(kind: FindingKind) -> f64 {
     match kind {
-        FindingKind::DebtMarker => 20.0,
-        FindingKind::RepeatedLiteral
-        | FindingKind::HappyPathOnlyTests
-        | FindingKind::FileNamingDrift
-        | FindingKind::ShadowedAbstraction
-        | FindingKind::ConfigKeyDrift
-        | FindingKind::FixtureFactoryDrift => 35.0,
-        FindingKind::LargeFile
-        | FindingKind::LargeDirectory
-        | FindingKind::LongFunction
+        FindingKind::DebtMarker => 25.0,
+        FindingKind::RepeatedLiteral | FindingKind::FileNamingDrift => 40.0,
+        FindingKind::HappyPathOnlyTests | FindingKind::ShadowedAbstraction => 45.0,
+        FindingKind::ConfigKeyDrift | FindingKind::FixtureFactoryDrift => 50.0,
+        FindingKind::LargeFile | FindingKind::LargeDirectory => 65.0,
+        FindingKind::LongFunction
         | FindingKind::DeepNesting
         | FindingKind::ManyParameters
-        | FindingKind::LargeType
-        | FindingKind::LargePublicSurface
-        | FindingKind::ImportHeavyFile
-        | FindingKind::RepeatedErrorPattern
+        | FindingKind::LargeType => 70.0,
+        FindingKind::LargePublicSurface | FindingKind::ImportHeavyFile => 60.0,
+        FindingKind::RepeatedErrorPattern
         | FindingKind::TestDuplication
         | FindingKind::DirectoryDrift
         | FindingKind::DataClump
         | FindingKind::DuplicateTypeShape
-        | FindingKind::GenericBucketDrift => 45.0,
-        FindingKind::ComplexFunction
+        | FindingKind::GenericBucketDrift => 65.0,
+        FindingKind::ComplexFunction => 90.0,
+        FindingKind::SimilarFunctions
+        | FindingKind::ParallelImplementation
+        | FindingKind::AdapterBoundaryBypass => 80.0,
+    }
+}
+
+fn actionability_score(kind: FindingKind) -> f64 {
+    match kind {
+        FindingKind::RepeatedLiteral | FindingKind::HappyPathOnlyTests => 45.0,
+        FindingKind::DebtMarker | FindingKind::FileNamingDrift | FindingKind::DirectoryDrift => {
+            60.0
+        }
+        FindingKind::ShadowedAbstraction
+        | FindingKind::ConfigKeyDrift
+        | FindingKind::FixtureFactoryDrift
+        | FindingKind::GenericBucketDrift => 65.0,
+        FindingKind::RepeatedErrorPattern | FindingKind::TestDuplication => 70.0,
+        FindingKind::LargeDirectory
+        | FindingKind::ImportHeavyFile
+        | FindingKind::LargePublicSurface
+        | FindingKind::DataClump => 75.0,
+        FindingKind::LargeFile
+        | FindingKind::LongFunction
+        | FindingKind::ComplexFunction
+        | FindingKind::DeepNesting
+        | FindingKind::ManyParameters
+        | FindingKind::LargeType
         | FindingKind::SimilarFunctions
         | FindingKind::ParallelImplementation
-        | FindingKind::AdapterBoundaryBypass => 60.0,
+        | FindingKind::DuplicateTypeShape
+        | FindingKind::AdapterBoundaryBypass => 85.0,
     }
+}
+
+fn metric_dimension(kind: FindingKind, metric_name: &str) -> MetricDimension {
+    match kind {
+        FindingKind::LargeFile
+        | FindingKind::LargeDirectory
+        | FindingKind::LongFunction
+        | FindingKind::LargeType => MetricDimension::Size,
+        FindingKind::ComplexFunction | FindingKind::DeepNesting | FindingKind::ManyParameters => {
+            MetricDimension::Complexity
+        }
+        FindingKind::LargePublicSurface
+        | FindingKind::ImportHeavyFile
+        | FindingKind::AdapterBoundaryBypass => MetricDimension::Coupling,
+        FindingKind::SimilarFunctions
+        | FindingKind::RepeatedLiteral
+        | FindingKind::RepeatedErrorPattern
+        | FindingKind::DataClump
+        | FindingKind::DuplicateTypeShape => MetricDimension::Duplication,
+        FindingKind::TestDuplication | FindingKind::HappyPathOnlyTests => MetricDimension::TestRisk,
+        FindingKind::FileNamingDrift
+        | FindingKind::DirectoryDrift
+        | FindingKind::ParallelImplementation
+        | FindingKind::ShadowedAbstraction
+        | FindingKind::ConfigKeyDrift
+        | FindingKind::FixtureFactoryDrift
+        | FindingKind::GenericBucketDrift => MetricDimension::Drift,
+        FindingKind::DebtMarker => match metric_name {
+            "imports" | "public_items" => MetricDimension::Coupling,
+            "function_complexity" | "nesting_depth" | "function_parameters" => {
+                MetricDimension::Complexity
+            }
+            _ => MetricDimension::Size,
+        },
+    }
+}
+
+fn normalized_threshold_excess(ratio: f64) -> f64 {
+    let ratio = ratio.max(0.0);
+    if ratio <= 1.0 {
+        return 0.35;
+    }
+
+    let log_component = ratio.ln_1p() / 5.0_f64.ln_1p();
+    (0.35 + (log_component * 0.65)).clamp(0.35, 1.0)
+}
+
+fn rank_reason(
+    kind: FindingKind,
+    breakdown: &ScoreBreakdown,
+    related_locations: &[RelatedLocation],
+) -> String {
+    let mut reasons = Vec::new();
+    reasons.push(match primary_dimension(kind) {
+        MetricDimension::Size => "high size",
+        MetricDimension::Complexity => "high complexity",
+        MetricDimension::Coupling => "coupling pressure",
+        MetricDimension::Duplication => "duplication signal",
+        MetricDimension::Drift => "drift signal",
+        MetricDimension::TestRisk => "test-risk signal",
+    });
+
+    if unique_related_file_count(related_locations) > 1 {
+        reasons.push("cross-file spread");
+    }
+
+    if breakdown.confidence >= 0.85 {
+        reasons.push("high confidence");
+    } else if breakdown.confidence >= 0.65 {
+        reasons.push("medium confidence");
+    } else {
+        reasons.push("low confidence");
+    }
+
+    if breakdown.actionability < 60.0 {
+        reasons.push("lower actionability");
+    }
+
+    reasons.join(", ")
+}
+
+fn primary_dimension(kind: FindingKind) -> MetricDimension {
+    metric_dimension(kind, "")
+}
+
+fn unique_related_file_count(related_locations: &[RelatedLocation]) -> usize {
+    related_locations
+        .iter()
+        .map(|location| location.path.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+}
+
+fn finalize_scoring(findings: &mut [Finding]) {
+    let percentile_values = percentile_metric_values(findings);
+
+    for finding in findings {
+        for metric in &mut finding.metrics {
+            metric.dimension = metric_dimension(finding.kind, &metric.name);
+            let threshold_normalized = metric
+                .excess_ratio
+                .map(normalized_threshold_excess)
+                .unwrap_or(0.20);
+            metric.normalized = Some(normalized_metric_value(
+                metric,
+                threshold_normalized,
+                &percentile_values,
+            ));
+        }
+
+        finding.score_breakdown = score_breakdown(
+            finding.kind,
+            &finding.metrics,
+            finding.confidence,
+            &finding.related_locations,
+        );
+        finding.score = priority_score_from_breakdown(&finding.score_breakdown);
+        finding.severity = severity_for_score(finding.score);
+        finding.rank_reason = rank_reason(
+            finding.kind,
+            &finding.score_breakdown,
+            &finding.related_locations,
+        );
+    }
+}
+
+fn percentile_metric_values(findings: &[Finding]) -> BTreeMap<String, Vec<usize>> {
+    let mut values = BTreeMap::<String, Vec<usize>>::new();
+
+    for finding in findings {
+        for metric in &finding.metrics {
+            let dimension = metric_dimension(finding.kind, &metric.name);
+            if matches!(
+                dimension,
+                MetricDimension::Size | MetricDimension::Complexity
+            ) {
+                values
+                    .entry(metric.name.clone())
+                    .or_default()
+                    .push(metric.value);
+            }
+        }
+    }
+
+    for values in values.values_mut() {
+        values.sort_unstable();
+    }
+
+    values
+}
+
+fn normalized_metric_value(
+    metric: &FindingMetric,
+    threshold_normalized: f64,
+    percentile_values: &BTreeMap<String, Vec<usize>>,
+) -> f64 {
+    if !matches!(
+        metric.dimension,
+        MetricDimension::Size | MetricDimension::Complexity
+    ) {
+        return threshold_normalized;
+    }
+
+    let Some(values) = percentile_values.get(&metric.name) else {
+        return threshold_normalized;
+    };
+
+    if values.len() < PERCENTILE_MIN_SAMPLE {
+        return threshold_normalized;
+    }
+
+    let rank = values.partition_point(|value| *value <= metric.value);
+    let percentile = rank as f64 / values.len() as f64;
+    ((threshold_normalized * 0.65) + (percentile * 0.35)).clamp(0.0, 1.0)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -533,6 +799,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         signals.scan_agent_drift_signals();
         signals.scan_similarity_signals()?
     };
+    finalize_scoring(&mut scan.findings);
 
     let summary = ScanSummary {
         scanned_files: scan.stats.source_files_scanned,

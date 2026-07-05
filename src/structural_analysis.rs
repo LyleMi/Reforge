@@ -271,11 +271,84 @@ fn normalize_literal(text: &str) -> Option<String> {
     let unquoted = trimmed
         .trim_start_matches(['r', 'b', 'f', 'u'])
         .trim_matches(['"', '\'', '`']);
-    if unquoted.len() < 5 {
+    if unquoted.len() < 5 || is_ignored_repeated_literal(unquoted) {
         None
     } else {
         Some(unquoted.to_string())
     }
+}
+
+fn is_ignored_repeated_literal(literal: &str) -> bool {
+    let normalized = literal.trim().to_ascii_lowercase();
+    matches!(
+        normalized.as_str(),
+        "line"
+            | "lines"
+            | "occurrence"
+            | "occurrences"
+            | "group"
+            | "group_size"
+            | "score"
+            | "confidence"
+            | "severity"
+            | "threshold"
+            | "metrics"
+            | "metric"
+            | "imports"
+            | "concept"
+            | "concepts"
+            | "function"
+            | "functions"
+            | "parameter"
+            | "parameters"
+            | "schema_version"
+            | "related_locations"
+            | "source files"
+            | "source file"
+            | "findings"
+            | "finding"
+    )
+}
+
+fn repeated_literal_confidence(literal: &str, locations: &[Occurrence]) -> f64 {
+    let normalized = literal.to_ascii_lowercase();
+    let weak_text = contains_report_or_fixture_text(&normalized)
+        || locations
+            .iter()
+            .all(|location| is_test_source(Path::new(&location.path)));
+
+    if weak_text {
+        0.55
+    } else if crosses_files(locations) {
+        0.80
+    } else {
+        0.65
+    }
+}
+
+fn contains_report_or_fixture_text(literal: &str) -> bool {
+    [
+        "report",
+        "schema",
+        "fixture",
+        "mock",
+        "snapshot",
+        "expected",
+        "actual",
+        "should",
+        "test ",
+    ]
+    .iter()
+    .any(|word| literal.contains(word))
+}
+
+fn crosses_files(locations: &[Occurrence]) -> bool {
+    locations
+        .iter()
+        .map(|location| location.path.as_str())
+        .collect::<BTreeSet<_>>()
+        .len()
+        > 1
 }
 
 fn is_error_pattern_node(node: Node<'_>, traversal: StructureTraversal<'_>) -> bool {
@@ -814,19 +887,33 @@ fn group_occurrences(
                     name: occurrence.name.clone(),
                 })
                 .collect::<Vec<_>>();
-        findings.push(crate::scanner::finding(
-            kind,
-            representative.path.clone(),
-            Some(representative.line),
-            message(&key, group.len()),
-            vec![FindingMetric::threshold(
-                "group_size",
-                group.len(),
-                min_occurrences,
-                "occurrences",
-            )],
-            related_locations,
-        ));
+        let metrics = vec![FindingMetric::threshold(
+            "group_size",
+            group.len(),
+            min_occurrences,
+            "occurrences",
+        )];
+        let finding = if kind == FindingKind::RepeatedLiteral {
+            crate::scanner::scored_finding(
+                kind,
+                representative.path.clone(),
+                Some(representative.line),
+                message(&key, group.len()),
+                metrics,
+                repeated_literal_confidence(&key, &group),
+                related_locations,
+            )
+        } else {
+            crate::scanner::finding(
+                kind,
+                representative.path.clone(),
+                Some(representative.line),
+                message(&key, group.len()),
+                metrics,
+                related_locations,
+            )
+        };
+        findings.push(finding);
     }
 
     findings

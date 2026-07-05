@@ -8,7 +8,7 @@
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
   <img alt="MSRV" src="https://img.shields.io/badge/MSRV-1.85-2f855a">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-77%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-76%20passing-brightgreen">
   <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20json%20%7C%20yaml-6b46c1">
 </p>
 
@@ -76,10 +76,11 @@ reforge scan D:\path\to\project
 
 ## What Reforge Detects
 
-Reforge reports findings as `info`, `warning`, or `critical`. Threshold-based
-findings become critical when they exceed the configured threshold by at least
-2x. Repeated or drift-style findings generally start as info and increase in
-severity as the group grows.
+Reforge reports findings as `info`, `warning`, or `critical` priority. The
+score is a 0-100 refactoring priority, not a defect probability. It combines
+the signal's maintenance impact, threshold intensity, cross-file spread,
+detector confidence, and actionability. Priority bands are `info` below 35,
+`warning` from 35 through 69, and `critical` from 70 upward.
 
 Core scan signals:
 
@@ -173,10 +174,11 @@ Signals
   Large files: 2
 ```
 
-Human output includes a summary, signal counts, and grouped findings. JSON and
-YAML output keep the full group size in `magnitude`; very large
-similar-function groups include representative `related_locations` so reports
-stay bounded.
+Human output includes a summary, signal counts, grouped findings, and a short
+reason for each ranking. JSON and YAML use schema version 3, preserve the
+existing finding fields, and add `metrics[].dimension`, `metrics[].normalized`,
+`score_breakdown`, and `rank_reason`. Very large similar-function groups
+include representative `related_locations` so reports stay bounded.
 
 ## CLI Reference
 
@@ -223,7 +225,7 @@ is currently no separate `tests/` directory.
 
 ## Roadmap
 
-- Score refactoring signals by severity and confidence.
-- Add more machine-readable report fields.
 - Broaden Tree-sitter structural support beyond Rust, JavaScript/TypeScript,
   Python, and Go.
+- Add richer repository-distribution context for priority scoring.
+- Expand drift checks for framework-specific boundaries and generated code.

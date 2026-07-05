@@ -34,10 +34,10 @@ fn large_file(path: &str, lines: usize) -> Finding {
 
 #[test]
 fn maps_score_to_severity() {
-    assert_eq!(severity_for_score(39), Severity::Info);
-    assert_eq!(severity_for_score(40), Severity::Warning);
-    assert_eq!(severity_for_score(74), Severity::Warning);
-    assert_eq!(severity_for_score(75), Severity::Critical);
+    assert_eq!(severity_for_score(34), Severity::Info);
+    assert_eq!(severity_for_score(35), Severity::Warning);
+    assert_eq!(severity_for_score(69), Severity::Warning);
+    assert_eq!(severity_for_score(70), Severity::Critical);
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn spread_factor_increases_score_for_cross_file_groups() {
 
 #[test]
 fn large_type_scores_from_strongest_metric() {
-    let finding = make_finding(
+    let moderate = make_finding(
         FindingKind::LargeType,
         "src/types.rs",
         Some(1),
@@ -103,9 +103,21 @@ fn large_type_scores_from_strongest_metric() {
         ],
         Vec::new(),
     );
+    let severe = make_finding(
+        FindingKind::LargeType,
+        "src/types.rs",
+        Some(1),
+        "large type",
+        vec![
+            FindingMetric::threshold("type_lines", 260, 250, "lines"),
+            FindingMetric::threshold("type_members", 120, 30, "members"),
+        ],
+        Vec::new(),
+    );
 
-    assert_eq!(finding.score, 90);
-    assert_eq!(finding.severity, Severity::Critical);
+    assert!(severe.score > moderate.score);
+    assert_eq!(moderate.severity, Severity::Warning);
+    assert_eq!(severe.severity, Severity::Critical);
 }
 
 #[test]
@@ -151,9 +163,10 @@ fn human_report_sorts_by_score_and_renders_score_confidence_and_metrics() {
     let info_index = output.find("src/info.rs:3").unwrap();
     assert!(critical_index < warning_index);
     assert!(warning_index < info_index);
-    assert!(output.contains("[critical score=100 confidence=1.00]"));
-    assert!(output.contains("[warning score=68 confidence=1.00]"));
+    assert!(output.contains("[critical score=76 confidence=1.00]"));
+    assert!(output.contains("[warning score=61 confidence=1.00]"));
     assert!(output.contains("file_lines=1200/800 lines"));
+    assert!(output.contains("high complexity, high confidence"));
 }
 
 #[test]
@@ -161,11 +174,11 @@ fn renders_colored_human_report_when_enabled() {
     let output = render_human_report_colored(&report(vec![large_file("src/a.rs", 900)]), true);
 
     assert!(output.contains("\u{1b}[1;36mReforge scan report\u{1b}[0m"));
-    assert!(output.contains("\u{1b}[33m[warning score=51 confidence=1.00]\u{1b}[0m"));
+    assert!(output.contains("\u{1b}[33m[warning score=60 confidence=1.00]\u{1b}[0m"));
 }
 
 #[test]
-fn renders_json_report_schema_v2_without_magnitude() {
+fn renders_json_report_schema_v3_with_score_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
@@ -182,11 +195,21 @@ fn renders_json_report_schema_v2_without_magnitude() {
     let value: serde_json::Value =
         serde_json::from_str(&serde_json::to_string(&scan_report).unwrap()).unwrap();
 
-    assert_eq!(value["schema_version"], 2);
+    assert_eq!(value["schema_version"], 3);
     assert_eq!(value["summary"]["scanned_files"], 2);
     assert_eq!(value["findings"][0]["kind"], "similar_functions");
     assert_eq!(value["findings"][0]["metrics"][0]["name"], "group_size");
-    assert_eq!(value["findings"][0]["score"], 51);
+    assert_eq!(
+        value["findings"][0]["metrics"][0]["dimension"],
+        "duplication"
+    );
+    assert!(value["findings"][0]["metrics"][0]["normalized"].is_number());
+    assert_eq!(value["findings"][0]["score"], 50);
+    assert!(value["findings"][0]["score_breakdown"]["impact"].is_number());
+    assert_eq!(
+        value["findings"][0]["rank_reason"],
+        "duplication signal, high confidence"
+    );
     assert!(value["findings"][0].get("magnitude").is_none());
 }
 
@@ -230,7 +253,7 @@ fn writes_json_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&output).unwrap()["schema_version"],
-        2
+        3
     );
 }
 
@@ -244,6 +267,6 @@ fn writes_yaml_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_yaml::from_str::<serde_yaml::Value>(&output).unwrap()["schema_version"],
-        2
+        3
     );
 }
