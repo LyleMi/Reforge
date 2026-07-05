@@ -804,5 +804,5 @@ fn similar_function_finding(
 }
 
 #[cfg(test)]
-#[path = "similar_functions_tests.rs"]
+#[path = "../similar_functions_tests.rs"]
 mod tests;

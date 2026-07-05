@@ -720,4 +720,10 @@ fn groups_to_findings(
     findings
 }
 
-include!("agent_drift_analysis.rs");
+mod analysis;
+
+use analysis::*;
+
+#[cfg(test)]
+#[path = "../../agent_drift_tests.rs"]
+mod tests;

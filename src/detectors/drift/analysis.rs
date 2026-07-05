@@ -1,20 +1,22 @@
-fn parallel_implementation_message(key: &str, count: usize) -> String {
+﻿use super::*;
+
+pub(super) fn parallel_implementation_message(key: &str, count: usize) -> String {
     format!("capability `{key}` has {count} parallel-looking implementations")
 }
 
-fn shadowed_abstraction_message(key: &str, count: usize) -> String {
+pub(super) fn shadowed_abstraction_message(key: &str, count: usize) -> String {
     format!("helper abstraction `{key}` is shadowed in {count} locations")
 }
 
-fn config_key_drift_message(key: &str, count: usize) -> String {
+pub(super) fn config_key_drift_message(key: &str, count: usize) -> String {
     format!("config or route key {key:?} appears in {count} locations")
 }
 
-fn fixture_factory_drift_message(key: &str, count: usize) -> String {
+pub(super) fn fixture_factory_drift_message(key: &str, count: usize) -> String {
     format!("test fixture factory concept `{key}` appears in {count} locations")
 }
 
-fn boundary_inventory(files: &[SourceFile]) -> BoundaryInventory {
+pub(super) fn boundary_inventory(files: &[SourceFile]) -> BoundaryInventory {
     let mut inventory = BoundaryInventory::default();
 
     for file in files {
@@ -48,7 +50,7 @@ fn boundary_inventory(files: &[SourceFile]) -> BoundaryInventory {
     inventory
 }
 
-fn is_boundary_file(path: &Path, kind: BypassKind) -> bool {
+pub(super) fn is_boundary_file(path: &Path, kind: BypassKind) -> bool {
     let words = path_words(path);
     match kind {
         BypassKind::Http => words
@@ -67,7 +69,7 @@ fn is_boundary_file(path: &Path, kind: BypassKind) -> bool {
 }
 
 impl BoundaryInventory {
-    fn has(self, kind: BypassKind) -> bool {
+    pub(super) fn has(self, kind: BypassKind) -> bool {
         match kind {
             BypassKind::Http => self.http,
             BypassKind::Config => self.config,
@@ -78,7 +80,7 @@ impl BoundaryInventory {
 }
 
 impl BypassKind {
-    fn label(self) -> &'static str {
+    pub(super) fn label(self) -> &'static str {
         match self {
             BypassKind::Http => "HTTP",
             BypassKind::Config => WORD_CONFIG,
@@ -88,7 +90,7 @@ impl BypassKind {
     }
 }
 
-fn function_or_class_name(line: &str) -> Option<String> {
+pub(super) fn function_or_class_name(line: &str) -> Option<String> {
     let line = strip_line_comment(line)
         .trim()
         .trim_start_matches("export ");
@@ -132,7 +134,7 @@ fn function_or_class_name(line: &str) -> Option<String> {
     None
 }
 
-fn type_start(line: &str) -> Option<(String, bool)> {
+pub(super) fn type_start(line: &str) -> Option<(String, bool)> {
     let trimmed = strip_line_comment(line)
         .trim()
         .trim_start_matches("export ");
@@ -162,14 +164,14 @@ fn type_start(line: &str) -> Option<(String, bool)> {
     None
 }
 
-fn field_names_from_line(line: &str) -> Vec<String> {
+pub(super) fn field_names_from_line(line: &str) -> Vec<String> {
     strip_line_comment(line)
         .split([',', ';'])
         .filter_map(field_name_from_segment)
         .collect()
 }
 
-fn field_name_from_segment(segment: &str) -> Option<String> {
+pub(super) fn field_name_from_segment(segment: &str) -> Option<String> {
     let mut segment = segment.trim().trim_end_matches(',').trim();
     if let Some((_, after_brace)) = segment.rsplit_once('{') {
         segment = after_brace.trim();
@@ -220,7 +222,7 @@ fn field_name_from_segment(segment: &str) -> Option<String> {
     None
 }
 
-fn identifier_before(rest: &str, delimiter: char) -> Option<String> {
+pub(super) fn identifier_before(rest: &str, delimiter: char) -> Option<String> {
     rest.split(delimiter)
         .next()
         .map(str::trim)
@@ -228,7 +230,7 @@ fn identifier_before(rest: &str, delimiter: char) -> Option<String> {
         .map(ToString::to_string)
 }
 
-fn identifier_before_any(rest: &str, delimiters: &[char]) -> Option<String> {
+pub(super) fn identifier_before_any(rest: &str, delimiters: &[char]) -> Option<String> {
     let position = rest
         .char_indices()
         .find_map(|(index, character)| delimiters.contains(&character).then_some(index))
@@ -237,7 +239,7 @@ fn identifier_before_any(rest: &str, delimiters: &[char]) -> Option<String> {
     is_valid_identifier(name).then(|| name.to_string())
 }
 
-fn is_valid_identifier(name: &str) -> bool {
+pub(super) fn is_valid_identifier(name: &str) -> bool {
     let mut chars = name.chars();
     chars
         .next()
@@ -245,11 +247,11 @@ fn is_valid_identifier(name: &str) -> bool {
         && chars.all(is_identifier_char)
 }
 
-fn is_identifier_char(character: char) -> bool {
+pub(super) fn is_identifier_char(character: char) -> bool {
     character == '_' || character == '-' || character.is_ascii_alphanumeric()
 }
 
-fn is_valid_field_name(name: &str) -> bool {
+pub(super) fn is_valid_field_name(name: &str) -> bool {
     is_valid_identifier(name)
         && !matches!(
             name,
@@ -269,7 +271,7 @@ fn is_valid_field_name(name: &str) -> bool {
         )
 }
 
-fn string_literals(line: &str) -> Vec<String> {
+pub(super) fn string_literals(line: &str) -> Vec<String> {
     let mut literals = Vec::new();
     let mut chars = line.char_indices().peekable();
 
@@ -306,7 +308,7 @@ fn string_literals(line: &str) -> Vec<String> {
     literals
 }
 
-fn constant_keys(line: &str) -> Vec<String> {
+pub(super) fn constant_keys(line: &str) -> Vec<String> {
     let trimmed = strip_line_comment(line).trim();
     let lowered = trimmed.to_ascii_lowercase();
     if !contains_any(&lowered, &["const ", "static ", "const_", "public const"]) {
@@ -320,7 +322,7 @@ fn constant_keys(line: &str) -> Vec<String> {
         .collect()
 }
 
-fn is_config_key(value: &str) -> bool {
+pub(super) fn is_config_key(value: &str) -> bool {
     if value.len() < 4 {
         return false;
     }
@@ -341,7 +343,7 @@ fn is_config_key(value: &str) -> bool {
         .any(|word| lowered.split('_').any(|part| part == *word))
 }
 
-fn field_overlap(left: &BTreeSet<String>, right: &BTreeSet<String>) -> f64 {
+pub(super) fn field_overlap(left: &BTreeSet<String>, right: &BTreeSet<String>) -> f64 {
     let common = left.intersection(right).count();
     if common < 3 {
         return 0.0;
@@ -349,7 +351,7 @@ fn field_overlap(left: &BTreeSet<String>, right: &BTreeSet<String>) -> f64 {
     common as f64 / left.len().max(right.len()) as f64
 }
 
-fn shared_fields(group: &[TypeShape]) -> Vec<String> {
+pub(super) fn shared_fields(group: &[TypeShape]) -> Vec<String> {
     let mut fields = group
         .first()
         .map(|shape| shape.fields.clone())
@@ -363,7 +365,7 @@ fn shared_fields(group: &[TypeShape]) -> Vec<String> {
     fields.into_iter().collect()
 }
 
-fn concept_key(words: &[String], stop_words: &[&str], max_words: usize) -> String {
+pub(super) fn concept_key(words: &[String], stop_words: &[&str], max_words: usize) -> String {
     let mut concepts = Vec::new();
     for word in words {
         let normalized = normalize_word(word);
@@ -381,7 +383,7 @@ fn concept_key(words: &[String], stop_words: &[&str], max_words: usize) -> Strin
     concepts.join(" ")
 }
 
-fn split_identifier_words(identifier: &str) -> Vec<String> {
+pub(super) fn split_identifier_words(identifier: &str) -> Vec<String> {
     let mut words = Vec::new();
     let mut current = String::new();
     let mut previous_lowercase = false;
@@ -410,7 +412,7 @@ fn split_identifier_words(identifier: &str) -> Vec<String> {
     words
 }
 
-fn push_word(words: &mut Vec<String>, current: &mut String) {
+pub(super) fn push_word(words: &mut Vec<String>, current: &mut String) {
     if current.is_empty() {
         return;
     }
@@ -421,7 +423,7 @@ fn push_word(words: &mut Vec<String>, current: &mut String) {
     current.clear();
 }
 
-fn normalize_word(word: &str) -> String {
+pub(super) fn normalize_word(word: &str) -> String {
     let mut normalized = word
         .trim_matches(|character: char| !character.is_ascii_alphanumeric())
         .to_ascii_lowercase();
@@ -434,27 +436,27 @@ fn normalize_word(word: &str) -> String {
     normalized
 }
 
-fn is_useful_concept_word(word: &str) -> bool {
+pub(super) fn is_useful_concept_word(word: &str) -> bool {
     word.len() > 2
         && !STOP_WORDS.contains(&word)
         && !word.chars().all(|character| character.is_ascii_digit())
 }
 
-fn path_words(path: &Path) -> Vec<String> {
+pub(super) fn path_words(path: &Path) -> Vec<String> {
     path.components()
         .filter_map(|component| component.as_os_str().to_str())
         .flat_map(path_component_words_from_str)
         .collect()
 }
 
-fn path_component_words(path: &Path) -> Vec<String> {
+pub(super) fn path_component_words(path: &Path) -> Vec<String> {
     path.file_name()
         .and_then(|name| name.to_str())
         .map(path_component_words_from_str)
         .unwrap_or_default()
 }
 
-fn path_component_words_from_str(component: &str) -> Vec<String> {
+pub(super) fn path_component_words_from_str(component: &str) -> Vec<String> {
     let without_extension = component
         .rsplit_once('.')
         .map(|(stem, _)| stem)
@@ -462,11 +464,11 @@ fn path_component_words_from_str(component: &str) -> Vec<String> {
     split_identifier_words(without_extension)
 }
 
-fn normalize_path(path: &Path) -> String {
+pub(super) fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn strip_line_comment(line: &str) -> &str {
+pub(super) fn strip_line_comment(line: &str) -> &str {
     let slash = line.find("//");
     let hash = line.find('#');
     match (slash, hash) {
@@ -476,17 +478,17 @@ fn strip_line_comment(line: &str) -> &str {
     }
 }
 
-fn contains_any(haystack: &str, needles: &[&str]) -> bool {
+pub(super) fn contains_any(haystack: &str, needles: &[&str]) -> bool {
     needles.iter().any(|needle| haystack.contains(needle))
 }
 
-fn leading_spaces(line: &str) -> usize {
+pub(super) fn leading_spaces(line: &str) -> usize {
     line.chars()
         .take_while(|character| character.is_ascii_whitespace())
         .count()
 }
 
-fn brace_delta(line: &str) -> isize {
+pub(super) fn brace_delta(line: &str) -> isize {
     let mut delta = 0;
     for character in strip_line_comment(line).chars() {
         match character {
@@ -498,7 +500,7 @@ fn brace_delta(line: &str) -> isize {
     delta
 }
 
-fn related_location(occurrence: &Occurrence) -> RelatedLocation {
+pub(super) fn related_location(occurrence: &Occurrence) -> RelatedLocation {
     RelatedLocation {
         path: occurrence.path.clone(),
         line: occurrence.line,
@@ -506,10 +508,10 @@ fn related_location(occurrence: &Occurrence) -> RelatedLocation {
     }
 }
 
-const WORD_CONFIG: &str = "config";
-const WORD_FACTORY: &str = "factory";
+pub(super) const WORD_CONFIG: &str = "config";
+pub(super) const WORD_FACTORY: &str = "factory";
 
-const HTTP_BYPASS_PATTERNS: &[&str] = &[
+pub(super) const HTTP_BYPASS_PATTERNS: &[&str] = &[
     "fetch(",
     "axios.",
     "axios(",
@@ -520,7 +522,7 @@ const HTTP_BYPASS_PATTERNS: &[&str] = &[
     "http.client",
 ];
 
-const CONFIG_BYPASS_PATTERNS: &[&str] = &[
+pub(super) const CONFIG_BYPASS_PATTERNS: &[&str] = &[
     "process.env",
     "std::env::var",
     "env::var(",
@@ -529,7 +531,7 @@ const CONFIG_BYPASS_PATTERNS: &[&str] = &[
     "getenv(",
 ];
 
-const FILESYSTEM_BYPASS_PATTERNS: &[&str] = &[
+pub(super) const FILESYSTEM_BYPASS_PATTERNS: &[&str] = &[
     "fs.readfile",
     "fs.writfile",
     "fs.writefile",
@@ -539,7 +541,7 @@ const FILESYSTEM_BYPASS_PATTERNS: &[&str] = &[
     "read_to_string",
 ];
 
-const LOGGING_BYPASS_PATTERNS: &[&str] = &[
+pub(super) const LOGGING_BYPASS_PATTERNS: &[&str] = &[
     "console.log(",
     "println!(",
     "dbg!(",
@@ -548,7 +550,7 @@ const LOGGING_BYPASS_PATTERNS: &[&str] = &[
     "log.println(",
 ];
 
-const BYPASS_RULES: &[BypassRule] = &[
+pub(super) const BYPASS_RULES: &[BypassRule] = &[
     BypassRule {
         kind: BypassKind::Http,
         patterns: HTTP_BYPASS_PATTERNS,
@@ -571,7 +573,7 @@ const BYPASS_RULES: &[BypassRule] = &[
     },
 ];
 
-const PARALLEL_CAPABILITY_WORDS: &[&str] = &[
+pub(super) const PARALLEL_CAPABILITY_WORDS: &[&str] = &[
     "adapt",
     "adapter",
     "build",
@@ -587,12 +589,12 @@ const PARALLEL_CAPABILITY_WORDS: &[&str] = &[
     "validate",
 ];
 
-const PARALLEL_STOP_WORDS: &[&str] = &[
+pub(super) const PARALLEL_STOP_WORDS: &[&str] = &[
     "a", "and", "do", "for", "from", "get", "has", "is", "make", "new", "of", "set", "the", "to",
     "with",
 ];
 
-const SHADOW_HELPER_WORDS: &[&str] = &[
+pub(super) const SHADOW_HELPER_WORDS: &[&str] = &[
     "common",
     "helper",
     "helpers",
@@ -606,7 +608,7 @@ const SHADOW_HELPER_WORDS: &[&str] = &[
     WORD_FACTORY,
 ];
 
-const SHADOW_STOP_WORDS: &[&str] = &[
+pub(super) const SHADOW_STOP_WORDS: &[&str] = &[
     "common",
     "helper",
     "helpers",
@@ -621,7 +623,7 @@ const SHADOW_STOP_WORDS: &[&str] = &[
     "set",
 ];
 
-const FIXTURE_WORDS: &[&str] = &[
+pub(super) const FIXTURE_WORDS: &[&str] = &[
     "builder",
     "dummy",
     WORD_FACTORY,
@@ -633,16 +635,16 @@ const FIXTURE_WORDS: &[&str] = &[
     "test",
 ];
 
-const GENERIC_BUCKET_WORDS: &[&str] = &[
+pub(super) const GENERIC_BUCKET_WORDS: &[&str] = &[
     "common", "helper", "helpers", "lib", "misc", "shared", "util", "utils",
 ];
 
-const STOP_WORDS: &[&str] = &[
+pub(super) const STOP_WORDS: &[&str] = &[
     "api", "app", "cmd", "for", "from", "get", "has", "impl", "index", "main", "mod", "new", "old",
     "src", "test", "tests", "the", "this", "type", "use", "with",
 ];
 
-const CONFIG_KEY_WORDS: &[&str] = &[
+pub(super) const CONFIG_KEY_WORDS: &[&str] = &[
     "api",
     "auth",
     "base",
@@ -665,7 +667,7 @@ const CONFIG_KEY_WORDS: &[&str] = &[
     "url",
 ];
 
-const HTTP_BOUNDARY_WORDS: &[&str] = &[
+pub(super) const HTTP_BOUNDARY_WORDS: &[&str] = &[
     "adapter",
     "adapters",
     "api",
@@ -677,10 +679,10 @@ const HTTP_BOUNDARY_WORDS: &[&str] = &[
     "transport",
 ];
 
-const CONFIG_BOUNDARY_WORDS: &[&str] =
+pub(super) const CONFIG_BOUNDARY_WORDS: &[&str] =
     &[WORD_CONFIG, "configuration", "env", "setting", "settings"];
 
-const FS_BOUNDARY_WORDS: &[&str] = &[
+pub(super) const FS_BOUNDARY_WORDS: &[&str] = &[
     "dao",
     "file",
     "filesystem",
@@ -690,8 +692,5 @@ const FS_BOUNDARY_WORDS: &[&str] = &[
     "store",
 ];
 
-const LOG_BOUNDARY_WORDS: &[&str] = &["log", "logger", "logging", "telemetry", "trace", "tracing"];
-
-#[cfg(test)]
-#[path = "agent_drift_tests.rs"]
-mod tests;
+pub(super) const LOG_BOUNDARY_WORDS: &[&str] =
+    &["log", "logger", "logging", "telemetry", "trace", "tracing"];

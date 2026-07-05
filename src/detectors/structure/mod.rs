@@ -772,4 +772,10 @@ fn is_nesting_node(node: Node<'_>, family: LanguageFamily) -> bool {
     ) || (family == LanguageFamily::Python && kind == "elif_clause")
 }
 
-include!("structural_analysis.rs");
+mod analysis;
+
+use analysis::*;
+
+#[cfg(test)]
+#[path = "../../structural_tests.rs"]
+mod tests;

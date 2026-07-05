@@ -8,7 +8,7 @@
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
   <img alt="MSRV" src="https://img.shields.io/badge/MSRV-1.85-2f855a">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-83%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-86%20passing-brightgreen">
   <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20json%20%7C%20yaml-6b46c1">
 </p>
 
@@ -91,13 +91,17 @@ Reforge reports quality data in four layers:
   tree.
 - `metrics_summary`: project-level percentile distributions such as LOC,
   complexity, imports, and churn.
-- `hotspots`: model-ranked locations with `static_risk`, `churn_risk`, and a
-  0-100 score.
+- `hotspots`: model-ranked locations with `priority`, `static_risk`, and
+  `churn_risk`.
 - `findings`: actionable signals derived from raw metrics and pattern
   detectors.
 
-Scores are refactoring priority, not defect probability. Priority bands are
+Priority is refactoring priority, not defect probability. Priority bands are
 `info` below 35, `warning` from 35 through 69, and `critical` from 70 upward.
+Finding priority is calculated from weighted impact, metric intensity,
+cross-file spread, churn pressure, actionability, and detector confidence.
+Hotspots do not overwrite finding priority; matching function/type churn is a
+small ranking signal, while file-level churn is capped for line-level findings.
 
 Core scan signals:
 
@@ -184,12 +188,14 @@ cargo run -- scan . --output yaml --output-file reforge-report.yaml --progress n
 
 ```text
 Reforge scan report
-Scanned 15 files in 420 ms; 2 findings; 0 similar function groups.
+Scanned 15 files in 420 ms; 2 findings; 1 hotspots; 0 similar function groups.
 
 Summary
   Source files: 15
   Directories: 6
   Function candidates: 93
+  Hotspot model: hybrid
+  Churn: enabled
 
 Signals
   Critical: 0
@@ -199,10 +205,13 @@ Signals
 ```
 
 Human output includes a summary, signal counts, grouped findings, and a short
-reason for each ranking. JSON and YAML use schema version 4 and include
-`summary`, `metrics_summary`, `raw_metrics`, `hotspots`, and `findings`. Very
-large similar-function groups include representative `related_locations` so
-reports stay bounded.
+reason for each ranking. JSON and YAML use schema version 5 and include
+`summary`, `metrics_summary`, `raw_metrics`, `hotspots`, and `findings`.
+Findings expose `priority`, `confidence`, `priority_factors`,
+`rank_explanation`, `metrics`, and `related_locations`; legacy v4 fields
+`score`, `score_breakdown`, and `rank_reason` are not emitted. Very large
+similar-function groups include representative `related_locations` so reports
+stay bounded.
 
 ## Git Churn
 

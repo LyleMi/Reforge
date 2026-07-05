@@ -1,10 +1,36 @@
-mod agent_drift;
 mod cli;
-mod language;
-mod report;
-mod scanner;
-mod similar_functions;
-mod structural;
+mod detectors;
+mod lang;
+mod model;
+mod output;
+mod scan;
+mod scoring;
+
+mod agent_drift {
+    pub(crate) use crate::detectors::drift::*;
+}
+
+mod language {
+    pub(crate) use crate::lang::*;
+}
+
+mod report {
+    pub(crate) use crate::output::*;
+}
+
+mod scanner {
+    pub(crate) use crate::model::*;
+    pub(crate) use crate::scan::*;
+    pub(crate) use crate::scoring::*;
+}
+
+mod similar_functions {
+    pub(crate) use crate::detectors::similarity::*;
+}
+
+mod structural {
+    pub(crate) use crate::detectors::structure::*;
+}
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -12,8 +38,8 @@ use std::fs::File;
 use std::io::{BufWriter, ErrorKind, IsTerminal, Write};
 
 use crate::cli::{Cli, Command, OutputFormat, ScanArgs};
-use crate::scanner::ScanReport;
-use crate::scanner::{NoopProgress, StderrProgress};
+use crate::model::ScanReport;
+use crate::scan::{NoopProgress, StderrProgress};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();

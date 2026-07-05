@@ -2,7 +2,7 @@ use super::*;
 use crate::scanner::{
     ChurnSummary, FindingMetric, MetricsSummary, RawMetrics, RelatedLocation,
     SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary, finding as make_finding, scored_finding,
-    severity_for_score,
+    severity_for_priority,
 };
 
 fn report(findings: Vec<Finding>) -> ScanReport {
@@ -52,11 +52,11 @@ fn large_file(path: &str, lines: usize) -> Finding {
 }
 
 #[test]
-fn maps_score_to_severity() {
-    assert_eq!(severity_for_score(34), Severity::Info);
-    assert_eq!(severity_for_score(35), Severity::Warning);
-    assert_eq!(severity_for_score(69), Severity::Warning);
-    assert_eq!(severity_for_score(70), Severity::Critical);
+fn maps_priority_to_severity() {
+    assert_eq!(severity_for_priority(34), Severity::Info);
+    assert_eq!(severity_for_priority(35), Severity::Warning);
+    assert_eq!(severity_for_priority(69), Severity::Warning);
+    assert_eq!(severity_for_priority(70), Severity::Critical);
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn spread_factor_increases_score_for_cross_file_groups() {
         ],
     );
 
-    assert!(spread.score > local.score);
+    assert!(spread.priority > local.priority);
 }
 
 #[test]
@@ -134,9 +134,9 @@ fn large_type_scores_from_strongest_metric() {
         Vec::new(),
     );
 
-    assert!(severe.score > moderate.score);
+    assert!(severe.priority > moderate.priority);
     assert_eq!(moderate.severity, Severity::Warning);
-    assert_eq!(severe.severity, Severity::Critical);
+    assert_eq!(severe.severity, Severity::Warning);
 }
 
 #[test]
@@ -151,7 +151,7 @@ fn renders_empty_human_report_clearly() {
 }
 
 #[test]
-fn human_report_sorts_by_score_and_renders_score_confidence_and_metrics() {
+fn human_report_sorts_by_priority_and_renders_priority_confidence_and_metrics() {
     let critical = make_finding(
         FindingKind::ComplexFunction,
         "src/critical.rs",
@@ -182,8 +182,8 @@ fn human_report_sorts_by_score_and_renders_score_confidence_and_metrics() {
     let info_index = output.find("src/info.rs:3").unwrap();
     assert!(critical_index < warning_index);
     assert!(warning_index < info_index);
-    assert!(output.contains("[critical score=76 confidence=1.00]"));
-    assert!(output.contains("[warning score=61 confidence=1.00]"));
+    assert!(output.contains("[warning priority=58 confidence=1.00]"));
+    assert!(output.contains("[warning priority=48 confidence=1.00]"));
     assert!(output.contains("file_lines=1200/800 lines"));
     assert!(output.contains("high complexity, high confidence"));
 }
@@ -193,11 +193,11 @@ fn renders_colored_human_report_when_enabled() {
     let output = render_human_report_colored(&report(vec![large_file("src/a.rs", 900)]), true);
 
     assert!(output.contains("\u{1b}[1;36mReforge scan report\u{1b}[0m"));
-    assert!(output.contains("\u{1b}[33m[warning score=60 confidence=1.00]\u{1b}[0m"));
+    assert!(output.contains("\u{1b}[33m[warning priority=47 confidence=1.00]\u{1b}[0m"));
 }
 
 #[test]
-fn renders_json_report_schema_v4_with_score_metadata() {
+fn renders_json_report_schema_v5_with_priority_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
@@ -214,7 +214,7 @@ fn renders_json_report_schema_v4_with_score_metadata() {
     let value: serde_json::Value =
         serde_json::from_str(&serde_json::to_string(&scan_report).unwrap()).unwrap();
 
-    assert_eq!(value["schema_version"], 4);
+    assert_eq!(value["schema_version"], 5);
     assert_eq!(value["summary"]["scanned_files"], 2);
     assert_eq!(value["summary"]["hotspot_model"], "hybrid");
     assert!(value.get("metrics_summary").is_some());
@@ -227,10 +227,13 @@ fn renders_json_report_schema_v4_with_score_metadata() {
         "duplication"
     );
     assert!(value["findings"][0]["metrics"][0]["normalized"].is_number());
-    assert_eq!(value["findings"][0]["score"], 50);
-    assert!(value["findings"][0]["score_breakdown"]["impact"].is_number());
+    assert_eq!(value["findings"][0]["priority"], 37);
+    assert!(value["findings"][0]["priority_factors"]["impact"].is_number());
+    assert!(value["findings"][0]["score"].is_null());
+    assert!(value["findings"][0]["score_breakdown"].is_null());
+    assert!(value["findings"][0]["rank_reason"].is_null());
     assert_eq!(
-        value["findings"][0]["rank_reason"],
+        value["findings"][0]["rank_explanation"],
         "duplication signal, high confidence"
     );
     assert!(value["findings"][0].get("magnitude").is_none());
@@ -276,7 +279,7 @@ fn writes_json_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&output).unwrap()["schema_version"],
-        4
+        5
     );
 }
 
@@ -290,6 +293,6 @@ fn writes_yaml_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_yaml::from_str::<serde_yaml::Value>(&output).unwrap()["schema_version"],
-        4
+        5
     );
 }

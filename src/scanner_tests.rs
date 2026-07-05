@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
+use crate::model::{Hotspot, HotspotLevel, Severity};
 
 fn test_root(name: &str) -> std::path::PathBuf {
     let suffix = SystemTime::now()
@@ -445,6 +446,77 @@ fn hotspot_models_sort_differently() {
 
     assert_eq!(static_hotspots[0].path, "src/static.rs");
     assert_eq!(churn_hotspots[0].path, "src/churn.rs");
+}
+
+#[test]
+fn file_level_hotspot_only_weakly_influences_line_findings() {
+    let mut findings = vec![finding(
+        FindingKind::RepeatedLiteral,
+        "src/big.rs",
+        Some(42),
+        "literal is repeated",
+        vec![FindingMetric::threshold("group_size", 4, 4, "occurrences")],
+        Vec::new(),
+    )];
+    let base_priority = findings[0].priority;
+    let hotspots = vec![Hotspot {
+        level: HotspotLevel::File,
+        path: "src/big.rs".to_string(),
+        line: None,
+        name: None,
+        priority: 100,
+        severity: Severity::Critical,
+        static_risk: 100.0,
+        churn_risk: 100.0,
+        reason: "file churn".to_string(),
+    }];
+
+    finalize_scoring(&mut findings, &RawMetrics::default(), &hotspots);
+
+    assert_eq!(findings[0].priority_factors.change_pressure, 50.0);
+    assert!(findings[0].priority > base_priority);
+    assert!(findings[0].priority < hotspots[0].priority);
+}
+
+#[test]
+fn function_hotspot_takes_precedence_over_file_hotspot_for_same_line_finding() {
+    let mut findings = vec![finding(
+        FindingKind::LongFunction,
+        "src/hot.rs",
+        Some(10),
+        "function is long",
+        vec![FindingMetric::threshold("function_lines", 120, 80, "lines")],
+        Vec::new(),
+    )];
+    let hotspots = vec![
+        Hotspot {
+            level: HotspotLevel::File,
+            path: "src/hot.rs".to_string(),
+            line: None,
+            name: None,
+            priority: 100,
+            severity: Severity::Critical,
+            static_risk: 100.0,
+            churn_risk: 100.0,
+            reason: "file churn".to_string(),
+        },
+        Hotspot {
+            level: HotspotLevel::Function,
+            path: "src/hot.rs".to_string(),
+            line: Some(10),
+            name: Some("hot".to_string()),
+            priority: 80,
+            severity: Severity::Critical,
+            static_risk: 80.0,
+            churn_risk: 80.0,
+            reason: "function churn".to_string(),
+        },
+    ];
+
+    finalize_scoring(&mut findings, &RawMetrics::default(), &hotspots);
+
+    assert_eq!(findings[0].priority_factors.change_pressure, 80.0);
+    assert!(findings[0].rank_explanation.contains("high churn pressure"));
 }
 
 #[test]

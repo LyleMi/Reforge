@@ -3,7 +3,7 @@ use std::io::{self, Write};
 
 use anyhow::Result;
 
-use crate::scanner::{Finding, FindingKind, ScanReport, Severity};
+use crate::model::{Finding, FindingKind, ScanReport, Severity};
 
 const RELATED_LOCATION_LIMIT: usize = 3;
 
@@ -151,9 +151,9 @@ impl ReportRenderContext<'_> {
         self.output.push('\n');
         for hotspot in self.report.hotspots.iter().take(10) {
             self.output.push_str(&format!(
-                "  [{} score={}] {}{} - {}\n",
+                "  [{} priority={}] {}{} - {}\n",
                 hotspot.severity,
-                hotspot.score,
+                hotspot.priority,
                 hotspot.path,
                 hotspot
                     .line
@@ -214,8 +214,8 @@ fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
     let mut sorted = findings.iter().collect::<Vec<_>>();
     sorted.sort_by(|left, right| {
         right
-            .score
-            .cmp(&left.score)
+            .priority
+            .cmp(&left.priority)
             .then_with(|| left.path.cmp(&right.path))
             .then_with(|| left.line.cmp(&right.line))
     });
@@ -235,15 +235,15 @@ fn render_finding_line(finding: &Finding, color: bool) -> String {
         metrics
             .map(|metrics| format!(" ({metrics})"))
             .unwrap_or_default(),
-        render_rank_reason(finding)
+        render_rank_explanation(finding)
     )
 }
 
-fn render_rank_reason(finding: &Finding) -> String {
-    if finding.rank_reason.is_empty() {
+fn render_rank_explanation(finding: &Finding) -> String {
+    if finding.rank_explanation.is_empty() {
         String::new()
     } else {
-        format!(" - {}", finding.rank_reason)
+        format!(" - {}", finding.rank_explanation)
     }
 }
 
@@ -635,8 +635,8 @@ enum AnsiStyle {
 
 fn render_severity(finding: &Finding, color: bool) -> String {
     let label = format!(
-        "[{} score={} confidence={:.2}]",
-        finding.severity, finding.score, finding.confidence
+        "[{} priority={} confidence={:.2}]",
+        finding.severity, finding.priority, finding.confidence
     );
     let style = match finding.severity {
         Severity::Critical => AnsiStyle::Critical,
@@ -675,5 +675,5 @@ impl std::fmt::Display for Severity {
 }
 
 #[cfg(test)]
-#[path = "report_tests.rs"]
+#[path = "../report_tests.rs"]
 mod tests;

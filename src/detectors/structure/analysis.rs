@@ -1,4 +1,6 @@
-fn type_metric(node: Node<'_>, traversal: StructureTraversal<'_>) -> Option<TypeMetric> {
+use super::*;
+
+pub(super) fn type_metric(node: Node<'_>, traversal: StructureTraversal<'_>) -> Option<TypeMetric> {
     let kind = node.kind();
     let name_node = match traversal.family {
         LanguageFamily::Rust
@@ -34,7 +36,7 @@ fn type_metric(node: Node<'_>, traversal: StructureTraversal<'_>) -> Option<Type
     })
 }
 
-fn count_type_members(node: Node<'_>, family: LanguageFamily) -> usize {
+pub(super) fn count_type_members(node: Node<'_>, family: LanguageFamily) -> usize {
     let mut count = 0;
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
@@ -46,7 +48,7 @@ fn count_type_members(node: Node<'_>, family: LanguageFamily) -> usize {
     count
 }
 
-fn is_type_member(node: Node<'_>, family: LanguageFamily) -> bool {
+pub(super) fn is_type_member(node: Node<'_>, family: LanguageFamily) -> bool {
     let kind = node.kind();
     match family {
         LanguageFamily::Rust => matches!(
@@ -66,7 +68,7 @@ fn is_type_member(node: Node<'_>, family: LanguageFamily) -> bool {
     }
 }
 
-fn count_imports(root: Node<'_>, family: LanguageFamily) -> usize {
+pub(super) fn count_imports(root: Node<'_>, family: LanguageFamily) -> usize {
     let mut count = 0;
     let mut cursor = root.walk();
     for child in root.children(&mut cursor) {
@@ -89,7 +91,7 @@ fn count_imports(root: Node<'_>, family: LanguageFamily) -> usize {
     count
 }
 
-fn count_public_items(root: Node<'_>, traversal: StructureTraversal<'_>) -> usize {
+pub(super) fn count_public_items(root: Node<'_>, traversal: StructureTraversal<'_>) -> usize {
     let mut count = 0;
     let mut cursor = root.walk();
     for child in root.named_children(&mut cursor) {
@@ -108,7 +110,7 @@ fn count_public_items(root: Node<'_>, traversal: StructureTraversal<'_>) -> usiz
     count
 }
 
-fn rust_public_item(node: Node<'_>) -> bool {
+pub(super) fn rust_public_item(node: Node<'_>) -> bool {
     matches!(
         node.kind(),
         FUNCTION_ITEM
@@ -122,14 +124,17 @@ fn rust_public_item(node: Node<'_>) -> bool {
     ) && node.child_by_field_name("visibility").is_some()
 }
 
-fn should_skip_rust_test_module(node: Node<'_>, traversal: StructureTraversal<'_>) -> bool {
+pub(super) fn should_skip_rust_test_module(
+    node: Node<'_>,
+    traversal: StructureTraversal<'_>,
+) -> bool {
     traversal.family == LanguageFamily::Rust
         && !traversal.include_test_structure
         && node.kind() == "mod_item"
         && has_cfg_test_attribute(node, traversal.source)
 }
 
-fn has_cfg_test_attribute(node: Node<'_>, source: &str) -> bool {
+pub(super) fn has_cfg_test_attribute(node: Node<'_>, source: &str) -> bool {
     let mut end = node.start_byte().min(source.len());
     let bytes = source.as_bytes();
 
@@ -154,7 +159,7 @@ fn has_cfg_test_attribute(node: Node<'_>, source: &str) -> bool {
     }
 }
 
-fn is_cfg_test_attribute(attribute: &str) -> bool {
+pub(super) fn is_cfg_test_attribute(attribute: &str) -> bool {
     let compact = attribute
         .chars()
         .filter(|character| !character.is_whitespace())
@@ -175,7 +180,7 @@ fn is_cfg_test_attribute(attribute: &str) -> bool {
         || inner.ends_with(",test)")
 }
 
-fn python_public_item(node: Node<'_>, source: &str) -> bool {
+pub(super) fn python_public_item(node: Node<'_>, source: &str) -> bool {
     if !matches!(node.kind(), FUNCTION_DEFINITION | "class_definition") {
         return false;
     }
@@ -185,7 +190,7 @@ fn python_public_item(node: Node<'_>, source: &str) -> bool {
         .is_some_and(|name| !name.starts_with('_'))
 }
 
-fn go_public_item(node: Node<'_>, source: &str) -> bool {
+pub(super) fn go_public_item(node: Node<'_>, source: &str) -> bool {
     if !matches!(
         node.kind(),
         FUNCTION_DECLARATION | METHOD_DECLARATION | "type_declaration"
@@ -204,14 +209,14 @@ fn go_public_item(node: Node<'_>, source: &str) -> bool {
         .is_some_and(is_exported_go_identifier)
 }
 
-fn is_exported_go_identifier(name: &str) -> bool {
+pub(super) fn is_exported_go_identifier(name: &str) -> bool {
     name.chars()
         .next()
         .is_some_and(|character| character.is_uppercase())
 }
 
 impl StructureSignalCollector<'_, '_> {
-    fn collect_literal_occurrence(&mut self, node: Node<'_>) {
+    pub(super) fn collect_literal_occurrence(&mut self, node: Node<'_>) {
         if is_literal_node(node)
             && !has_literal_ancestor(node)
             && let Ok(text) = node.utf8_text(self.traversal.source.as_bytes())
@@ -223,7 +228,7 @@ impl StructureSignalCollector<'_, '_> {
         }
     }
 
-    fn collect_error_occurrence(&mut self, node: Node<'_>) {
+    pub(super) fn collect_error_occurrence(&mut self, node: Node<'_>) {
         if is_error_pattern_node(node, self.traversal)
             && let Ok(text) = node.utf8_text(self.traversal.source.as_bytes())
         {
@@ -234,7 +239,7 @@ impl StructureSignalCollector<'_, '_> {
     }
 }
 
-fn is_literal_node(node: Node<'_>) -> bool {
+pub(super) fn is_literal_node(node: Node<'_>) -> bool {
     let kind = node.kind();
     kind.contains("string")
         || kind.contains("number")
@@ -243,7 +248,7 @@ fn is_literal_node(node: Node<'_>) -> bool {
         || matches!(kind, "raw_string_literal" | "interpreted_string_literal")
 }
 
-fn has_literal_ancestor(mut node: Node<'_>) -> bool {
+pub(super) fn has_literal_ancestor(mut node: Node<'_>) -> bool {
     while let Some(parent) = node.parent() {
         if is_literal_node(parent) {
             return true;
@@ -254,7 +259,7 @@ fn has_literal_ancestor(mut node: Node<'_>) -> bool {
     false
 }
 
-fn normalize_literal(text: &str) -> Option<String> {
+pub(super) fn normalize_literal(text: &str) -> Option<String> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return None;
@@ -278,7 +283,7 @@ fn normalize_literal(text: &str) -> Option<String> {
     }
 }
 
-fn is_ignored_repeated_literal(literal: &str) -> bool {
+pub(super) fn is_ignored_repeated_literal(literal: &str) -> bool {
     let normalized = literal.trim().to_ascii_lowercase();
     matches!(
         normalized.as_str(),
@@ -310,7 +315,7 @@ fn is_ignored_repeated_literal(literal: &str) -> bool {
     )
 }
 
-fn repeated_literal_confidence(literal: &str, locations: &[Occurrence]) -> f64 {
+pub(super) fn repeated_literal_confidence(literal: &str, locations: &[Occurrence]) -> f64 {
     let normalized = literal.to_ascii_lowercase();
     let weak_text = contains_report_or_fixture_text(&normalized)
         || locations
@@ -326,23 +331,15 @@ fn repeated_literal_confidence(literal: &str, locations: &[Occurrence]) -> f64 {
     }
 }
 
-fn contains_report_or_fixture_text(literal: &str) -> bool {
+pub(super) fn contains_report_or_fixture_text(literal: &str) -> bool {
     [
-        "report",
-        "schema",
-        "fixture",
-        "mock",
-        "snapshot",
-        "expected",
-        "actual",
-        "should",
-        "test ",
+        "report", "schema", "fixture", "mock", "snapshot", "expected", "actual", "should", "test ",
     ]
     .iter()
     .any(|word| literal.contains(word))
 }
 
-fn crosses_files(locations: &[Occurrence]) -> bool {
+pub(super) fn crosses_files(locations: &[Occurrence]) -> bool {
     locations
         .iter()
         .map(|location| location.path.as_str())
@@ -351,7 +348,7 @@ fn crosses_files(locations: &[Occurrence]) -> bool {
         > 1
 }
 
-fn is_error_pattern_node(node: Node<'_>, traversal: StructureTraversal<'_>) -> bool {
+pub(super) fn is_error_pattern_node(node: Node<'_>, traversal: StructureTraversal<'_>) -> bool {
     let kind = node.kind();
     match traversal.family {
         LanguageFamily::JavaScriptTypeScript => kind == "catch_clause",
@@ -373,11 +370,19 @@ fn is_error_pattern_node(node: Node<'_>, traversal: StructureTraversal<'_>) -> b
     }
 }
 
-fn collect_test_setup_patterns(file: &SourceFile, node: Node<'_>, signals: &mut FileSignals) {
+pub(super) fn collect_test_setup_patterns(
+    file: &SourceFile,
+    node: Node<'_>,
+    signals: &mut FileSignals,
+) {
     walk_file_nodes(file, node, signals, collect_test_setup_occurrence);
 }
 
-fn collect_test_setup_occurrence(file: &SourceFile, node: Node<'_>, signals: &mut FileSignals) {
+pub(super) fn collect_test_setup_occurrence(
+    file: &SourceFile,
+    node: Node<'_>,
+    signals: &mut FileSignals,
+) {
     if matches!(node.kind(), "call_expression" | "call")
         && let Ok(text) = node.utf8_text(file.source.as_bytes())
     {
@@ -390,7 +395,7 @@ fn collect_test_setup_occurrence(file: &SourceFile, node: Node<'_>, signals: &mu
     }
 }
 
-fn walk_file_nodes(
+pub(super) fn walk_file_nodes(
     file: &SourceFile,
     node: Node<'_>,
     signals: &mut FileSignals,
@@ -403,7 +408,7 @@ fn walk_file_nodes(
     }
 }
 
-fn occurrence(file: &SourceFile, node: Node<'_>, name: Option<String>) -> Occurrence {
+pub(super) fn occurrence(file: &SourceFile, node: Node<'_>, name: Option<String>) -> Occurrence {
     Occurrence {
         path: file.display_path.clone(),
         line: node.start_position().row + 1,
@@ -411,7 +416,7 @@ fn occurrence(file: &SourceFile, node: Node<'_>, name: Option<String>) -> Occurr
     }
 }
 
-fn is_setup_pattern(pattern: &str) -> bool {
+pub(super) fn is_setup_pattern(pattern: &str) -> bool {
     pattern.contains("setup")
         || pattern.contains("fixture")
         || pattern.contains("mock")
@@ -421,7 +426,7 @@ fn is_setup_pattern(pattern: &str) -> bool {
         || pattern.contains("beforeall")
 }
 
-fn collect_happy_path_test_risk(
+pub(super) fn collect_happy_path_test_risk(
     file: &SourceFile,
     family: LanguageFamily,
     signals: &mut FileSignals,
@@ -439,7 +444,7 @@ fn collect_happy_path_test_risk(
     }
 }
 
-fn happy_path_test_findings(test_files: Vec<(usize, Vec<Occurrence>)>) -> Vec<Finding> {
+pub(super) fn happy_path_test_findings(test_files: Vec<(usize, Vec<Occurrence>)>) -> Vec<Finding> {
     test_files
         .into_iter()
         .filter_map(|(test_count, locations)| {
@@ -458,7 +463,7 @@ fn happy_path_test_findings(test_files: Vec<(usize, Vec<Occurrence>)>) -> Vec<Fi
         .collect()
 }
 
-fn test_case_occurrences(file: &SourceFile, family: LanguageFamily) -> Vec<Occurrence> {
+pub(super) fn test_case_occurrences(file: &SourceFile, family: LanguageFamily) -> Vec<Occurrence> {
     file.source
         .lines()
         .enumerate()
@@ -477,7 +482,7 @@ fn test_case_occurrences(file: &SourceFile, family: LanguageFamily) -> Vec<Occur
         .collect()
 }
 
-fn is_test_case_line(line: &str, family: LanguageFamily) -> bool {
+pub(super) fn is_test_case_line(line: &str, family: LanguageFamily) -> bool {
     match family {
         LanguageFamily::Rust => {
             line.starts_with("#[test]")
@@ -497,7 +502,7 @@ fn is_test_case_line(line: &str, family: LanguageFamily) -> bool {
     }
 }
 
-fn test_case_name(line: &str, family: LanguageFamily) -> Option<String> {
+pub(super) fn test_case_name(line: &str, family: LanguageFamily) -> Option<String> {
     match family {
         LanguageFamily::Rust => Some("test attribute".to_string()),
         LanguageFamily::JavaScriptTypeScript => quoted_test_name(line),
@@ -510,7 +515,7 @@ fn test_case_name(line: &str, family: LanguageFamily) -> Option<String> {
     }
 }
 
-fn quoted_test_name(line: &str) -> Option<String> {
+pub(super) fn quoted_test_name(line: &str) -> Option<String> {
     let quote_index = line.find(['"', '\'', '`'])?;
     let quote = line[quote_index..].chars().next()?;
     let rest = &line[quote_index + quote.len_utf8()..];
@@ -518,22 +523,16 @@ fn quoted_test_name(line: &str) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
-fn has_assertion_evidence(source: &str) -> bool {
+pub(super) fn has_assertion_evidence(source: &str) -> bool {
     let normalized = source.to_ascii_lowercase();
     [
-        "expect(",
-        "assert",
-        "should",
-        "t.error",
-        "t.fatal",
-        "require.",
-        "pytest.",
+        "expect(", "assert", "should", "t.error", "t.fatal", "require.", "pytest.",
     ]
     .iter()
     .any(|pattern| normalized.contains(pattern))
 }
 
-fn has_negative_or_boundary_test_evidence(source: &str) -> bool {
+pub(super) fn has_negative_or_boundary_test_evidence(source: &str) -> bool {
     let normalized = source.to_ascii_lowercase();
     [
         "tothrow",
@@ -576,7 +575,7 @@ fn has_negative_or_boundary_test_evidence(source: &str) -> bool {
     .any(|pattern| normalized.contains(pattern))
 }
 
-fn collect_file_naming_style(file: &SourceFile, signals: &mut FileSignals) {
+pub(super) fn collect_file_naming_style(file: &SourceFile, signals: &mut FileSignals) {
     let Some(parent) = file.path.parent() else {
         return;
     };
@@ -603,7 +602,7 @@ fn collect_file_naming_style(file: &SourceFile, signals: &mut FileSignals) {
     });
 }
 
-fn file_naming_drift_findings(
+pub(super) fn file_naming_drift_findings(
     directories: &BTreeMap<PathBuf, NamingDirectory>,
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
@@ -648,7 +647,7 @@ fn file_naming_drift_findings(
     findings
 }
 
-fn effective_naming_styles(
+pub(super) fn effective_naming_styles(
     directory: &NamingDirectory,
 ) -> BTreeMap<FileNamingStyle, Vec<Occurrence>> {
     let non_neutral = directory
@@ -665,7 +664,7 @@ fn effective_naming_styles(
     }
 }
 
-fn naming_drift_locations(
+pub(super) fn naming_drift_locations(
     styles: &BTreeMap<FileNamingStyle, Vec<Occurrence>>,
     dominant_style: FileNamingStyle,
 ) -> Vec<Occurrence> {
@@ -691,7 +690,7 @@ fn naming_drift_locations(
         .collect()
 }
 
-fn normalized_naming_stem(path: &Path) -> Option<String> {
+pub(super) fn normalized_naming_stem(path: &Path) -> Option<String> {
     let mut stem = path.file_stem()?.to_str()?.to_string();
 
     while let Some(stripped) = test_file_suffix_base(&stem) {
@@ -710,7 +709,7 @@ fn normalized_naming_stem(path: &Path) -> Option<String> {
     }
 }
 
-fn test_file_suffix_base(stem: &str) -> Option<&str> {
+pub(super) fn test_file_suffix_base(stem: &str) -> Option<&str> {
     stem.strip_suffix(".test")
         .or_else(|| stem.strip_suffix(".spec"))
         .or_else(|| stem.strip_suffix("_test"))
@@ -719,7 +718,7 @@ fn test_file_suffix_base(stem: &str) -> Option<&str> {
         .or_else(|| stem.strip_suffix("-spec"))
 }
 
-fn classify_file_naming_style(stem: &str) -> Option<FileNamingStyle> {
+pub(super) fn classify_file_naming_style(stem: &str) -> Option<FileNamingStyle> {
     if !stem
         .chars()
         .any(|character| character.is_ascii_alphabetic())
@@ -780,7 +779,7 @@ fn classify_file_naming_style(stem: &str) -> Option<FileNamingStyle> {
     }
 }
 
-fn separated_words_are_lowercase(stem: &str, separator: char) -> bool {
+pub(super) fn separated_words_are_lowercase(stem: &str, separator: char) -> bool {
     stem.split(separator).all(|part| {
         !part.is_empty()
             && part
@@ -790,7 +789,7 @@ fn separated_words_are_lowercase(stem: &str, separator: char) -> bool {
 }
 
 impl FileNamingStyle {
-    fn label(self) -> &'static str {
+    pub(super) fn label(self) -> &'static str {
         match self {
             Self::SnakeCase => "snake_case",
             Self::KebabCase => "kebab-case",
@@ -803,7 +802,7 @@ impl FileNamingStyle {
     }
 }
 
-fn collect_directory_concepts(
+pub(super) fn collect_directory_concepts(
     file: &SourceFile,
     family: LanguageFamily,
     signals: &mut FileSignals,
@@ -827,7 +826,7 @@ fn collect_directory_concepts(
     }
 }
 
-fn directory_drift_findings(
+pub(super) fn directory_drift_findings(
     directories: &BTreeMap<PathBuf, BTreeSet<String>>,
     options: &StructureOptions,
 ) -> Vec<Finding> {
@@ -856,7 +855,7 @@ fn directory_drift_findings(
     findings
 }
 
-fn group_occurrences(
+pub(super) fn group_occurrences(
     occurrences: Vec<(String, Occurrence)>,
     min_occurrences: usize,
     kind: FindingKind,
@@ -880,13 +879,13 @@ fn group_occurrences(
 
         let representative = &group[0];
         let related_locations = group
-                .iter()
-                .map(|occurrence| RelatedLocation {
-                    path: occurrence.path.clone(),
-                    line: occurrence.line,
-                    name: occurrence.name.clone(),
-                })
-                .collect::<Vec<_>>();
+            .iter()
+            .map(|occurrence| RelatedLocation {
+                path: occurrence.path.clone(),
+                line: occurrence.line,
+                name: occurrence.name.clone(),
+            })
+            .collect::<Vec<_>>();
         let metrics = vec![FindingMetric::threshold(
             "group_size",
             group.len(),
@@ -919,7 +918,7 @@ fn group_occurrences(
     findings
 }
 
-fn count_named_descendants(node: Node<'_>, kind: &str) -> usize {
+pub(super) fn count_named_descendants(node: Node<'_>, kind: &str) -> usize {
     let mut count = usize::from(node.kind() == kind);
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
@@ -928,19 +927,19 @@ fn count_named_descendants(node: Node<'_>, kind: &str) -> usize {
     count
 }
 
-fn node_line_span(node: Node<'_>) -> usize {
+pub(super) fn node_line_span(node: Node<'_>) -> usize {
     node.end_position()
         .row
         .saturating_sub(node.start_position().row)
         + 1
 }
 
-fn normalize_identifier(text: &str) -> String {
+pub(super) fn normalize_identifier(text: &str) -> String {
     text.trim_matches(|character: char| !character.is_alphanumeric() && character != '_')
         .to_ascii_lowercase()
 }
 
-fn normalize_pattern(text: &str) -> String {
+pub(super) fn normalize_pattern(text: &str) -> String {
     let mut normalized = String::new();
     let mut previous_was_space = false;
     for character in text.chars() {
@@ -951,7 +950,10 @@ fn normalize_pattern(text: &str) -> String {
     normalized.trim().to_string()
 }
 
-fn normalized_pattern_char(character: char, previous_was_space: &mut bool) -> Option<char> {
+pub(super) fn normalized_pattern_char(
+    character: char,
+    previous_was_space: &mut bool,
+) -> Option<char> {
     if character.is_ascii_digit() {
         return Some('#');
     }
@@ -973,7 +975,7 @@ fn normalized_pattern_char(character: char, previous_was_space: &mut bool) -> Op
     }
 }
 
-fn split_directory_concept_words(text: &str) -> Vec<String> {
+pub(super) fn split_directory_concept_words(text: &str) -> Vec<String> {
     let mut words = Vec::new();
     let mut current = String::new();
     for character in text.chars() {
@@ -1000,7 +1002,3 @@ fn split_directory_concept_words(text: &str) -> Vec<String> {
         .filter(|word| word.len() > 2 && !matches!(word.as_str(), "mod" | "lib" | "main" | "test"))
         .collect()
 }
-
-#[cfg(test)]
-#[path = "structural_tests.rs"]
-mod tests;
