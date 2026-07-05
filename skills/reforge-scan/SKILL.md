@@ -34,6 +34,12 @@ Pass additional scan flags directly after the target path:
 reforge scan . --output json --output-file reforge-report.json --progress never --max-file-lines 600 --function-similarity 0.9
 ```
 
+To tighten structural checks:
+
+```bash
+reforge scan . --progress never --max-function-lines 60 --max-function-complexity 10 --max-nesting-depth 3
+```
+
 For quick human review:
 
 ```bash
@@ -50,18 +56,21 @@ reforge scan . --output yaml --output-file reforge-report.yaml --progress never
 
 - Keep generated and dependency directories excluded by default. Add `--include-generated` only when the user explicitly wants generated output scanned.
 - Keep tests out of similar-function analysis by default. Add `--include-test-similarity` when repeated test setup or test helper extraction is the goal.
-- Add `--include-test-structure` when structural issues in tests are in scope.
+- Keep tests out of general structural analysis by default. Add `--include-test-structure` when structural issues in tests are in scope.
 - Lower `--max-file-lines`, `--max-function-lines`, or `--max-function-complexity` for mature codebases with strict maintainability budgets.
 - Raise similarity strictness with `--function-similarity 0.9` when noisy duplication reports would slow the user down.
+- Tune `--min-repeated-literal-occurrences` and `--min-data-clump-occurrences` when repeated literals, repeated error handling, data clumps, or test setup duplication are too noisy or too sparse.
 
 ## Interpreting Findings
 
 Prioritize findings in this order:
 
 1. Critical findings that exceed thresholds by a wide margin.
-2. Repeated drift patterns that cross files or modules, especially shadowed abstractions, duplicate data shapes, adapter boundary bypasses, and parallel implementations.
-3. Similar functions with enough body tokens to indicate real duplication.
-4. Large directories, mixed naming styles, and TODO/FIXME clusters as navigation and ownership signals.
-5. Info-level findings as backlog candidates unless they cluster around the same subsystem.
+2. Structural hotspots such as long functions, high complexity, deep nesting, many parameters, large types, import-heavy files, and large public surfaces.
+3. Repeated drift patterns that cross files or modules, especially shadowed abstractions, duplicate data shapes, adapter boundary bypasses, and parallel implementations.
+4. Similar functions with enough body tokens to indicate real duplication.
+5. Repeated literals, repeated error patterns, data clumps, and test setup duplication when they cluster around the same subsystem.
+6. Large directories, directory drift, mixed naming styles, and TODO/FIXME clusters as navigation and ownership signals.
+7. Info-level findings as backlog candidates unless they cluster around the same subsystem.
 
 When reporting results, include the command used, output file path if any, top findings, and suggested next actions. Avoid claiming Reforge found bugs; describe findings as maintainability or refactoring signals.
