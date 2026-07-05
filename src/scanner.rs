@@ -10,8 +10,8 @@ use walkdir::{DirEntry, WalkDir};
 
 use crate::cli::ScanArgs;
 use crate::similar_functions::{
-    SimilarFunctionOptions, SourceFile, is_supported_similarity_source,
-    scan_similar_functions_report,
+    SimilarFunctionOptions, SimilarFunctionProgress, SourceFile, is_supported_similarity_source,
+    scan_similar_functions_report_with_progress,
 };
 
 const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
@@ -97,6 +97,28 @@ pub trait ProgressSink {
         ));
     }
 
+    fn report_analysis_progress(
+        &mut self,
+        completed: usize,
+        total: usize,
+        phase: &str,
+        detail: &str,
+    ) {
+        if total == 0 {
+            return;
+        }
+
+        let percent = completed.saturating_mul(100) / total;
+        let detail = if detail.is_empty() {
+            String::new()
+        } else {
+            format!(" {detail}")
+        };
+        self.report(&format!(
+            "[{percent:>3}%] Analyzing similar functions: {phase} ({completed}/{total}){detail}"
+        ));
+    }
+
     fn wants_detailed_progress(&self) -> bool {
         false
     }
@@ -131,6 +153,28 @@ impl StderrProgress {
             self.last_dynamic_len = 0;
         }
     }
+
+    fn report_percent_progress(
+        &mut self,
+        message: &str,
+        percent: usize,
+        completed: usize,
+        total: usize,
+    ) {
+        if self.dynamic {
+            let padding = self.last_dynamic_len.saturating_sub(message.len());
+            let mut stderr = std::io::stderr().lock();
+            let _ = write!(stderr, "\r{message}{}", " ".repeat(padding));
+            let _ = stderr.flush();
+            self.last_dynamic_len = message.len();
+        } else {
+            let bucket = percent / 10;
+            if self.last_bucket != Some(bucket) || completed == total {
+                self.report(message);
+                self.last_bucket = Some(bucket);
+            }
+        }
+    }
 }
 
 impl ProgressSink for StderrProgress {
@@ -147,19 +191,31 @@ impl ProgressSink for StderrProgress {
         let percent = completed.saturating_mul(100) / total;
         let message = format!("[{percent:>3}%] Scanning source files ({completed}/{total}) {path}");
 
-        if self.dynamic {
-            let padding = self.last_dynamic_len.saturating_sub(message.len());
-            let mut stderr = std::io::stderr().lock();
-            let _ = write!(stderr, "\r{message}{}", " ".repeat(padding));
-            let _ = stderr.flush();
-            self.last_dynamic_len = message.len();
-        } else {
-            let bucket = percent / 10;
-            if self.last_bucket != Some(bucket) || completed == total {
-                self.report(&message);
-                self.last_bucket = Some(bucket);
-            }
+        self.report_percent_progress(&message, percent, completed, total);
+    }
+
+    fn report_analysis_progress(
+        &mut self,
+        completed: usize,
+        total: usize,
+        phase: &str,
+        detail: &str,
+    ) {
+        if total == 0 {
+            return;
         }
+
+        let percent = completed.saturating_mul(100) / total;
+        let detail = if detail.is_empty() {
+            String::new()
+        } else {
+            format!(" {detail}")
+        };
+        let message = format!(
+            "[{percent:>3}%] Analyzing similar functions: {phase} ({completed}/{total}){detail}"
+        );
+
+        self.report_percent_progress(&message, percent, completed, total);
     }
 
     fn wants_detailed_progress(&self) -> bool {
@@ -283,13 +339,16 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
         similarity_sources.len()
     ));
 
-    let similarity_scan = scan_similar_functions_report(
+    let similarity_options = SimilarFunctionOptions {
+        min_group_size: args.min_similar_functions,
+        min_tokens: args.min_function_tokens,
+        threshold: args.function_similarity,
+    };
+    let mut similarity_progress = ScanSimilarityProgress { progress };
+    let similarity_scan = scan_similar_functions_report_with_progress(
         &similarity_sources,
-        &SimilarFunctionOptions {
-            min_group_size: args.min_similar_functions,
-            min_tokens: args.min_function_tokens,
-            threshold: args.function_similarity,
-        },
+        &similarity_options,
+        &mut similarity_progress,
     )?;
     stats.function_candidates = similarity_scan.candidate_count;
     findings.extend(similarity_scan.findings);
@@ -316,6 +375,22 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
         stats,
         findings,
     })
+}
+
+struct ScanSimilarityProgress<'a> {
+    progress: &'a mut dyn ProgressSink,
+}
+
+impl SimilarFunctionProgress for ScanSimilarityProgress<'_> {
+    fn report_extract_progress(&mut self, completed: usize, total: usize, path: &str) {
+        self.progress
+            .report_analysis_progress(completed, total, "extracting candidates", path);
+    }
+
+    fn report_compare_progress(&mut self, completed: usize, total: usize) {
+        self.progress
+            .report_analysis_progress(completed, total, "comparing candidates", "");
+    }
 }
 
 fn count_source_files(root: &Path, args: &ScanArgs) -> Result<usize> {
@@ -791,17 +866,28 @@ func Gamma(rows []Item) int {
     fn scan_report_outputs_percent_progress_when_enabled() -> Result<()> {
         let root = test_root("percent-progress");
         fs::create_dir_all(root.join("src"))?;
-        fs::write(root.join("src/one.rs"), "fn one() {}\n")?;
-        fs::write(root.join("src/two.rs"), "fn two() {}\n")?;
+        fs::write(
+            root.join("src/one.rs"),
+            "fn one() -> i32 { let value = 1; value }\n",
+        )?;
+        fs::write(
+            root.join("src/two.rs"),
+            "fn two() -> i32 { let value = 2; value }\n",
+        )?;
 
         let mut progress = WriterProgress::new(Vec::new());
-        let _ = scan_report(&scan_args(root.clone(), false), &mut progress)?;
+        let mut args = scan_args(root.clone(), false);
+        args.min_function_tokens = 1;
+        let _ = scan_report(&args, &mut progress)?;
 
         fs::remove_dir_all(root)?;
 
         let output = String::from_utf8(progress.into_inner()).unwrap();
         assert!(output.contains("[ 50%] Scanning source files (1/2)"));
         assert!(output.contains("[100%] Scanning source files (2/2)"));
+        assert!(output.contains("[ 50%] Analyzing similar functions: extracting candidates (1/2)"));
+        assert!(output.contains("[100%] Analyzing similar functions: extracting candidates (2/2)"));
+        assert!(output.contains("[100%] Analyzing similar functions: comparing candidates (1/1)"));
         Ok(())
     }
 }

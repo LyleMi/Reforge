@@ -28,6 +28,16 @@ pub struct SimilarFunctionScan {
     pub candidate_count: usize,
 }
 
+pub trait SimilarFunctionProgress {
+    fn report_extract_progress(&mut self, _completed: usize, _total: usize, _path: &str) {}
+
+    fn report_compare_progress(&mut self, _completed: usize, _total: usize) {}
+}
+
+struct NoopSimilarityProgress;
+
+impl SimilarFunctionProgress for NoopSimilarityProgress {}
+
 #[derive(Debug, Clone)]
 struct FunctionCandidate {
     family: LanguageFamily,
@@ -88,6 +98,15 @@ pub fn scan_similar_functions_report(
     files: &[SourceFile],
     options: &SimilarFunctionOptions,
 ) -> Result<SimilarFunctionScan> {
+    let mut progress = NoopSimilarityProgress;
+    scan_similar_functions_report_with_progress(files, options, &mut progress)
+}
+
+pub fn scan_similar_functions_report_with_progress(
+    files: &[SourceFile],
+    options: &SimilarFunctionOptions,
+    progress: &mut dyn SimilarFunctionProgress,
+) -> Result<SimilarFunctionScan> {
     validate_options(options)?;
 
     if options.min_group_size == 0 {
@@ -99,7 +118,7 @@ pub fn scan_similar_functions_report(
 
     let mut candidates = Vec::new();
     let mut interner = TokenInterner::default();
-    for file in files {
+    for (index, file) in files.iter().enumerate() {
         if let Some(adapter) = adapter_for_path(&file.path) {
             candidates.extend(extract_candidates(
                 file,
@@ -108,11 +127,12 @@ pub fn scan_similar_functions_report(
                 &mut interner,
             )?);
         }
+        progress.report_extract_progress(index + 1, files.len(), &file.display_path);
     }
 
     let candidate_count = candidates.len();
     Ok(SimilarFunctionScan {
-        findings: group_candidates(&candidates, options),
+        findings: group_candidates(&candidates, options, progress),
         candidate_count,
     })
 }
@@ -390,6 +410,7 @@ fn is_number_kind(kind: &str) -> bool {
 fn group_candidates(
     candidates: &[FunctionCandidate],
     options: &SimilarFunctionOptions,
+    progress: &mut dyn SimilarFunctionProgress,
 ) -> Vec<Finding> {
     let mut buckets: BTreeMap<(LanguageFamily, FunctionCategory), Vec<usize>> = BTreeMap::new();
     for (index, candidate) in candidates.iter().enumerate() {
@@ -399,41 +420,70 @@ fn group_candidates(
             .push(index);
     }
 
+    let total_comparisons = buckets
+        .values()
+        .map(|indexes| {
+            indexes
+                .len()
+                .saturating_mul(indexes.len().saturating_sub(1))
+                / 2
+        })
+        .sum();
+    let mut completed_comparisons = 0;
+    let mut last_reported_percent = None;
+
     let mut findings = Vec::new();
     for indexes in buckets.values() {
         let mut used = vec![false; candidates.len()];
 
-        for &representative_index in indexes {
+        for (representative_position, &representative_index) in indexes.iter().enumerate() {
             if used[representative_index] {
+                let skipped = indexes.len().saturating_sub(representative_position + 1);
+                completed_comparisons += skipped;
+                report_compare_progress(
+                    progress,
+                    completed_comparisons,
+                    total_comparisons,
+                    &mut last_reported_percent,
+                );
                 continue;
             }
 
             let representative = &candidates[representative_index];
             let mut group = vec![representative_index];
 
-            for &candidate_index in indexes {
-                if candidate_index == representative_index || used[candidate_index] {
+            for &candidate_index in indexes.iter().skip(representative_position + 1) {
+                if used[candidate_index] {
+                    completed_comparisons += 1;
+                    report_compare_progress(
+                        progress,
+                        completed_comparisons,
+                        total_comparisons,
+                        &mut last_reported_percent,
+                    );
                     continue;
                 }
 
                 let candidate = &candidates[candidate_index];
                 if length_ratio(representative.tokens.len(), candidate.tokens.len())
-                    < options.threshold
+                    >= options.threshold
+                    && multiset_dice_upper_bound(representative, candidate) >= options.threshold
+                    && token_similarity_reaches(
+                        &representative.tokens,
+                        &candidate.tokens,
+                        options.threshold,
+                    )
                 {
-                    continue;
-                }
-
-                if multiset_dice_upper_bound(representative, candidate) < options.threshold {
-                    continue;
-                }
-
-                if token_similarity_reaches(
-                    &representative.tokens,
-                    &candidate.tokens,
-                    options.threshold,
-                ) {
                     group.push(candidate_index);
                 }
+
+                completed_comparisons += 1;
+                report_compare_progress(
+                    progress,
+                    completed_comparisons,
+                    total_comparisons,
+                    &mut last_reported_percent,
+                );
             }
 
             if group.len() >= options.min_group_size {
@@ -450,6 +500,23 @@ fn group_candidates(
     }
 
     findings
+}
+
+fn report_compare_progress(
+    progress: &mut dyn SimilarFunctionProgress,
+    completed: usize,
+    total: usize,
+    last_reported_percent: &mut Option<usize>,
+) {
+    if total == 0 {
+        return;
+    }
+
+    let percent = completed.saturating_mul(100) / total;
+    if *last_reported_percent != Some(percent) || completed == total {
+        progress.report_compare_progress(completed, total);
+        *last_reported_percent = Some(percent);
+    }
 }
 
 fn length_ratio(left_len: usize, right_len: usize) -> f64 {
