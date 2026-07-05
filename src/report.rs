@@ -7,19 +7,25 @@ pub fn print_findings(findings: &[Finding]) {
     }
 
     for finding in sorted_findings(findings) {
-        println!(
-            "[{}] {}:{} {}",
-            finding.severity, finding.path, finding.line, finding.message
-        );
+        match finding.line {
+            Some(line) => println!(
+                "[{}] {}:{} {}",
+                finding.severity, finding.path, line, finding.message
+            ),
+            None => println!(
+                "[{}] {} {}",
+                finding.severity, finding.path, finding.message
+            ),
+        }
     }
 }
 
 fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
     let mut sorted: Vec<&Finding> = findings.iter().collect();
 
-    sorted.sort_by(|left, right| match (left.total_lines, right.total_lines) {
-        (Some(left_lines), Some(right_lines)) => right_lines
-            .cmp(&left_lines)
+    sorted.sort_by(|left, right| match (left.magnitude, right.magnitude) {
+        (Some(left_magnitude), Some(right_magnitude)) => right_magnitude
+            .cmp(&left_magnitude)
             .then_with(|| left.path.cmp(&right.path)),
         (Some(_), None) => std::cmp::Ordering::Less,
         (None, Some(_)) => std::cmp::Ordering::Greater,
@@ -42,16 +48,16 @@ impl std::fmt::Display for Severity {
 mod tests {
     use super::*;
 
-    fn finding(path: &str, total_lines: Option<usize>) -> Finding {
+    fn finding(path: &str, magnitude: Option<usize>) -> Finding {
         Finding {
-            severity: if total_lines.is_some() {
+            severity: if magnitude.is_some() {
                 Severity::Warning
             } else {
                 Severity::Info
             },
             path: path.to_string(),
-            line: 1,
-            total_lines,
+            line: Some(1),
+            magnitude,
             message: String::new(),
         }
     }

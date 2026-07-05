@@ -26,6 +26,10 @@ pub struct ScanArgs {
     #[arg(long, default_value_t = 800)]
     pub max_file_lines: usize,
 
+    /// Report directories whose direct source file count is above this threshold.
+    #[arg(long, default_value_t = 40)]
+    pub max_dir_files: usize,
+
     /// Include hidden files and directories.
     #[arg(long)]
     pub include_hidden: bool,

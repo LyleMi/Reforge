@@ -1,5 +1,6 @@
+use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use walkdir::{DirEntry, WalkDir};
@@ -29,8 +30,8 @@ pub enum Severity {
 pub struct Finding {
     pub severity: Severity,
     pub path: String,
-    pub line: usize,
-    pub total_lines: Option<usize>,
+    pub line: Option<usize>,
+    pub magnitude: Option<usize>,
     pub message: String,
 }
 
@@ -45,6 +46,8 @@ pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
     if root.is_file() {
         scan_file(&root, args.max_file_lines, &mut findings)?;
     } else {
+        let mut directory_source_files = BTreeMap::new();
+
         for entry in WalkDir::new(&root).into_iter().filter_entry(|entry| {
             let is_root = entry.path() == root.as_path();
             is_root
@@ -55,8 +58,11 @@ pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
 
             if entry.file_type().is_file() && is_supported_source(entry.path()) {
                 scan_file(entry.path(), args.max_file_lines, &mut findings)?;
+                count_source_file_parent(entry.path(), &mut directory_source_files);
             }
         }
+
+        scan_directories(&directory_source_files, args.max_dir_files, &mut findings);
     }
 
     Ok(findings)
@@ -75,8 +81,8 @@ fn scan_file(path: &Path, max_file_lines: usize, findings: &mut Vec<Finding>) ->
         findings.push(Finding {
             severity: Severity::Warning,
             path: display_path(path),
-            line: 1,
-            total_lines: Some(line_count),
+            line: Some(1),
+            magnitude: Some(line_count),
             message: format!("file has {line_count} lines; consider splitting responsibilities"),
         });
     }
@@ -86,14 +92,42 @@ fn scan_file(path: &Path, max_file_lines: usize, findings: &mut Vec<Finding>) ->
             findings.push(Finding {
                 severity: Severity::Info,
                 path: display_path(path),
-                line: index + 1,
-                total_lines: None,
+                line: Some(index + 1),
+                magnitude: None,
                 message: "technical-debt marker found".to_string(),
             });
         }
     }
 
     Ok(())
+}
+
+fn count_source_file_parent(path: &Path, directory_source_files: &mut BTreeMap<PathBuf, usize>) {
+    if let Some(parent) = path.parent() {
+        *directory_source_files
+            .entry(parent.to_path_buf())
+            .or_insert(0) += 1;
+    }
+}
+
+fn scan_directories(
+    directory_source_files: &BTreeMap<PathBuf, usize>,
+    max_dir_files: usize,
+    findings: &mut Vec<Finding>,
+) {
+    for (directory, file_count) in directory_source_files {
+        if *file_count > max_dir_files {
+            findings.push(Finding {
+                severity: Severity::Warning,
+                path: display_path(directory),
+                line: None,
+                magnitude: Some(*file_count),
+                message: format!(
+                    "directory contains {file_count} source files; consider grouping related responsibilities"
+                ),
+            });
+        }
+    }
 }
 
 fn has_debt_marker(line: &str) -> bool {
@@ -170,6 +204,7 @@ mod tests {
         ScanArgs {
             path,
             max_file_lines: 800,
+            max_dir_files: 40,
             include_hidden: false,
             include_generated,
         }
@@ -204,6 +239,52 @@ mod tests {
 
         assert_eq!(findings.len(), 1);
         assert!(findings[0].path.ends_with("dist/app.js"));
+        Ok(())
+    }
+
+    #[test]
+    fn reports_directories_with_many_source_files() -> Result<()> {
+        let root = test_root("large-directory");
+        let source_dir = root.join("src");
+        fs::create_dir_all(&source_dir)?;
+        fs::write(source_dir.join("one.rs"), "fn one() {}\n")?;
+        fs::write(source_dir.join("two.rs"), "fn two() {}\n")?;
+        fs::write(source_dir.join("three.rs"), "fn three() {}\n")?;
+        fs::write(source_dir.join("notes.md"), "not source\n")?;
+
+        let mut args = scan_args(root.clone(), false);
+        args.max_dir_files = 2;
+        let findings = scan_path(&args)?;
+
+        fs::remove_dir_all(root)?;
+
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].path.ends_with("src"));
+        assert_eq!(findings[0].line, None);
+        assert_eq!(findings[0].magnitude, Some(3));
+        assert!(
+            findings[0]
+                .message
+                .contains("directory contains 3 source files")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn excludes_generated_directories_from_source_file_counts_by_default() -> Result<()> {
+        let root = test_root("directory-count-generated");
+        let dist_dir = root.join("dist");
+        fs::create_dir_all(&dist_dir)?;
+        fs::write(dist_dir.join("one.js"), "const one = 1;\n")?;
+        fs::write(dist_dir.join("two.js"), "const two = 2;\n")?;
+
+        let mut args = scan_args(root.clone(), false);
+        args.max_dir_files = 1;
+        let findings = scan_path(&args)?;
+
+        fs::remove_dir_all(root)?;
+
+        assert!(findings.is_empty());
         Ok(())
     }
 }

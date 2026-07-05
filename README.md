@@ -11,11 +11,16 @@ as function length, nesting depth, import fan-in, and repeated structures.
 ```powershell
 cargo run -- scan .
 cargo run -- scan D:\path\to\project --max-file-lines 600
+cargo run -- scan . --max-dir-files 30
 cargo run -- scan . --include-generated
 ```
 
 By default, scans skip common dependency and generated output directories such
 as `node_modules`, `dist`, `build`, `out`, and `target`.
+
+Current signals include source files above `--max-file-lines`, directories with
+more direct source files than `--max-dir-files`, and comment-based TODO/FIXME
+markers.
 
 ## Roadmap
 
