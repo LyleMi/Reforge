@@ -2,6 +2,12 @@
 name = "reforge"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+description = "Detect refactoring signals across source trees"
+license = "Apache-2.0"
+readme = "README.md"
+keywords = ["analysis", "cli", "refactoring", "tree-sitter"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 anyhow = "1.0"
