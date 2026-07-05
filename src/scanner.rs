@@ -6,6 +6,9 @@ use anyhow::{Context, Result};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::cli::ScanArgs;
+use crate::similar_functions::{
+    SimilarFunctionOptions, SourceFile, is_supported_similarity_source, scan_similar_functions,
+};
 
 const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     "node_modules",
@@ -42,9 +45,15 @@ pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
         .with_context(|| format!("failed to resolve path {}", args.path.display()))?;
 
     let mut findings = Vec::new();
+    let mut similarity_sources = Vec::new();
 
     if root.is_file() {
-        scan_file(&root, args.max_file_lines, &mut findings)?;
+        scan_file(
+            &root,
+            args.max_file_lines,
+            &mut findings,
+            &mut similarity_sources,
+        )?;
     } else {
         let mut directory_source_files = BTreeMap::new();
 
@@ -57,7 +66,12 @@ pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
             let entry = entry?;
 
             if entry.file_type().is_file() && is_supported_source(entry.path()) {
-                scan_file(entry.path(), args.max_file_lines, &mut findings)?;
+                scan_file(
+                    entry.path(),
+                    args.max_file_lines,
+                    &mut findings,
+                    &mut similarity_sources,
+                )?;
                 count_source_file_parent(entry.path(), &mut directory_source_files);
             }
         }
@@ -65,10 +79,24 @@ pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
         scan_directories(&directory_source_files, args.max_dir_files, &mut findings);
     }
 
+    findings.extend(scan_similar_functions(
+        &similarity_sources,
+        &SimilarFunctionOptions {
+            min_group_size: args.min_similar_functions,
+            min_tokens: args.min_function_tokens,
+            threshold: args.function_similarity,
+        },
+    )?);
+
     Ok(findings)
 }
 
-fn scan_file(path: &Path, max_file_lines: usize, findings: &mut Vec<Finding>) -> Result<()> {
+fn scan_file(
+    path: &Path,
+    max_file_lines: usize,
+    findings: &mut Vec<Finding>,
+    similarity_sources: &mut Vec<SourceFile>,
+) -> Result<()> {
     if !is_supported_source(path) {
         return Ok(());
     }
@@ -97,6 +125,14 @@ fn scan_file(path: &Path, max_file_lines: usize, findings: &mut Vec<Finding>) ->
                 message: "technical-debt marker found".to_string(),
             });
         }
+    }
+
+    if is_supported_similarity_source(path) {
+        similarity_sources.push(SourceFile {
+            path: path.to_path_buf(),
+            display_path: display_path(path),
+            source,
+        });
     }
 
     Ok(())
@@ -207,6 +243,9 @@ mod tests {
             max_dir_files: 40,
             include_hidden: false,
             include_generated,
+            min_similar_functions: 3,
+            min_function_tokens: 40,
+            function_similarity: 0.80,
         }
     }
 
@@ -285,6 +324,70 @@ mod tests {
         fs::remove_dir_all(root)?;
 
         assert!(findings.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn reports_similar_functions_using_scan_thresholds() -> Result<()> {
+        let root = test_root("similar-functions");
+        fs::create_dir_all(root.join("src"))?;
+        fs::write(
+            root.join("src/app.js"),
+            r#"
+function alpha(items) {
+  let total = 0;
+  for (const item of items) {
+    if (item.score > 10) {
+      total += item.score * 2;
+    } else {
+      total += item.score;
+    }
+  }
+  return total;
+}
+
+function beta(records) {
+  let sum = 1;
+  for (const record of records) {
+    if (record.score > 20) {
+      sum += record.score * 2;
+    } else {
+      sum += record.score;
+    }
+  }
+  return sum;
+}
+
+function gamma(rows) {
+  let acc = 2;
+  for (const row of rows) {
+    if (row.score > 30) {
+      acc += row.score * 2;
+    } else {
+      acc += row.score;
+    }
+  }
+  return acc;
+}
+"#,
+        )?;
+
+        let mut args = scan_args(root.clone(), false);
+        args.min_function_tokens = 12;
+        let findings = scan_path(&args)?;
+
+        args.min_similar_functions = 4;
+        let stricter_findings = scan_path(&args)?;
+
+        fs::remove_dir_all(root)?;
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].magnitude, Some(3));
+        assert!(
+            stricter_findings
+                .iter()
+                .all(|finding| !finding.message.contains("structurally similar"))
+        );
         Ok(())
     }
 }

@@ -1,6 +1,7 @@
 mod cli;
 mod report;
 mod scanner;
+mod similar_functions;
 
 use anyhow::Result;
 use clap::Parser;
