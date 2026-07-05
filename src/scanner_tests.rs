@@ -54,6 +54,91 @@ fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
         .map(|metric| metric.value)
 }
 
+fn has_kind(findings: &[Finding], kind: FindingKind) -> bool {
+    findings.iter().any(|finding| finding.kind == kind)
+}
+
+fn write_project_marker(root: &Path) -> Result<()> {
+    fs::create_dir_all(root)?;
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )?;
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(root.join("src/main.rs"), "fn main() {}\n")?;
+    Ok(())
+}
+
+fn cli_flags_doc() -> &'static str {
+    "--max-file-lines --max-dir-files --include-hidden --include-generated \
+--min-similar-functions --min-function-tokens --function-similarity \
+--include-test-similarity --max-function-lines --max-function-complexity \
+--max-nesting-depth --max-function-parameters --max-type-lines \
+--max-type-members --max-imports --max-public-items \
+--min-repeated-literal-occurrences --min-data-clump-occurrences \
+--include-test-structure --config --churn --hotspot-model \
+--churn-window-days --churn-max-commit-lines --output --output-file \
+--progress --color"
+}
+
+fn schema_fields_doc() -> &'static str {
+    "schema_version summary stats metrics_summary raw_metrics hotspots findings \
+kind severity path line metrics priority confidence priority_factors \
+rank_explanation related_locations"
+}
+
+fn write_complete_docs(root: &Path) -> Result<()> {
+    write_project_marker(root)?;
+    fs::write(
+        root.join("README.md"),
+        "Reforge\n\nSee docs/README.md for the maintained documentation set.\n",
+    )?;
+    let docs = root.join("docs");
+    fs::create_dir_all(&docs)?;
+    fs::write(
+        docs.join("README.md"),
+        "Documentation index\n\n- user guide\n- configuration\n- report schema\n- metrics model\n- detectors\n- architecture\n- contributing\n",
+    )?;
+    fs::write(
+        docs.join("user-guide.md"),
+        format!(
+            "Installation and install notes.\nQuick start: run reforge scan .\nCLI command reference: {}.\nConfiguration uses reforge.toml config.\nOutput supports json yaml report formats.\nTroubleshooting and troubleshoot debug notes.\n",
+            cli_flags_doc()
+        ),
+    )?;
+    fs::write(
+        docs.join("configuration.md"),
+        format!(
+            "Configuration reference for reforge.toml config.\n{}\n",
+            cli_flags_doc()
+        ),
+    )?;
+    fs::write(
+        docs.join("report-schema.md"),
+        format!(
+            "Report schema fields and compatibility.\n{}\n",
+            schema_fields_doc()
+        ),
+    )?;
+    fs::write(
+        docs.join("metrics-model.md"),
+        "Metrics model covers raw metrics, findings, hotspots, priority, scoring, and confidence.\n",
+    )?;
+    fs::write(
+        docs.join("detectors.md"),
+        "Detector goals, inputs, false-positive boundaries, and tuning advice.\n",
+    )?;
+    fs::write(
+        docs.join("architecture.md"),
+        "Architecture covers scan pipeline, detector boundaries, data flow, and extension points.\n",
+    )?;
+    fs::write(
+        docs.join("contributing.md"),
+        "Contributing covers development, testing, CI, and release checks.\n",
+    )?;
+    Ok(())
+}
+
 #[test]
 fn skips_generated_directories_by_default() -> Result<()> {
     let root = test_root("skip-generated");
@@ -379,6 +464,143 @@ fn config_ignore_paths_skip_matching_subtrees() -> Result<()> {
 
     assert_eq!(findings.len(), 1);
     assert!(findings[0].path.ends_with("src/main.rs"));
+    Ok(())
+}
+
+#[test]
+fn reports_missing_project_documentation_for_project_roots() -> Result<()> {
+    let root = test_root("missing-project-docs");
+    write_project_marker(&root)?;
+    fs::write(root.join("README.md"), "Reforge fixture\n")?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.churn = Some(crate::cli::ChurnMode::Off);
+    let mut progress = NoopProgress;
+    let report = scan_report(&args, &mut progress)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert!(has_kind(
+        &report.findings,
+        FindingKind::MissingDocumentationSet
+    ));
+    assert!(has_kind(
+        &report.findings,
+        FindingKind::MissingReportSchemaDocs
+    ));
+    assert!(has_kind(
+        &report.findings,
+        FindingKind::MissingMetricsModelDocs
+    ));
+    assert!(has_kind(
+        &report.findings,
+        FindingKind::MissingArchitectureDocs
+    ));
+    assert!(
+        report
+            .findings
+            .iter()
+            .filter(|finding| matches!(
+                finding.kind,
+                FindingKind::MissingDocumentationSet
+                    | FindingKind::MissingReportSchemaDocs
+                    | FindingKind::MissingMetricsModelDocs
+                    | FindingKind::MissingArchitectureDocs
+            ))
+            .all(|finding| finding.severity == Severity::Warning)
+    );
+    Ok(())
+}
+
+#[test]
+fn complete_project_documentation_suppresses_documentation_findings() -> Result<()> {
+    let root = test_root("complete-project-docs");
+    write_complete_docs(&root)?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.churn = Some(crate::cli::ChurnMode::Off);
+    let mut progress = NoopProgress;
+    let report = scan_report(&args, &mut progress)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert!(report.findings.iter().all(|finding| {
+        finding
+            .metrics
+            .iter()
+            .all(|metric| metric.dimension != crate::model::MetricDimension::Documentation)
+    }));
+    Ok(())
+}
+
+#[test]
+fn readme_only_project_is_not_treated_as_complete_documentation() -> Result<()> {
+    let root = test_root("readme-only-docs");
+    write_project_marker(&root)?;
+    fs::write(
+        root.join("README.md"),
+        "Install and quick start. Run reforge scan . with --output json.\n",
+    )?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.churn = Some(crate::cli::ChurnMode::Off);
+    let findings = scan_path(&args)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert!(has_kind(&findings, FindingKind::MissingDocumentationSet));
+    Ok(())
+}
+
+#[test]
+fn reports_stale_cli_documentation_when_flags_are_missing() -> Result<()> {
+    let root = test_root("stale-cli-docs");
+    write_complete_docs(&root)?;
+    fs::write(
+        root.join("docs/user-guide.md"),
+        "Installation install.\nQuick start run reforge scan .\nCLI command reference: --output --progress.\nConfiguration config reforge.toml.\nOutput json yaml report.\nTroubleshooting troubleshoot debug.\n",
+    )?;
+    fs::write(
+        root.join("docs/configuration.md"),
+        "Configuration reference without CLI flags.\n",
+    )?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.churn = Some(crate::cli::ChurnMode::Off);
+    let findings = scan_path(&args)?;
+
+    fs::remove_dir_all(root)?;
+
+    let stale = findings
+        .iter()
+        .find(|finding| finding.kind == FindingKind::StaleCliDocumentation)
+        .expect("stale CLI docs should be reported");
+    assert_eq!(metric_value(stale, "missing_cli_flags"), Some(26));
+    assert!(stale.message.contains("--max-file-lines"));
+    Ok(())
+}
+
+#[test]
+fn reports_stale_schema_documentation_when_fields_are_missing() -> Result<()> {
+    let root = test_root("stale-schema-docs");
+    write_complete_docs(&root)?;
+    fs::write(
+        root.join("docs/report-schema.md"),
+        "Report schema fields: schema_version summary stats findings kind severity path.\n",
+    )?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.churn = Some(crate::cli::ChurnMode::Off);
+    let findings = scan_path(&args)?;
+
+    fs::remove_dir_all(root)?;
+
+    let stale = findings
+        .iter()
+        .find(|finding| finding.kind == FindingKind::StaleSchemaDocumentation)
+        .expect("stale schema docs should be reported");
+    assert!(metric_value(stale, "missing_schema_fields").unwrap() > 0);
+    assert!(stale.message.contains("hotspots"));
     Ok(())
 }
 

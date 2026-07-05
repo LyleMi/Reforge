@@ -4,7 +4,7 @@ use serde::{Serialize, Serializer, ser::SerializeStruct};
 
 use crate::cli::{ChurnMode, HotspotModel};
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 5;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 6;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -35,6 +35,13 @@ pub enum FindingKind {
     FixtureFactoryDrift,
     GenericBucketDrift,
     AdapterBoundaryBypass,
+    MissingDocumentationSet,
+    MissingUserGuide,
+    MissingReportSchemaDocs,
+    MissingMetricsModelDocs,
+    MissingArchitectureDocs,
+    StaleCliDocumentation,
+    StaleSchemaDocumentation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -54,6 +61,7 @@ pub enum MetricDimension {
     Duplication,
     Drift,
     TestRisk,
+    Documentation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

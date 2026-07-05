@@ -12,6 +12,7 @@ use walkdir::{DirEntry, WalkDir};
 
 use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
 use crate::cli::{ChurnMode, HotspotModel, ScanArgs};
+use crate::documentation::scan_documentation;
 use crate::model::{
     ChurnFileMetric, ChurnSummary, FileRawMetric, Finding, FindingKind, FindingMetric,
     FunctionRawMetric, RawMetrics, SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary,
@@ -289,6 +290,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         signals.scan_agent_drift_signals();
         signals.scan_similarity_signals()?
     };
+    scan.findings.extend(scan_documentation(&root)?);
     merge_structure_raw_metrics(&mut scan.raw_metrics, &scan.parsed_sources);
     let churn_summary = collect_churn_metrics(&root, &effective_args, &mut scan.raw_metrics)?;
     let metrics_summary = summarize_raw_metrics(&scan.raw_metrics);

@@ -10,6 +10,10 @@ mod agent_drift {
     pub(crate) use crate::detectors::drift::*;
 }
 
+mod documentation {
+    pub(crate) use crate::detectors::documentation::*;
+}
+
 mod language {
     pub(crate) use crate::lang::*;
 }

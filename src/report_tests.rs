@@ -197,7 +197,7 @@ fn renders_colored_human_report_when_enabled() {
 }
 
 #[test]
-fn renders_json_report_schema_v5_with_priority_metadata() {
+fn renders_json_report_schema_v6_with_priority_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
@@ -214,7 +214,7 @@ fn renders_json_report_schema_v5_with_priority_metadata() {
     let value: serde_json::Value =
         serde_json::from_str(&serde_json::to_string(&scan_report).unwrap()).unwrap();
 
-    assert_eq!(value["schema_version"], 5);
+    assert_eq!(value["schema_version"], 6);
     assert_eq!(value["summary"]["scanned_files"], 2);
     assert_eq!(value["summary"]["hotspot_model"], "hybrid");
     assert!(value.get("metrics_summary").is_some());
@@ -279,7 +279,7 @@ fn writes_json_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&output).unwrap()["schema_version"],
-        5
+        6
     );
 }
 
@@ -293,6 +293,6 @@ fn writes_yaml_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_yaml::from_str::<serde_yaml::Value>(&output).unwrap()["schema_version"],
-        5
+        6
     );
 }

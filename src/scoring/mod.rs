@@ -94,6 +94,13 @@ pub fn default_confidence(kind: FindingKind) -> f64 {
         FindingKind::DuplicateTypeShape | FindingKind::AdapterBoundaryBypass => 0.80,
         FindingKind::GenericBucketDrift => 0.70,
         FindingKind::HappyPathOnlyTests => 0.60,
+        FindingKind::MissingDocumentationSet
+        | FindingKind::MissingUserGuide
+        | FindingKind::MissingReportSchemaDocs
+        | FindingKind::MissingMetricsModelDocs
+        | FindingKind::MissingArchitectureDocs
+        | FindingKind::StaleCliDocumentation
+        | FindingKind::StaleSchemaDocumentation => 0.95,
         FindingKind::FileNamingDrift
         | FindingKind::DirectoryDrift
         | FindingKind::ParallelImplementation
@@ -252,6 +259,12 @@ fn impact_score(kind: FindingKind) -> f64 {
         FindingKind::RepeatedLiteral | FindingKind::FileNamingDrift => 40.0,
         FindingKind::HappyPathOnlyTests | FindingKind::ShadowedAbstraction => 45.0,
         FindingKind::ConfigKeyDrift | FindingKind::FixtureFactoryDrift => 50.0,
+        FindingKind::MissingDocumentationSet
+        | FindingKind::MissingUserGuide
+        | FindingKind::MissingMetricsModelDocs
+        | FindingKind::MissingArchitectureDocs => 70.0,
+        FindingKind::StaleCliDocumentation => 75.0,
+        FindingKind::MissingReportSchemaDocs | FindingKind::StaleSchemaDocumentation => 90.0,
         FindingKind::LargeFile | FindingKind::LargeDirectory => 65.0,
         FindingKind::LongFunction
         | FindingKind::DeepNesting
@@ -277,6 +290,12 @@ fn actionability_score(kind: FindingKind) -> f64 {
         FindingKind::DebtMarker | FindingKind::FileNamingDrift | FindingKind::DirectoryDrift => {
             60.0
         }
+        FindingKind::MissingMetricsModelDocs | FindingKind::MissingArchitectureDocs => 70.0,
+        FindingKind::MissingDocumentationSet
+        | FindingKind::MissingUserGuide
+        | FindingKind::MissingReportSchemaDocs
+        | FindingKind::StaleCliDocumentation
+        | FindingKind::StaleSchemaDocumentation => 85.0,
         FindingKind::ShadowedAbstraction
         | FindingKind::ConfigKeyDrift
         | FindingKind::FixtureFactoryDrift
@@ -317,6 +336,13 @@ pub(crate) fn metric_dimension(kind: FindingKind, metric_name: &str) -> MetricDi
         | FindingKind::DataClump
         | FindingKind::DuplicateTypeShape => MetricDimension::Duplication,
         FindingKind::TestDuplication | FindingKind::HappyPathOnlyTests => MetricDimension::TestRisk,
+        FindingKind::MissingDocumentationSet
+        | FindingKind::MissingUserGuide
+        | FindingKind::MissingReportSchemaDocs
+        | FindingKind::MissingMetricsModelDocs
+        | FindingKind::MissingArchitectureDocs
+        | FindingKind::StaleCliDocumentation
+        | FindingKind::StaleSchemaDocumentation => MetricDimension::Documentation,
         FindingKind::FileNamingDrift
         | FindingKind::DirectoryDrift
         | FindingKind::ParallelImplementation
@@ -357,6 +383,7 @@ fn rank_explanation(
         MetricDimension::Duplication => "duplication signal",
         MetricDimension::Drift => "drift signal",
         MetricDimension::TestRisk => "test-risk signal",
+        MetricDimension::Documentation => "documentation signal",
     });
 
     if unique_related_file_count(related_locations) > 1 {

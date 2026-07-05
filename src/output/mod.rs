@@ -178,7 +178,7 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
     output.push_str(&paint(color, "Signals", AnsiStyle::Section));
     output.push('\n');
     output.push_str(&format!(
-        "  Critical: {}\n  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Happy-path-only tests: {}\n  File naming drift: {}\n  Directory drift: {}\n  Data clumps: {}\n  Parallel implementations: {}\n  Shadowed abstractions: {}\n  Duplicate type shapes: {}\n  Config key drift: {}\n  Fixture factory drift: {}\n  Generic bucket drift: {}\n  Adapter boundary bypasses: {}\n",
+        "  Critical: {}\n  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Happy-path-only tests: {}\n  File naming drift: {}\n  Directory drift: {}\n  Data clumps: {}\n  Parallel implementations: {}\n  Shadowed abstractions: {}\n  Duplicate type shapes: {}\n  Config key drift: {}\n  Fixture factory drift: {}\n  Generic bucket drift: {}\n  Adapter boundary bypasses: {}\n  Missing documentation sets: {}\n  Missing user guides: {}\n  Missing report schema docs: {}\n  Missing metrics model docs: {}\n  Missing architecture docs: {}\n  Stale CLI docs: {}\n  Stale schema docs: {}\n",
         breakdown.critical,
         breakdown.warnings,
         breakdown.info,
@@ -206,7 +206,14 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
         breakdown.count(FindingKind::ConfigKeyDrift),
         breakdown.count(FindingKind::FixtureFactoryDrift),
         breakdown.count(FindingKind::GenericBucketDrift),
-        breakdown.count(FindingKind::AdapterBoundaryBypass)
+        breakdown.count(FindingKind::AdapterBoundaryBypass),
+        breakdown.count(FindingKind::MissingDocumentationSet),
+        breakdown.count(FindingKind::MissingUserGuide),
+        breakdown.count(FindingKind::MissingReportSchemaDocs),
+        breakdown.count(FindingKind::MissingMetricsModelDocs),
+        breakdown.count(FindingKind::MissingArchitectureDocs),
+        breakdown.count(FindingKind::StaleCliDocumentation),
+        breakdown.count(FindingKind::StaleSchemaDocumentation)
     ));
 }
 
@@ -599,6 +606,48 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
         "adapter boundary bypass",
         DisplayMetric::GroupSize,
         MetricFormat::PluralCount("bypass"),
+    ),
+    display(
+        FindingKind::MissingDocumentationSet,
+        "missing documentation set",
+        DisplayMetric::Primary,
+        MetricFormat::PluralCount("missing required doc"),
+    ),
+    display(
+        FindingKind::MissingUserGuide,
+        "missing user guide",
+        DisplayMetric::Primary,
+        MetricFormat::PluralCount("missing user topic"),
+    ),
+    display(
+        FindingKind::MissingReportSchemaDocs,
+        "missing report schema docs",
+        DisplayMetric::Primary,
+        MetricFormat::Count("risk"),
+    ),
+    display(
+        FindingKind::MissingMetricsModelDocs,
+        "missing metrics model docs",
+        DisplayMetric::Primary,
+        MetricFormat::Count("risk"),
+    ),
+    display(
+        FindingKind::MissingArchitectureDocs,
+        "missing architecture docs",
+        DisplayMetric::Primary,
+        MetricFormat::Count("risk"),
+    ),
+    display(
+        FindingKind::StaleCliDocumentation,
+        "stale CLI documentation",
+        DisplayMetric::Primary,
+        MetricFormat::PluralCount("missing flag"),
+    ),
+    display(
+        FindingKind::StaleSchemaDocumentation,
+        "stale schema documentation",
+        DisplayMetric::Primary,
+        MetricFormat::PluralCount("missing field"),
     ),
 ];
 
