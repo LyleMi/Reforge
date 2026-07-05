@@ -29,4 +29,8 @@ pub struct ScanArgs {
     /// Include hidden files and directories.
     #[arg(long)]
     pub include_hidden: bool,
+
+    /// Include dependency and generated output directories.
+    #[arg(long)]
+    pub include_generated: bool,
 }

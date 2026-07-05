@@ -6,6 +6,19 @@ use walkdir::{DirEntry, WalkDir};
 
 use crate::cli::ScanArgs;
 
+const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
+    "node_modules",
+    "dist",
+    "build",
+    "out",
+    "target",
+    "coverage",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".vite",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Severity {
     Info,
@@ -31,10 +44,12 @@ pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
     if root.is_file() {
         scan_file(&root, args.max_file_lines, &mut findings)?;
     } else {
-        for entry in WalkDir::new(&root)
-            .into_iter()
-            .filter_entry(|entry| args.include_hidden || !is_hidden(entry))
-        {
+        for entry in WalkDir::new(&root).into_iter().filter_entry(|entry| {
+            let is_root = entry.path() == root.as_path();
+            is_root
+                || ((args.include_hidden || !is_hidden(entry))
+                    && (args.include_generated || !is_default_excluded_dir(entry)))
+        }) {
             let entry = entry?;
 
             if entry.file_type().is_file() && is_supported_source(entry.path()) {
@@ -122,6 +137,70 @@ fn is_hidden(entry: &DirEntry) -> bool {
         .is_some_and(|name| name.starts_with('.'))
 }
 
+fn is_default_excluded_dir(entry: &DirEntry) -> bool {
+    entry.file_type().is_dir()
+        && entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| DEFAULT_EXCLUDED_DIRS.contains(&name))
+}
+
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
+
+    fn test_root(name: &str) -> std::path::PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("reforge-{name}-{suffix}"))
+    }
+
+    fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
+        ScanArgs {
+            path,
+            max_file_lines: 800,
+            include_hidden: false,
+            include_generated,
+        }
+    }
+
+    #[test]
+    fn skips_generated_directories_by_default() -> Result<()> {
+        let root = test_root("skip-generated");
+        fs::create_dir_all(root.join("node_modules/pkg"))?;
+        fs::create_dir_all(root.join("src"))?;
+        fs::write(root.join("node_modules/pkg/index.js"), "// TODO: ignored\n")?;
+        fs::write(root.join("src/main.rs"), "// TODO: reported\n")?;
+
+        let findings = scan_path(&scan_args(root.clone(), false))?;
+
+        fs::remove_dir_all(root)?;
+
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].path.ends_with("src/main.rs"));
+        Ok(())
+    }
+
+    #[test]
+    fn can_include_generated_directories() -> Result<()> {
+        let root = test_root("include-generated");
+        fs::create_dir_all(root.join("dist"))?;
+        fs::write(root.join("dist/app.js"), "// TODO: reported\n")?;
+
+        let findings = scan_path(&scan_args(root.clone(), true))?;
+
+        fs::remove_dir_all(root)?;
+
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].path.ends_with("dist/app.js"));
+        Ok(())
+    }
 }
