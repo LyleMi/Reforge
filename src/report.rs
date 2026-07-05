@@ -102,7 +102,7 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
     output.push_str(&paint(color, "Signals", AnsiStyle::Section));
     output.push('\n');
     output.push_str(&format!(
-        "  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Directory drift: {}\n  Data clumps: {}\n",
+        "  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Directory drift: {}\n  Data clumps: {}\n  Parallel implementations: {}\n  Shadowed abstractions: {}\n  Duplicate type shapes: {}\n  Config key drift: {}\n  Fixture factory drift: {}\n  Generic bucket drift: {}\n  Adapter boundary bypasses: {}\n",
         breakdown.warnings,
         breakdown.info,
         breakdown.count(FindingKind::LargeFile),
@@ -120,7 +120,14 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
         breakdown.count(FindingKind::RepeatedErrorPattern),
         breakdown.count(FindingKind::TestDuplication),
         breakdown.count(FindingKind::DirectoryDrift),
-        breakdown.count(FindingKind::DataClump)
+        breakdown.count(FindingKind::DataClump),
+        breakdown.count(FindingKind::ParallelImplementation),
+        breakdown.count(FindingKind::ShadowedAbstraction),
+        breakdown.count(FindingKind::DuplicateTypeShape),
+        breakdown.count(FindingKind::ConfigKeyDrift),
+        breakdown.count(FindingKind::FixtureFactoryDrift),
+        breakdown.count(FindingKind::GenericBucketDrift),
+        breakdown.count(FindingKind::AdapterBoundaryBypass)
     ));
 }
 
@@ -220,6 +227,13 @@ fn has_related_location_details(finding: &Finding) -> bool {
             | FindingKind::RepeatedErrorPattern
             | FindingKind::TestDuplication
             | FindingKind::DataClump
+            | FindingKind::ParallelImplementation
+            | FindingKind::ShadowedAbstraction
+            | FindingKind::DuplicateTypeShape
+            | FindingKind::ConfigKeyDrift
+            | FindingKind::FixtureFactoryDrift
+            | FindingKind::GenericBucketDrift
+            | FindingKind::AdapterBoundaryBypass
     )
 }
 
@@ -348,6 +362,11 @@ enum MagnitudePhrase {
     Imports,
     Occurrences,
     Concepts,
+    Implementations,
+    TypeShapes,
+    ConfigKeys,
+    Factories,
+    Bypasses,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -438,6 +457,41 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
         label: "data clump",
         magnitude: Some(MagnitudePhrase::Occurrences),
     },
+    FindingKindDisplay {
+        kind: FindingKind::ParallelImplementation,
+        label: "parallel implementation",
+        magnitude: Some(MagnitudePhrase::Implementations),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::ShadowedAbstraction,
+        label: "shadowed abstraction",
+        magnitude: Some(MagnitudePhrase::Occurrences),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::DuplicateTypeShape,
+        label: "duplicate type shape",
+        magnitude: Some(MagnitudePhrase::TypeShapes),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::ConfigKeyDrift,
+        label: "config key drift",
+        magnitude: Some(MagnitudePhrase::ConfigKeys),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::FixtureFactoryDrift,
+        label: "fixture factory drift",
+        magnitude: Some(MagnitudePhrase::Factories),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::GenericBucketDrift,
+        label: "generic bucket drift",
+        magnitude: Some(MagnitudePhrase::Concepts),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::AdapterBoundaryBypass,
+        label: "adapter boundary bypass",
+        magnitude: Some(MagnitudePhrase::Bypasses),
+    },
 ];
 
 fn display_for_kind(kind: FindingKind) -> &'static FindingKindDisplay {
@@ -462,6 +516,30 @@ fn render_magnitude(label: &str, magnitude: usize, phrase: MagnitudePhrase) -> S
         MagnitudePhrase::Imports => format!("{label}: {magnitude} imports"),
         MagnitudePhrase::Occurrences => format!("{label}: {magnitude} occurrences"),
         MagnitudePhrase::Concepts => format!("{label}: {magnitude} concepts"),
+        MagnitudePhrase::Implementations => {
+            format!(
+                "{label}: {magnitude} {}",
+                pluralize(magnitude, "implementation")
+            )
+        }
+        MagnitudePhrase::TypeShapes => {
+            format!(
+                "{label}: {magnitude} {}",
+                pluralize(magnitude, "type shape")
+            )
+        }
+        MagnitudePhrase::ConfigKeys => {
+            format!(
+                "{label}: {magnitude} config {}",
+                pluralize(magnitude, "key")
+            )
+        }
+        MagnitudePhrase::Factories => {
+            format!("{label}: {magnitude} {}", pluralize(magnitude, "factory"))
+        }
+        MagnitudePhrase::Bypasses => {
+            format!("{label}: {magnitude} {}", pluralize(magnitude, "bypass"))
+        }
     }
 }
 
@@ -684,6 +762,66 @@ mod tests {
             value["findings"][0]["related_locations"][0]["name"],
             "alpha"
         );
+    }
+
+    #[test]
+    fn renders_agent_drift_signal_counts_and_related_locations() {
+        let kinds = [
+            FindingKind::ParallelImplementation,
+            FindingKind::ShadowedAbstraction,
+            FindingKind::DuplicateTypeShape,
+            FindingKind::ConfigKeyDrift,
+            FindingKind::FixtureFactoryDrift,
+            FindingKind::GenericBucketDrift,
+            FindingKind::AdapterBoundaryBypass,
+        ];
+        let findings = kinds
+            .iter()
+            .enumerate()
+            .map(|(index, kind)| Finding {
+                kind: *kind,
+                severity: Severity::Warning,
+                path: "src/agent.rs".to_string(),
+                line: Some(index + 1),
+                magnitude: Some(index + 2),
+                message: String::new(),
+                related_locations: vec![RelatedLocation {
+                    path: format!("src/related_{index}.rs"),
+                    line: index + 10,
+                    name: Some(format!("related_{index}")),
+                }],
+            })
+            .collect::<Vec<_>>();
+
+        let output = render_human_report(&report(findings));
+
+        assert!(output.contains("Parallel implementations: 1"));
+        assert!(output.contains("Shadowed abstractions: 1"));
+        assert!(output.contains("Duplicate type shapes: 1"));
+        assert!(output.contains("Config key drift: 1"));
+        assert!(output.contains("Fixture factory drift: 1"));
+        assert!(output.contains("Generic bucket drift: 1"));
+        assert!(output.contains("Adapter boundary bypasses: 1"));
+        assert!(output.contains("parallel implementation: 2 implementations"));
+        assert!(output.contains("src/related_0.rs:10 related_0"));
+    }
+
+    #[test]
+    fn serializes_agent_drift_kind_as_snake_case() {
+        let report = report(vec![Finding {
+            kind: FindingKind::ParallelImplementation,
+            severity: Severity::Warning,
+            path: "src/agent.rs".to_string(),
+            line: Some(1),
+            magnitude: Some(2),
+            message: String::new(),
+            related_locations: Vec::new(),
+        }]);
+
+        let value: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+
+        assert_eq!(value["findings"][0]["kind"], "parallel_implementation");
     }
 
     #[test]

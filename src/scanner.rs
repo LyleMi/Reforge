@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use walkdir::{DirEntry, WalkDir};
 
+use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
 use crate::cli::ScanArgs;
 use crate::similar_functions::{
     SimilarFunctionOptions, SimilarFunctionProgress, SourceFile, is_supported_similarity_source,
@@ -47,6 +48,13 @@ pub enum FindingKind {
     TestDuplication,
     DirectoryDrift,
     DataClump,
+    ParallelImplementation,
+    ShadowedAbstraction,
+    DuplicateTypeShape,
+    ConfigKeyDrift,
+    FixtureFactoryDrift,
+    GenericBucketDrift,
+    AdapterBoundaryBypass,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -301,6 +309,7 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
     report_scan_start(progress, &root, total_source_files);
     scan_sources(&root, args, total_source_files, progress, &mut scan)?;
     scan_structural_signals(args, progress, &mut scan)?;
+    scan_agent_drift_signals(args, progress, &mut scan);
     let similar_function_group_count = scan_similarity_signals(args, progress, &mut scan)?;
 
     let summary = ScanSummary {
@@ -321,6 +330,25 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
         stats: scan.stats,
         findings: scan.findings,
     })
+}
+
+fn scan_agent_drift_signals(
+    args: &ScanArgs,
+    progress: &mut dyn ProgressSink,
+    scan: &mut SourceScan,
+) {
+    progress.report(&format!(
+        "Analyzing agent drift signals in {} files",
+        scan.structure_sources.len()
+    ));
+    let options = AgentDriftOptions {
+        min_repeated_occurrences: args.min_repeated_literal_occurrences,
+        min_data_shape_occurrences: args.min_data_clump_occurrences,
+        max_dir_files: args.max_dir_files,
+        include_test_structure: args.include_test_structure,
+    };
+    scan.findings
+        .extend(scan_agent_drift(&scan.structure_sources, &options));
 }
 
 fn resolve_scan_root(args: &ScanArgs) -> Result<PathBuf> {

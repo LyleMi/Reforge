@@ -1,3 +1,4 @@
+mod agent_drift;
 mod cli;
 mod report;
 mod scanner;
