@@ -58,6 +58,10 @@ pub struct ScanArgs {
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     pub output: OutputFormat,
 
+    /// Write the report to this file instead of stdout.
+    #[arg(long)]
+    pub output_file: Option<PathBuf>,
+
     /// Progress reporting mode. Auto writes to stderr only when stderr is a TTY.
     #[arg(long, value_enum, default_value_t = ProgressMode::Auto)]
     pub progress: ProgressMode,
@@ -134,6 +138,14 @@ mod tests {
 
         let Command::Scan(args) = cli.command;
         assert_eq!(args.output, OutputFormat::Json);
+    }
+
+    #[test]
+    fn parses_output_file() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.json"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output_file, Some(PathBuf::from("report.json")));
     }
 
     #[test]

@@ -10,14 +10,17 @@ pub fn print_human_report(report: &ScanReport) -> io::Result<()> {
 }
 
 pub fn print_json_report(report: &ScanReport) -> Result<()> {
-    let mut stdout = std::io::stdout().lock();
-    stdout.write_all(serde_json::to_string_pretty(report)?.as_bytes())?;
-    stdout.write_all(b"\n")?;
-    Ok(())
+    write_json_report(std::io::stdout().lock(), report)
 }
 
 pub fn write_human_report(mut writer: impl Write, report: &ScanReport) -> io::Result<()> {
     writer.write_all(render_human_report(report).as_bytes())
+}
+
+pub fn write_json_report(mut writer: impl Write, report: &ScanReport) -> Result<()> {
+    writer.write_all(serde_json::to_string_pretty(report)?.as_bytes())?;
+    writer.write_all(b"\n")?;
+    Ok(())
 }
 
 pub fn render_human_report(report: &ScanReport) -> String {
@@ -266,6 +269,20 @@ mod tests {
         assert_eq!(
             value["findings"][0]["related_locations"][0]["name"],
             "alpha"
+        );
+    }
+
+    #[test]
+    fn writes_json_report_to_writer() {
+        let mut output = Vec::new();
+
+        write_json_report(&mut output, &report(Vec::new())).unwrap();
+
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.ends_with('\n'));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&output).unwrap()["summary"]["scanned_files"],
+            2
         );
     }
 }

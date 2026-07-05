@@ -3,8 +3,10 @@ mod report;
 mod scanner;
 mod similar_functions;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
+use std::fs::File;
+use std::io::BufWriter;
 use std::io::ErrorKind;
 use std::io::IsTerminal;
 
@@ -26,9 +28,23 @@ fn main() -> Result<()> {
                 scanner::scan_report(&args, &mut progress)?
             };
 
-            match args.output {
-                OutputFormat::Human => handle_output_result(report::print_human_report(&report))?,
-                OutputFormat::Json => handle_output_result(report::print_json_report(&report))?,
+            if let Some(output_file) = &args.output_file {
+                let file = File::create(output_file).with_context(|| {
+                    format!("failed to create output file {}", output_file.display())
+                })?;
+                let writer = BufWriter::new(file);
+
+                match args.output {
+                    OutputFormat::Human => report::write_human_report(writer, &report)?,
+                    OutputFormat::Json => report::write_json_report(writer, &report)?,
+                }
+            } else {
+                match args.output {
+                    OutputFormat::Human => {
+                        handle_output_result(report::print_human_report(&report))?
+                    }
+                    OutputFormat::Json => handle_output_result(report::print_json_report(&report))?,
+                }
             }
         }
     }

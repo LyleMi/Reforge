@@ -15,6 +15,7 @@ cargo run -- scan . --max-dir-files 30
 cargo run -- scan . --include-generated
 cargo run -- scan . --min-function-tokens 60 --function-similarity 0.85
 cargo run -- scan . --include-test-similarity
+cargo run -- scan . --output json --output-file reforge-report.json --progress never
 ```
 
 By default, scans skip common dependency and generated output directories such
@@ -28,8 +29,11 @@ methods whose normalized bodies have at least `--min-function-tokens` and meet
 and test directories by default; pass `--include-test-similarity` when test
 duplication is the intended target.
 
+Use `--output-file <path>` to write either the human or JSON report to a file
+instead of stdout. Existing files are overwritten.
+
 ## Roadmap
 
 - Extract language-neutral code structure metrics.
 - Score refactoring signals by severity and confidence.
-- Emit machine-readable JSON reports.
+- Add more machine-readable report fields.
