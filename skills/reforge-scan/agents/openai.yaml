@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reforge Scan"
+  short_description: "Scan repos for refactoring signals"
+  default_prompt: "Use $reforge-scan to scan this repository for refactoring signals and recommend the highest-value cleanup."
