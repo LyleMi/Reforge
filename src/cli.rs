@@ -55,8 +55,8 @@ pub struct ScanArgs {
     pub include_test_similarity: bool,
 
     /// Output format.
-    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
-    pub output: OutputFormat,
+    #[arg(long, value_enum)]
+    pub output: Option<OutputFormat>,
 
     /// Write the report to this file instead of stdout.
     #[arg(long)]
@@ -78,6 +78,26 @@ pub enum ProgressMode {
     Auto,
     Always,
     Never,
+}
+
+impl ScanArgs {
+    pub fn output_format(&self) -> OutputFormat {
+        self.output.unwrap_or_else(|| {
+            if self.output_file_has_json_extension() {
+                OutputFormat::Json
+            } else {
+                OutputFormat::Human
+            }
+        })
+    }
+
+    fn output_file_has_json_extension(&self) -> bool {
+        self.output_file
+            .as_ref()
+            .and_then(|path| path.extension())
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
+    }
 }
 
 impl ProgressMode {
@@ -137,7 +157,8 @@ mod tests {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output", "json"]);
 
         let Command::Scan(args) = cli.command;
-        assert_eq!(args.output, OutputFormat::Json);
+        assert_eq!(args.output, Some(OutputFormat::Json));
+        assert_eq!(args.output_format(), OutputFormat::Json);
     }
 
     #[test]
@@ -146,6 +167,38 @@ mod tests {
 
         let Command::Scan(args) = cli.command;
         assert_eq!(args.output_file, Some(PathBuf::from("report.json")));
+    }
+
+    #[test]
+    fn infers_json_output_format_from_output_file_extension() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.json"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output_format(), OutputFormat::Json);
+    }
+
+    #[test]
+    fn infers_json_output_format_from_uppercase_output_file_extension() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "REPORT.JSON"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output_format(), OutputFormat::Json);
+    }
+
+    #[test]
+    fn keeps_explicit_output_format_when_output_file_extension_is_json() {
+        let cli = Cli::parse_from([
+            "reforge",
+            "scan",
+            ".",
+            "--output-file",
+            "report.json",
+            "--output",
+            "human",
+        ]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output_format(), OutputFormat::Human);
     }
 
     #[test]

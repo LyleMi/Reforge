@@ -421,7 +421,7 @@ mod tests {
             min_function_tokens: 80,
             function_similarity: 0.85,
             include_test_similarity: false,
-            output: crate::cli::OutputFormat::Human,
+            output: Some(crate::cli::OutputFormat::Human),
             output_file: None,
             progress: crate::cli::ProgressMode::Auto,
         }

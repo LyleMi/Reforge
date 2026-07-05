@@ -18,6 +18,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Command::Scan(args) => {
+            let output_format = args.output_format();
             let progress_enabled = args.progress.enabled(std::io::stderr().is_terminal());
 
             let report = if progress_enabled {
@@ -34,12 +35,12 @@ fn main() -> Result<()> {
                 })?;
                 let writer = BufWriter::new(file);
 
-                match args.output {
+                match output_format {
                     OutputFormat::Human => report::write_human_report(writer, &report)?,
                     OutputFormat::Json => report::write_json_report(writer, &report)?,
                 }
             } else {
-                match args.output {
+                match output_format {
                     OutputFormat::Human => {
                         handle_output_result(report::print_human_report(&report))?
                     }
