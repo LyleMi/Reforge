@@ -47,6 +47,8 @@ pub enum FindingKind {
     RepeatedLiteral,
     RepeatedErrorPattern,
     TestDuplication,
+    HappyPathOnlyTests,
+    FileNamingDrift,
     DirectoryDrift,
     DataClump,
     ParallelImplementation,
@@ -58,11 +60,12 @@ pub enum FindingKind {
     AdapterBoundaryBypass,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
     Warning,
+    Critical,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -117,6 +120,14 @@ struct SourceScan {
 struct FileScanOptions {
     max_file_lines: usize,
     include_test_similarity: bool,
+}
+
+pub(crate) fn severity_for_threshold(value: usize, threshold: usize) -> Severity {
+    if threshold > 0 && value >= threshold.saturating_mul(2) {
+        Severity::Critical
+    } else {
+        Severity::Warning
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -567,7 +578,7 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
     if line_count > options.max_file_lines {
         scan.findings.push(Finding {
             kind: FindingKind::LargeFile,
-            severity: Severity::Warning,
+            severity: severity_for_threshold(line_count, options.max_file_lines),
             path: display_path(path),
             line: Some(1),
             magnitude: Some(line_count),
@@ -629,7 +640,7 @@ fn scan_directories(
         if *file_count > max_dir_files {
             findings.push(Finding {
                 kind: FindingKind::LargeDirectory,
-                severity: Severity::Warning,
+                severity: severity_for_threshold(*file_count, max_dir_files),
                 path: display_path(directory),
                 line: None,
                 magnitude: Some(*file_count),

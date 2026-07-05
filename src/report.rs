@@ -163,7 +163,8 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
     output.push_str(&paint(color, "Signals", AnsiStyle::Section));
     output.push('\n');
     output.push_str(&format!(
-        "  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Directory drift: {}\n  Data clumps: {}\n  Parallel implementations: {}\n  Shadowed abstractions: {}\n  Duplicate type shapes: {}\n  Config key drift: {}\n  Fixture factory drift: {}\n  Generic bucket drift: {}\n  Adapter boundary bypasses: {}\n",
+        "  Critical: {}\n  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Happy-path-only tests: {}\n  File naming drift: {}\n  Directory drift: {}\n  Data clumps: {}\n  Parallel implementations: {}\n  Shadowed abstractions: {}\n  Duplicate type shapes: {}\n  Config key drift: {}\n  Fixture factory drift: {}\n  Generic bucket drift: {}\n  Adapter boundary bypasses: {}\n",
+        breakdown.critical,
         breakdown.warnings,
         breakdown.info,
         breakdown.count(FindingKind::LargeFile),
@@ -180,6 +181,8 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
         breakdown.count(FindingKind::RepeatedLiteral),
         breakdown.count(FindingKind::RepeatedErrorPattern),
         breakdown.count(FindingKind::TestDuplication),
+        breakdown.count(FindingKind::HappyPathOnlyTests),
+        breakdown.count(FindingKind::FileNamingDrift),
         breakdown.count(FindingKind::DirectoryDrift),
         breakdown.count(FindingKind::DataClump),
         breakdown.count(FindingKind::ParallelImplementation),
@@ -246,6 +249,8 @@ fn has_related_location_details(finding: &Finding) -> bool {
             | FindingKind::RepeatedLiteral
             | FindingKind::RepeatedErrorPattern
             | FindingKind::TestDuplication
+            | FindingKind::HappyPathOnlyTests
+            | FindingKind::FileNamingDrift
             | FindingKind::DataClump
             | FindingKind::ParallelImplementation
             | FindingKind::ShadowedAbstraction
@@ -343,6 +348,7 @@ fn render_related_locations(finding: &Finding, color: bool) -> String {
 
 #[derive(Debug, Default)]
 struct FindingBreakdown {
+    critical: usize,
     warnings: usize,
     info: usize,
     by_kind: BTreeMap<FindingKind, usize>,
@@ -354,6 +360,7 @@ impl FindingBreakdown {
 
         for finding in findings {
             match finding.severity {
+                Severity::Critical => breakdown.critical += 1,
                 Severity::Warning => breakdown.warnings += 1,
                 Severity::Info => breakdown.info += 1,
             }
@@ -388,9 +395,11 @@ enum MagnitudePhrase {
     ConfigKeys,
     Factories,
     Bypasses,
+    TestCases,
+    Styles,
 }
 
-const MAGNITUDE_PHRASE_COUNT: usize = MagnitudePhrase::Bypasses as usize + 1;
+const MAGNITUDE_PHRASE_COUNT: usize = MagnitudePhrase::Styles as usize + 1;
 
 impl MagnitudePhrase {
     fn format(self) -> MagnitudeFormat {
@@ -446,6 +455,14 @@ const MAGNITUDE_FORMATS: [MagnitudeFormat; MAGNITUDE_PHRASE_COUNT] = [
     },
     MagnitudeFormat::PluralCount("factory"),
     MagnitudeFormat::PluralCount("bypass"),
+    MagnitudeFormat::PrefixedPluralCount {
+        prefix: "test ",
+        noun: "case",
+    },
+    MagnitudeFormat::PrefixedPluralCount {
+        prefix: "naming ",
+        noun: "style",
+    },
 ];
 
 #[derive(Debug, Clone, Copy)]
@@ -527,6 +544,16 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
         magnitude: Some(MagnitudePhrase::Occurrences),
     },
     FindingKindDisplay {
+        kind: FindingKind::HappyPathOnlyTests,
+        label: "happy-path-only tests",
+        magnitude: Some(MagnitudePhrase::TestCases),
+    },
+    FindingKindDisplay {
+        kind: FindingKind::FileNamingDrift,
+        label: "file naming drift",
+        magnitude: Some(MagnitudePhrase::Styles),
+    },
+    FindingKindDisplay {
         kind: FindingKind::DirectoryDrift,
         label: "directory drift",
         magnitude: Some(MagnitudePhrase::Concepts),
@@ -594,12 +621,14 @@ enum AnsiStyle {
     Path,
     Location,
     Warning,
+    Critical,
     Info,
 }
 
 fn render_severity(severity: &Severity, color: bool) -> String {
     let label = format!("[{severity}]");
     let style = match severity {
+        Severity::Critical => AnsiStyle::Critical,
         Severity::Warning => AnsiStyle::Warning,
         Severity::Info => AnsiStyle::Info,
     };
@@ -616,6 +645,7 @@ fn paint(color: bool, text: &str, style: AnsiStyle) -> String {
         AnsiStyle::Section => "1",
         AnsiStyle::Path => "36",
         AnsiStyle::Location => "2",
+        AnsiStyle::Critical => "31",
         AnsiStyle::Warning => "33",
         AnsiStyle::Info => "34",
     };
@@ -628,6 +658,7 @@ impl std::fmt::Display for Severity {
         match self {
             Severity::Info => write!(f, "info"),
             Severity::Warning => write!(f, "warning"),
+            Severity::Critical => write!(f, "critical"),
         }
     }
 }

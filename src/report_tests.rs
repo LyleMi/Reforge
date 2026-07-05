@@ -281,3 +281,38 @@ fn renders_new_signal_counts_and_snake_case_json_kind() {
         serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
     assert_eq!(value["findings"][0]["kind"], "long_function");
 }
+
+#[test]
+fn renders_test_and_naming_signal_counts() {
+    let report = report(vec![
+        Finding {
+            kind: FindingKind::HappyPathOnlyTests,
+            severity: Severity::Info,
+            path: "tests/user.test.js".to_string(),
+            line: Some(2),
+            magnitude: Some(3),
+            message: String::new(),
+            related_locations: Vec::new(),
+        },
+        Finding {
+            kind: FindingKind::FileNamingDrift,
+            severity: Severity::Warning,
+            path: "src/payments".to_string(),
+            line: None,
+            magnitude: Some(3),
+            message: String::new(),
+            related_locations: Vec::new(),
+        },
+    ]);
+
+    let human = render_human_report(&report);
+    assert!(human.contains("Happy-path-only tests: 1"));
+    assert!(human.contains("File naming drift: 1"));
+    assert!(human.contains("happy-path-only tests: 3 test cases"));
+    assert!(human.contains("file naming drift: 3 naming styles"));
+
+    let value: serde_json::Value =
+        serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+    assert_eq!(value["findings"][0]["kind"], "happy_path_only_tests");
+    assert_eq!(value["findings"][1]["kind"], "file_naming_drift");
+}

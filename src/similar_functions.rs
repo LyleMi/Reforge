@@ -9,7 +9,7 @@ use crate::language::{
     GENERATOR_FUNCTION_DECLARATION, LanguageAdapter, LanguageFamily, METHOD_DECLARATION,
     METHOD_DEFINITION, NAME_FIELD, adapter_for_path,
 };
-use crate::scanner::{Finding, FindingKind, RelatedLocation, Severity};
+use crate::scanner::{Finding, FindingKind, RelatedLocation, severity_for_threshold};
 
 type TokenId = u32;
 
@@ -509,6 +509,7 @@ fn group_candidate_bucket(
             findings.push(similar_function_finding(
                 candidates,
                 &group,
+                options.min_group_size,
                 options.threshold,
             ));
         }
@@ -685,6 +686,7 @@ fn longest_common_subsequence_reaches(
 fn similar_function_finding(
     candidates: &[FunctionCandidate],
     group: &[usize],
+    min_group_size: usize,
     threshold: f64,
 ) -> Finding {
     let representative = &candidates[group[0]];
@@ -702,7 +704,7 @@ fn similar_function_finding(
 
     Finding {
         kind: FindingKind::SimilarFunctions,
-        severity: Severity::Warning,
+        severity: severity_for_threshold(group.len(), min_group_size),
         path: representative.path.clone(),
         line: Some(representative.line),
         magnitude: Some(group.len()),

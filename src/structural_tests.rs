@@ -241,6 +241,57 @@ test("three", () => {
 }
 
 #[test]
+fn reports_happy_path_only_test_risk() -> Result<()> {
+    let source = r#"
+test("creates user", () => {
+  expect(createUser("Ada").name).toBe("Ada");
+});
+test("updates user", () => {
+  expect(updateUser("Ada").name).toBe("Ada");
+});
+test("loads user", () => {
+  expect(loadUser("Ada").name).toBe("Ada");
+});
+"#;
+
+    let findings = scan_structure(&[source_file("tests/user.test.js", source)], &options())?;
+    let finding = findings
+        .iter()
+        .find(|finding| finding.kind == FindingKind::HappyPathOnlyTests)
+        .expect("happy-path-only test risk should be reported");
+
+    assert_eq!(finding.severity, Severity::Info);
+    assert_eq!(finding.magnitude, Some(3));
+    assert_eq!(finding.related_locations.len(), 3);
+    Ok(())
+}
+
+#[test]
+fn skips_happy_path_risk_when_negative_case_is_present() -> Result<()> {
+    let source = r#"
+test("creates user", () => {
+  expect(createUser("Ada").name).toBe("Ada");
+});
+test("updates user", () => {
+  expect(updateUser("Ada").name).toBe("Ada");
+});
+test("rejects invalid user", () => {
+  expect(() => createUser("")).toThrow();
+});
+"#;
+
+    let findings = scan_structure(&[source_file("tests/user.test.js", source)], &options())?;
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::HappyPathOnlyTests),
+        "{findings:#?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn skips_rust_cfg_test_modules_for_structure_by_default() -> Result<()> {
     let source = r#"
 pub fn production() -> &'static str {
@@ -311,5 +362,27 @@ fn reports_directory_drift() -> Result<()> {
             .iter()
             .any(|finding| finding.kind == FindingKind::DirectoryDrift)
     );
+    Ok(())
+}
+
+#[test]
+fn reports_file_naming_drift_within_directory() -> Result<()> {
+    let files = [
+        source_file("src/payments/user_profile.rs", "fn a() {}\n"),
+        source_file("src/payments/account_settings.rs", "fn b() {}\n"),
+        source_file("src/payments/billingPlan.rs", "fn c() {}\n"),
+        source_file("src/payments/invoice-report.rs", "fn d() {}\n"),
+    ];
+
+    let findings = scan_structure(&files, &options())?;
+    let finding = findings
+        .iter()
+        .find(|finding| finding.kind == FindingKind::FileNamingDrift)
+        .expect("file naming drift should be reported");
+
+    assert_eq!(finding.severity, Severity::Warning);
+    assert_eq!(finding.path, "src/payments");
+    assert_eq!(finding.magnitude, Some(3));
+    assert_eq!(finding.related_locations.len(), 2);
     Ok(())
 }

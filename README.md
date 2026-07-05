@@ -32,7 +32,18 @@ and test directories by default; pass `--include-test-similarity` when test
 duplication is the intended target. Reforge also reports agent-written-code
 drift indicators, including parallel implementations, shadowed abstractions,
 duplicate data shapes, config key drift, fixture factory drift, generic bucket
-drift, and adapter boundary bypasses.
+drift, and adapter boundary bypasses. Test files are scanned for repeated setup
+and a conservative happy-path-only risk signal when several test cases have
+assertions but no negative, error, or boundary evidence. Source directories are
+also checked for mixed file naming styles such as `snake_case`, `kebab-case`,
+`PascalCase`, and `camelCase`; single-word lowercase names are treated as
+neutral.
+
+Findings use `info`, `warning`, or `critical` severity. Threshold-based
+findings such as large files, complex functions, and large directories become
+critical when they exceed the configured threshold by at least 2x. Repeated or
+drift-style findings generally start as info and upgrade as the group size
+grows.
 
 Use `--output-file <path>` to write the human, JSON, or YAML report to a file
 instead of stdout. A `.json` output file selects JSON output, and `.yaml` or

@@ -9,7 +9,9 @@ use crate::language::{
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
     NAME_FIELD, PARAMETERS_FIELD, adapter_for_path,
 };
-use crate::scanner::{Finding, FindingKind, RelatedLocation, Severity, is_test_source};
+use crate::scanner::{
+    Finding, FindingKind, RelatedLocation, Severity, is_test_source, severity_for_threshold,
+};
 use crate::similar_functions::SourceFile;
 
 #[derive(Debug, Clone)]
@@ -49,6 +51,23 @@ struct TypeMetric {
 
 type Occurrence = RelatedLocation;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum FileNamingStyle {
+    SnakeCase,
+    KebabCase,
+    PascalCase,
+    CamelCase,
+    Lowercase,
+    DotSeparated,
+    Mixed,
+}
+
+#[derive(Debug, Default)]
+struct NamingDirectory {
+    display_path: String,
+    styles: BTreeMap<FileNamingStyle, Vec<Occurrence>>,
+}
+
 #[derive(Debug, Default)]
 struct FileSignals {
     findings: Vec<Finding>,
@@ -56,6 +75,8 @@ struct FileSignals {
     error_patterns: Vec<(String, Occurrence)>,
     data_clumps: Vec<(String, Occurrence)>,
     test_setups: Vec<(String, Occurrence)>,
+    happy_path_test_files: Vec<(usize, Vec<Occurrence>)>,
+    naming_directories: BTreeMap<PathBuf, NamingDirectory>,
     directory_files: BTreeMap<PathBuf, BTreeSet<String>>,
 }
 
@@ -79,6 +100,7 @@ pub fn scan_structure(files: &[SourceFile], options: &StructureOptions) -> Resul
         let Some(adapter) = adapter_for_path(&file.path) else {
             continue;
         };
+        collect_file_naming_style(file, &mut signals);
 
         let mut parser = Parser::new();
         parser
@@ -106,6 +128,7 @@ pub fn scan_structure(files: &[SourceFile], options: &StructureOptions) -> Resul
 
         if is_test {
             collect_test_setup_patterns(file, tree.root_node(), &mut signals);
+            collect_happy_path_test_risk(file, adapter.family, &mut signals);
         }
     }
 
@@ -134,9 +157,15 @@ pub fn scan_structure(files: &[SourceFile], options: &StructureOptions) -> Resul
         signals.test_setups,
         options.min_data_clump_occurrences,
         FindingKind::TestDuplication,
-        Severity::Info,
+        Severity::Warning,
         |_, count| format!("test setup pattern is repeated {count} times"),
     ));
+    signals
+        .findings
+        .extend(happy_path_test_findings(signals.happy_path_test_files));
+    signals
+        .findings
+        .extend(file_naming_drift_findings(&signals.naming_directories));
     signals
         .findings
         .extend(directory_drift_findings(&signals.directory_files, options));
@@ -178,7 +207,7 @@ fn scan_function_metrics(
         if function.lines > options.max_function_lines {
             signals.findings.push(Finding {
                 kind: FindingKind::LongFunction,
-                severity: Severity::Warning,
+                severity: severity_for_threshold(function.lines, options.max_function_lines),
                 path: file.display_path.clone(),
                 line: Some(function.line),
                 magnitude: Some(function.lines),
@@ -193,7 +222,10 @@ fn scan_function_metrics(
         if function.complexity > options.max_function_complexity {
             signals.findings.push(Finding {
                 kind: FindingKind::ComplexFunction,
-                severity: Severity::Warning,
+                severity: severity_for_threshold(
+                    function.complexity,
+                    options.max_function_complexity,
+                ),
                 path: file.display_path.clone(),
                 line: Some(function.line),
                 magnitude: Some(function.complexity),
@@ -208,7 +240,7 @@ fn scan_function_metrics(
         if function.nesting_depth > options.max_nesting_depth {
             signals.findings.push(Finding {
                 kind: FindingKind::DeepNesting,
-                severity: Severity::Warning,
+                severity: severity_for_threshold(function.nesting_depth, options.max_nesting_depth),
                 path: file.display_path.clone(),
                 line: Some(function.line),
                 magnitude: Some(function.nesting_depth),
@@ -223,7 +255,10 @@ fn scan_function_metrics(
         if function.parameter_count > options.max_function_parameters {
             signals.findings.push(Finding {
                 kind: FindingKind::ManyParameters,
-                severity: Severity::Warning,
+                severity: severity_for_threshold(
+                    function.parameter_count,
+                    options.max_function_parameters,
+                ),
                 path: file.display_path.clone(),
                 line: Some(function.line),
                 magnitude: Some(function.parameter_count),
@@ -250,9 +285,22 @@ fn scan_type_metrics(
         if type_metric.lines > options.max_type_lines
             || type_metric.members > options.max_type_members
         {
+            let mut severity = Severity::Warning;
+            if type_metric.lines > options.max_type_lines {
+                severity = severity.max(severity_for_threshold(
+                    type_metric.lines,
+                    options.max_type_lines,
+                ));
+            }
+            if type_metric.members > options.max_type_members {
+                severity = severity.max(severity_for_threshold(
+                    type_metric.members,
+                    options.max_type_members,
+                ));
+            }
             signals.findings.push(Finding {
                 kind: FindingKind::LargeType,
-                severity: Severity::Warning,
+                severity,
                 path: file.display_path.clone(),
                 line: Some(type_metric.line),
                 magnitude: Some(type_metric.lines.max(type_metric.members)),
@@ -277,7 +325,7 @@ fn scan_file_metrics(
     if imports > options.max_imports {
         signals.findings.push(Finding {
             kind: FindingKind::ImportHeavyFile,
-            severity: Severity::Warning,
+            severity: severity_for_threshold(imports, options.max_imports),
             path: file.display_path.clone(),
             line: Some(1),
             magnitude: Some(imports),
@@ -290,7 +338,7 @@ fn scan_file_metrics(
     if public_items > options.max_public_items {
         signals.findings.push(Finding {
             kind: FindingKind::LargePublicSurface,
-            severity: Severity::Warning,
+            severity: severity_for_threshold(public_items, options.max_public_items),
             path: file.display_path.clone(),
             line: Some(1),
             magnitude: Some(public_items),

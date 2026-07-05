@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::scanner::{Finding, FindingKind, RelatedLocation, Severity, is_test_source};
+use crate::scanner::{
+    Finding, FindingKind, RelatedLocation, Severity, is_test_source, severity_for_threshold,
+};
 use crate::similar_functions::SourceFile;
 
 #[derive(Debug, Clone)]
@@ -548,7 +550,7 @@ fn duplicate_type_shape_findings(
         let representative = &group[0].occurrence;
         findings.push(Finding {
             kind: FindingKind::DuplicateTypeShape,
-            severity: Severity::Info,
+            severity: repeated_signal_severity(group.len(), threshold, Severity::Info),
             path: representative.path.clone(),
             line: Some(representative.line),
             magnitude: Some(group.len()),
@@ -582,7 +584,11 @@ fn generic_bucket_findings(
 
         findings.push(Finding {
             kind: FindingKind::GenericBucketDrift,
-            severity: Severity::Info,
+            severity: repeated_signal_severity(
+                directory.concepts.len(),
+                concept_threshold,
+                Severity::Info,
+            ),
             path: directory.display_path.clone(),
             line: None,
             magnitude: Some(directory.concepts.len()),
@@ -640,7 +646,7 @@ fn adapter_boundary_bypass_findings(
         let representative = &group[0];
         findings.push(Finding {
             kind: FindingKind::AdapterBoundaryBypass,
-            severity: Severity::Warning,
+            severity: severity_for_threshold(group.len(), 2),
             path: representative.path.clone(),
             line: Some(representative.line),
             magnitude: Some(group.len()),
@@ -692,7 +698,7 @@ fn groups_to_findings(
         let representative = &group[0];
         findings.push(Finding {
             kind: spec.kind,
-            severity: spec.severity,
+            severity: repeated_signal_severity(group.len(), spec.threshold, spec.severity),
             path: representative.path.clone(),
             line: Some(representative.line),
             magnitude: Some(group.len()),
@@ -702,6 +708,17 @@ fn groups_to_findings(
     }
 
     findings
+}
+
+fn repeated_signal_severity(count: usize, threshold: usize, base: Severity) -> Severity {
+    match base {
+        Severity::Critical => Severity::Critical,
+        Severity::Warning => severity_for_threshold(count, threshold),
+        Severity::Info if threshold > 0 && count >= threshold.saturating_mul(2) => {
+            Severity::Warning
+        }
+        Severity::Info => Severity::Info,
+    }
 }
 
 include!("agent_drift_analysis.rs");

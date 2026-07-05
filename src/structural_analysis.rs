@@ -376,6 +376,391 @@ fn is_setup_pattern(pattern: &str) -> bool {
         || pattern.contains("beforeall")
 }
 
+fn collect_happy_path_test_risk(
+    file: &SourceFile,
+    family: LanguageFamily,
+    signals: &mut FileSignals,
+) {
+    let test_cases = test_case_occurrences(file, family);
+    if test_cases.len() < 3 {
+        return;
+    }
+
+    if has_assertion_evidence(&file.source) && !has_negative_or_boundary_test_evidence(&file.source)
+    {
+        signals
+            .happy_path_test_files
+            .push((test_cases.len(), test_cases));
+    }
+}
+
+fn happy_path_test_findings(test_files: Vec<(usize, Vec<Occurrence>)>) -> Vec<Finding> {
+    test_files
+        .into_iter()
+        .filter_map(|(test_count, locations)| {
+            let representative = locations.first()?;
+            Some(Finding {
+                kind: FindingKind::HappyPathOnlyTests,
+                severity: Severity::Info,
+                path: representative.path.clone(),
+                line: Some(representative.line),
+                magnitude: Some(test_count),
+                message: format!(
+                    "test file has {test_count} cases but no negative, error, or boundary assertions were detected"
+                ),
+                related_locations: locations,
+            })
+        })
+        .collect()
+}
+
+fn test_case_occurrences(file: &SourceFile, family: LanguageFamily) -> Vec<Occurrence> {
+    file.source
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let trimmed = line.trim_start();
+            if is_test_case_line(trimmed, family) {
+                Some(Occurrence {
+                    path: file.display_path.clone(),
+                    line: index + 1,
+                    name: test_case_name(trimmed, family),
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn is_test_case_line(line: &str, family: LanguageFamily) -> bool {
+    match family {
+        LanguageFamily::Rust => {
+            line.starts_with("#[test]")
+                || line.starts_with("#[tokio::test")
+                || line.starts_with("#[async_std::test")
+        }
+        LanguageFamily::JavaScriptTypeScript => {
+            line.starts_with("test(")
+                || line.starts_with("it(")
+                || line.starts_with("test.each")
+                || line.starts_with("it.each")
+        }
+        LanguageFamily::Python => {
+            line.starts_with("def test_") || line.starts_with("async def test_")
+        }
+        LanguageFamily::Go => line.starts_with("func Test"),
+    }
+}
+
+fn test_case_name(line: &str, family: LanguageFamily) -> Option<String> {
+    match family {
+        LanguageFamily::Rust => Some("test attribute".to_string()),
+        LanguageFamily::JavaScriptTypeScript => quoted_test_name(line),
+        LanguageFamily::Python | LanguageFamily::Go => line
+            .split(['(', '{'])
+            .next()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(ToString::to_string),
+    }
+}
+
+fn quoted_test_name(line: &str) -> Option<String> {
+    let quote_index = line.find(['"', '\'', '`'])?;
+    let quote = line[quote_index..].chars().next()?;
+    let rest = &line[quote_index + quote.len_utf8()..];
+    let end = rest.find(quote)?;
+    Some(rest[..end].to_string())
+}
+
+fn has_assertion_evidence(source: &str) -> bool {
+    let normalized = source.to_ascii_lowercase();
+    [
+        "expect(",
+        "assert",
+        "should",
+        "t.error",
+        "t.fatal",
+        "require.",
+        "pytest.",
+    ]
+    .iter()
+    .any(|pattern| normalized.contains(pattern))
+}
+
+fn has_negative_or_boundary_test_evidence(source: &str) -> bool {
+    let normalized = source.to_ascii_lowercase();
+    [
+        "tothrow",
+        "to_throw",
+        ".rejects",
+        "raises(",
+        "pytest.raises",
+        "should_panic",
+        "is_err",
+        "unwrap_err",
+        "expect_err",
+        " err == nil",
+        "err == nil",
+        " err != nil",
+        "err != nil",
+        "invalid",
+        "missing",
+        "empty",
+        "none",
+        "null",
+        "nil",
+        "zero",
+        "negative",
+        "unauthorized",
+        "forbidden",
+        "not found",
+        "not_found",
+        "error",
+        "failure",
+        "panic",
+        "duplicate",
+        "overflow",
+        "underflow",
+        "timeout",
+        "denied",
+        "boundary",
+        "edge",
+    ]
+    .iter()
+    .any(|pattern| normalized.contains(pattern))
+}
+
+fn collect_file_naming_style(file: &SourceFile, signals: &mut FileSignals) {
+    let Some(parent) = file.path.parent() else {
+        return;
+    };
+
+    let Some(stem) = normalized_naming_stem(&file.path) else {
+        return;
+    };
+
+    let Some(style) = classify_file_naming_style(&stem) else {
+        return;
+    };
+
+    let entry = signals
+        .naming_directories
+        .entry(parent.to_path_buf())
+        .or_insert_with(|| NamingDirectory {
+            display_path: parent.to_string_lossy().replace('\\', "/"),
+            styles: BTreeMap::new(),
+        });
+    entry.styles.entry(style).or_default().push(Occurrence {
+        path: file.display_path.clone(),
+        line: 1,
+        name: Some(stem),
+    });
+}
+
+fn file_naming_drift_findings(
+    directories: &BTreeMap<PathBuf, NamingDirectory>,
+) -> Vec<Finding> {
+    let mut findings = Vec::new();
+
+    for directory in directories.values() {
+        let styles = effective_naming_styles(directory);
+        let total_files = styles.values().map(Vec::len).sum::<usize>();
+        if total_files < 4 || styles.len() < 2 {
+            continue;
+        }
+
+        let dominant = styles.iter().max_by_key(|(_, locations)| locations.len());
+        let Some((dominant_style, dominant_locations)) = dominant else {
+            continue;
+        };
+
+        let related_locations = naming_drift_locations(&styles, *dominant_style);
+        if related_locations.is_empty() {
+            continue;
+        }
+
+        let severity = if related_locations.len() >= 2 || styles.len() >= 3 {
+            Severity::Warning
+        } else {
+            Severity::Info
+        };
+
+        findings.push(Finding {
+            kind: FindingKind::FileNamingDrift,
+            severity,
+            path: directory.display_path.clone(),
+            line: None,
+            magnitude: Some(styles.len()),
+            message: format!(
+                "directory uses {} file naming styles across {total_files} files; dominant style is {} with {} files",
+                styles.len(),
+                dominant_style.label(),
+                dominant_locations.len()
+            ),
+            related_locations,
+        });
+    }
+
+    findings
+}
+
+fn effective_naming_styles(
+    directory: &NamingDirectory,
+) -> BTreeMap<FileNamingStyle, Vec<Occurrence>> {
+    let non_neutral = directory
+        .styles
+        .iter()
+        .filter(|(style, _)| **style != FileNamingStyle::Lowercase)
+        .map(|(style, locations)| (*style, locations.clone()))
+        .collect::<BTreeMap<_, _>>();
+
+    if non_neutral.is_empty() {
+        directory.styles.clone()
+    } else {
+        non_neutral
+    }
+}
+
+fn naming_drift_locations(
+    styles: &BTreeMap<FileNamingStyle, Vec<Occurrence>>,
+    dominant_style: FileNamingStyle,
+) -> Vec<Occurrence> {
+    let dominant_count = styles
+        .get(&dominant_style)
+        .map(Vec::len)
+        .unwrap_or_default();
+    let total_files = styles.values().map(Vec::len).sum::<usize>();
+    let has_clear_dominant = dominant_count >= 2 && dominant_count * 2 >= total_files;
+
+    styles
+        .iter()
+        .filter(|(style, _)| !has_clear_dominant || **style != dominant_style)
+        .flat_map(|(style, locations)| {
+            locations.iter().map(|location| Occurrence {
+                name: location
+                    .name
+                    .as_ref()
+                    .map(|name| format!("{name} ({})", style.label())),
+                ..location.clone()
+            })
+        })
+        .collect()
+}
+
+fn normalized_naming_stem(path: &Path) -> Option<String> {
+    let mut stem = path.file_stem()?.to_str()?.to_string();
+
+    while let Some(stripped) = test_file_suffix_base(&stem) {
+        stem = stripped.to_string();
+    }
+
+    if stem.is_empty()
+        || matches!(
+            stem.as_str(),
+            "mod" | "lib" | "main" | "index" | "__init__" | "package"
+        )
+    {
+        None
+    } else {
+        Some(stem)
+    }
+}
+
+fn test_file_suffix_base(stem: &str) -> Option<&str> {
+    stem.strip_suffix(".test")
+        .or_else(|| stem.strip_suffix(".spec"))
+        .or_else(|| stem.strip_suffix("_test"))
+        .or_else(|| stem.strip_suffix("_tests"))
+        .or_else(|| stem.strip_suffix("-test"))
+        .or_else(|| stem.strip_suffix("-spec"))
+}
+
+fn classify_file_naming_style(stem: &str) -> Option<FileNamingStyle> {
+    if !stem
+        .chars()
+        .any(|character| character.is_ascii_alphabetic())
+    {
+        return None;
+    }
+
+    let has_underscore = stem.contains('_');
+    let has_dash = stem.contains('-');
+    let has_dot = stem.contains('.');
+    let separator_count = [has_underscore, has_dash, has_dot]
+        .into_iter()
+        .filter(|has_separator| *has_separator)
+        .count();
+    if separator_count > 1 {
+        return Some(FileNamingStyle::Mixed);
+    }
+
+    if has_underscore {
+        return Some(if separated_words_are_lowercase(stem, '_') {
+            FileNamingStyle::SnakeCase
+        } else {
+            FileNamingStyle::Mixed
+        });
+    }
+
+    if has_dash {
+        return Some(if separated_words_are_lowercase(stem, '-') {
+            FileNamingStyle::KebabCase
+        } else {
+            FileNamingStyle::Mixed
+        });
+    }
+
+    if has_dot {
+        return Some(if separated_words_are_lowercase(stem, '.') {
+            FileNamingStyle::DotSeparated
+        } else {
+            FileNamingStyle::Mixed
+        });
+    }
+
+    let first = stem.chars().next()?;
+    let has_uppercase = stem.chars().any(|character| character.is_ascii_uppercase());
+    let has_lowercase = stem.chars().any(|character| character.is_ascii_lowercase());
+
+    if first.is_ascii_uppercase() && has_lowercase {
+        Some(FileNamingStyle::PascalCase)
+    } else if first.is_ascii_lowercase() && has_uppercase {
+        Some(FileNamingStyle::CamelCase)
+    } else if stem
+        .chars()
+        .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+    {
+        Some(FileNamingStyle::Lowercase)
+    } else {
+        Some(FileNamingStyle::Mixed)
+    }
+}
+
+fn separated_words_are_lowercase(stem: &str, separator: char) -> bool {
+    stem.split(separator).all(|part| {
+        !part.is_empty()
+            && part
+                .chars()
+                .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+    })
+}
+
+impl FileNamingStyle {
+    fn label(self) -> &'static str {
+        match self {
+            Self::SnakeCase => "snake_case",
+            Self::KebabCase => "kebab-case",
+            Self::PascalCase => "PascalCase",
+            Self::CamelCase => "camelCase",
+            Self::Lowercase => "lowercase",
+            Self::DotSeparated => "dot.separated",
+            Self::Mixed => "mixed",
+        }
+    }
+}
+
 fn collect_directory_concepts(
     file: &SourceFile,
     family: LanguageFamily,
