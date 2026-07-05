@@ -83,6 +83,14 @@ cargo install --path .
 reforge scan D:\path\to\project
 ```
 
+## Documentation
+
+The full documentation set lives in [docs/](docs/README.md), including the
+[user guide](docs/user-guide.md), [configuration reference](docs/configuration.md),
+[report schema](docs/report-schema.md), [metrics model](docs/metrics-model.md),
+[detector reference](docs/detectors.md), and
+[architecture notes](docs/architecture.md).
+
 ## What Reforge Detects
 
 Reforge reports quality data in four layers:
@@ -205,7 +213,7 @@ Signals
 ```
 
 Human output includes a summary, signal counts, grouped findings, and a short
-reason for each ranking. JSON and YAML use schema version 5 and include
+reason for each ranking. JSON and YAML use schema version 6 and include
 `summary`, `metrics_summary`, `raw_metrics`, `hotspots`, and `findings`.
 Findings expose `priority`, `confidence`, `priority_factors`,
 `rank_explanation`, `metrics`, and `related_locations`; legacy v4 fields

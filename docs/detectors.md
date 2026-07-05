@@ -1,0 +1,121 @@
+# Detectors
+
+Reforge emits refactoring signals from threshold checks, Tree-sitter analysis,
+git churn, and heuristic drift detectors. Findings are signals for review; they
+are not automatic proof that code must be changed.
+
+## File and Directory Signals
+
+- `large_file`: source file line count exceeds `--max-file-lines`.
+- `large_directory`: direct source-file count exceeds `--max-dir-files`.
+- `debt_marker`: a comment line contains `TODO` or `FIXME`.
+
+Hidden paths are skipped unless `--include-hidden` is set. Generated and
+dependency directories are skipped unless `--include-generated` is set.
+
+## Similar Functions
+
+`similar_functions` uses Tree-sitter to extract named functions and methods in
+Rust, JavaScript, TypeScript/TSX, Python, and Go. Function bodies are
+normalized so identifiers become `ID`, strings become `STR`, and numbers
+become `NUM`.
+
+Candidates are grouped only within the same language family and same category
+of function or method. Similarity uses length ratio, multiset overlap, and a
+longest-common-subsequence check.
+
+Controls:
+
+- `--min-similar-functions`
+- `--min-function-tokens`
+- `--function-similarity`
+- `--include-test-similarity`
+
+Test files are excluded from this detector by default.
+
+## Structural Signals
+
+Structural detectors use Tree-sitter for supported languages.
+
+- `long_function`: function line span exceeds `--max-function-lines`.
+- `complex_function`: estimated complexity exceeds
+  `--max-function-complexity`.
+- `deep_nesting`: nested control-flow depth exceeds `--max-nesting-depth`.
+- `many_parameters`: parameter count exceeds `--max-function-parameters`.
+- `large_type`: type line span or member count exceeds `--max-type-lines` or
+  `--max-type-members`.
+- `large_public_surface`: public/exported item count exceeds
+  `--max-public-items`.
+- `import_heavy_file`: import count exceeds `--max-imports`.
+
+Tests are excluded from general structural findings unless
+`--include-test-structure` is passed.
+
+## Duplication and Test-Risk Signals
+
+- `repeated_literal`: string or numeric literals occur at least
+  `--min-repeated-literal-occurrences` times after normalization and filtering.
+- `repeated_error_pattern`: repeated catch/except/error handling patterns are
+  found across supported languages.
+- `data_clump`: repeated parameter groups occur at least
+  `--min-data-clump-occurrences` times.
+- `test_duplication`: repeated setup, fixture, mock, fake, or before-hook
+  patterns occur in tests.
+- `happy_path_only_tests`: a test file has at least three test cases with
+  assertion evidence but no negative, error, or boundary evidence.
+
+Repeated-literal confidence is lower when the literal appears only in tests or
+looks like report/fixture text.
+
+## Drift Signals
+
+- `file_naming_drift`: a directory mixes naming styles such as `snake_case`,
+  `kebab-case`, `PascalCase`, `camelCase`, `lowercase`, `dot.separated`, or
+  `mixed`.
+- `directory_drift`: a directory mixes more concepts than the directory-size
+  threshold allows.
+- `parallel_implementation`: multiple functions/classes appear to implement
+  the same capability.
+- `shadowed_abstraction`: helper/common/shared/util abstractions are shadowed
+  by similar local helpers.
+- `duplicate_type_shape`: multiple type-like shapes share enough fields to
+  suggest duplicated data modeling.
+- `config_key_drift`: config, route, env, endpoint, token, or similar keys are
+  repeated across locations.
+- `fixture_factory_drift`: test factory, fixture, mock, fake, or sample
+  concepts are repeated across locations.
+- `generic_bucket_drift`: generic directories such as `common`, `helpers`,
+  `shared`, or `utils` accumulate unrelated concepts.
+- `adapter_boundary_bypass`: a boundary module exists, but other files make
+  direct HTTP, config, filesystem, or logging calls.
+
+Drift detectors use path and identifier heuristics, so grouped cross-file
+findings deserve more weight than isolated info-level findings.
+
+## Documentation Signals
+
+When the scan root looks like a project, Reforge checks for a stable
+documentation set.
+
+- `missing_documentation_set`: expected docs are missing under `docs/` or at
+  the repository root.
+- `missing_user_guide`: user-guide topics such as installation, quick start,
+  CLI, configuration, output, and troubleshooting are missing.
+- `missing_report_schema_docs`: JSON/YAML fields and compatibility
+  expectations are undocumented.
+- `missing_metrics_model_docs`: raw metrics, findings, hotspots, priority, or
+  confidence are undocumented.
+- `missing_architecture_docs`: scan pipeline, detector boundaries, data flow,
+  or extension points are undocumented.
+- `stale_cli_documentation`: docs mention CLI flags but omit current flags.
+- `stale_schema_documentation`: report-schema docs omit current fields.
+
+Expected docs include a docs index, user guide, configuration reference, report
+schema, metrics model, detector reference, architecture guide, and contributing
+guide.
+
+## Interpreting Detector Output
+
+Prefer findings with high priority, high confidence, cross-file spread, and
+clear related locations. Treat low-confidence heuristic findings as prompts for
+inspection, not automatic refactor instructions.
