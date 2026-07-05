@@ -30,6 +30,7 @@ pub struct Finding {
     pub severity: Severity,
     pub path: String,
     pub line: usize,
+    pub total_lines: Option<usize>,
     pub message: String,
 }
 
@@ -75,6 +76,7 @@ fn scan_file(path: &Path, max_file_lines: usize, findings: &mut Vec<Finding>) ->
             severity: Severity::Warning,
             path: display_path(path),
             line: 1,
+            total_lines: Some(line_count),
             message: format!("file has {line_count} lines; consider splitting responsibilities"),
         });
     }
@@ -85,6 +87,7 @@ fn scan_file(path: &Path, max_file_lines: usize, findings: &mut Vec<Finding>) ->
                 severity: Severity::Info,
                 path: display_path(path),
                 line: index + 1,
+                total_lines: None,
                 message: "technical-debt marker found".to_string(),
             });
         }
