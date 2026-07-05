@@ -32,6 +32,12 @@ fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
         min_repeated_literal_occurrences: 4,
         min_data_clump_occurrences: 3,
         include_test_structure: false,
+        ignore_paths: Vec::new(),
+        config: None,
+        churn: None,
+        hotspot_model: None,
+        churn_window_days: None,
+        churn_max_commit_lines: None,
         output: Some(crate::cli::OutputFormat::Human),
         output_file: None,
         progress: crate::cli::ProgressMode::Auto,
@@ -284,6 +290,185 @@ fn writer_progress_outputs_messages() {
     let output = String::from_utf8(progress.into_inner()).unwrap();
     assert!(output.contains("Scanning example"));
     assert!(output.contains("Finished scan"));
+}
+
+#[test]
+fn churn_auto_degrades_outside_git_repository() -> Result<()> {
+    let root = test_root("churn-auto-no-git");
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(root.join("src/main.rs"), "fn main() {}\n")?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.churn = Some(crate::cli::ChurnMode::Auto);
+    let mut progress = NoopProgress;
+    let report = scan_report(&args, &mut progress)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert!(!report.summary.churn.enabled);
+    assert_eq!(report.summary.churn.status, "unavailable");
+    Ok(())
+}
+
+#[test]
+fn churn_on_errors_outside_git_repository() -> Result<()> {
+    let root = test_root("churn-on-no-git");
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(root.join("src/main.rs"), "fn main() {}\n")?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.churn = Some(crate::cli::ChurnMode::On);
+    let mut progress = NoopProgress;
+    let result = scan_report(&args, &mut progress);
+
+    fs::remove_dir_all(root)?;
+
+    assert!(result.is_err());
+    Ok(())
+}
+
+#[test]
+fn loads_config_and_cli_overrides_configured_values() -> Result<()> {
+    let root = test_root("config");
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(
+        root.join("reforge.toml"),
+        "max-file-lines = 2\nchurn = \"off\"\nhotspot-model = \"static\"\nchurn-window-days = 30\n",
+    )?;
+    fs::write(
+        root.join("src/main.rs"),
+        "fn main() {\n  let value = 1;\n  dbg!(value);\n}\n",
+    )?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.hotspot_model = Some(crate::cli::HotspotModel::Churn);
+    let mut progress = NoopProgress;
+    let report = scan_report(&args, &mut progress)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert_eq!(
+        report.summary.hotspot_model,
+        crate::cli::HotspotModel::Churn
+    );
+    assert_eq!(report.summary.churn.mode, crate::cli::ChurnMode::Off);
+    assert_eq!(report.summary.churn.window_days, 30);
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.kind == FindingKind::LargeFile)
+    );
+    Ok(())
+}
+
+#[test]
+fn config_ignore_paths_skip_matching_subtrees() -> Result<()> {
+    let root = test_root("config-ignore-paths");
+    fs::create_dir_all(root.join("src"))?;
+    fs::create_dir_all(root.join("vendor"))?;
+    fs::write(root.join("reforge.toml"), "ignore-paths = [\"vendor\"]\n")?;
+    fs::write(root.join("src/main.rs"), "// TODO: reported\n")?;
+    fs::write(root.join("vendor/ignored.rs"), "// TODO: ignored\n")?;
+
+    let args = scan_args(root.clone(), false);
+    let findings = scan_path(&args)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert_eq!(findings.len(), 1);
+    assert!(findings[0].path.ends_with("src/main.rs"));
+    Ok(())
+}
+
+#[test]
+fn metrics_summary_uses_all_raw_metrics_not_only_findings() -> Result<()> {
+    let root = test_root("raw-percentiles");
+    fs::create_dir_all(root.join("src"))?;
+    for index in 0..6 {
+        fs::write(
+            root.join("src").join(format!("file_{index}.rs")),
+            format!("fn f_{index}() {{}}\n"),
+        )?;
+    }
+
+    let mut args = scan_args(root.clone(), false);
+    args.max_file_lines = 100;
+    args.churn = Some(crate::cli::ChurnMode::Off);
+    let mut progress = NoopProgress;
+    let report = scan_report(&args, &mut progress)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert!(report.findings.is_empty());
+    assert_eq!(report.raw_metrics.files.len(), 6);
+    assert_eq!(report.metrics_summary.files["loc"].p50, 1);
+    Ok(())
+}
+
+#[test]
+fn hotspot_models_sort_differently() {
+    let raw_metrics = RawMetrics {
+        files: vec![
+            FileRawMetric {
+                path: "src/static.rs".to_string(),
+                loc: 900,
+                imports: 1,
+                public_items: 1,
+                directory_source_files: 2,
+                is_test: false,
+                churn: ChurnFileMetric::default(),
+            },
+            FileRawMetric {
+                path: "src/churn.rs".to_string(),
+                loc: 10,
+                imports: 1,
+                public_items: 1,
+                directory_source_files: 2,
+                is_test: false,
+                churn: ChurnFileMetric {
+                    commits_touched: 12,
+                    lines_added: 400,
+                    lines_deleted: 100,
+                    authors_count: 3,
+                    recent_weighted_churn: 500,
+                },
+            },
+        ],
+        functions: Vec::new(),
+        types: Vec::new(),
+    };
+    let summary = summarize_raw_metrics(&raw_metrics);
+
+    let static_hotspots = rank_hotspots(&raw_metrics, &summary, crate::cli::HotspotModel::Static);
+    let churn_hotspots = rank_hotspots(&raw_metrics, &summary, crate::cli::HotspotModel::Churn);
+
+    assert_eq!(static_hotspots[0].path, "src/static.rs");
+    assert_eq!(churn_hotspots[0].path, "src/churn.rs");
+}
+
+#[test]
+fn churn_parser_filters_binary_outside_scan_root_and_large_commits() {
+    let output = "\
+commit:one\tAda
+10\t2\tsrc/a.rs
+-\t-\tsrc/binary.bin
+3\t1\tother/outside.rs
+commit:two\tGrace
+200\t0\tsrc/a.rs
+commit:three\tAda
+1\t1\tsrc/a.rs
+";
+
+    let churn = parse_git_numstat_churn(output, "src", 50);
+    let metric = churn.get("src/a.rs").expect("src/a.rs should be counted");
+
+    assert_eq!(metric.commits_touched, 2);
+    assert_eq!(metric.lines_added, 11);
+    assert_eq!(metric.lines_deleted, 3);
+    assert_eq!(metric.authors_count, 1);
+    assert!(!churn.contains_key("src/binary.bin"));
+    assert!(!churn.contains_key("other/outside.rs"));
 }
 
 #[test]

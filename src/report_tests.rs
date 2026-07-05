@@ -1,7 +1,8 @@
 use super::*;
 use crate::scanner::{
-    FindingMetric, RelatedLocation, SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary,
-    finding as make_finding, scored_finding, severity_for_score,
+    ChurnSummary, FindingMetric, MetricsSummary, RawMetrics, RelatedLocation,
+    SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary, finding as make_finding, scored_finding,
+    severity_for_score,
 };
 
 fn report(findings: Vec<Finding>) -> ScanReport {
@@ -10,13 +11,31 @@ fn report(findings: Vec<Finding>) -> ScanReport {
         summary: ScanSummary {
             scanned_files: 2,
             finding_count: findings.len(),
+            hotspot_count: 0,
             similar_function_group_count: findings
                 .iter()
                 .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
                 .count(),
             duration_ms: 1,
+            hotspot_model: crate::cli::HotspotModel::Hybrid,
+            churn: ChurnSummary {
+                mode: crate::cli::ChurnMode::Auto,
+                enabled: false,
+                status: "unavailable".to_string(),
+                reason: None,
+                window_days: 180,
+                max_commit_lines: 2_000,
+            },
         },
         stats: ScanStats::default(),
+        metrics_summary: MetricsSummary {
+            files: BTreeMap::new(),
+            functions: BTreeMap::new(),
+            types: BTreeMap::new(),
+            churn: BTreeMap::new(),
+        },
+        raw_metrics: RawMetrics::default(),
+        hotspots: Vec::new(),
         findings,
     }
 }
@@ -178,7 +197,7 @@ fn renders_colored_human_report_when_enabled() {
 }
 
 #[test]
-fn renders_json_report_schema_v3_with_score_metadata() {
+fn renders_json_report_schema_v4_with_score_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
@@ -195,8 +214,12 @@ fn renders_json_report_schema_v3_with_score_metadata() {
     let value: serde_json::Value =
         serde_json::from_str(&serde_json::to_string(&scan_report).unwrap()).unwrap();
 
-    assert_eq!(value["schema_version"], 3);
+    assert_eq!(value["schema_version"], 4);
     assert_eq!(value["summary"]["scanned_files"], 2);
+    assert_eq!(value["summary"]["hotspot_model"], "hybrid");
+    assert!(value.get("metrics_summary").is_some());
+    assert!(value.get("raw_metrics").is_some());
+    assert!(value.get("hotspots").is_some());
     assert_eq!(value["findings"][0]["kind"], "similar_functions");
     assert_eq!(value["findings"][0]["metrics"][0]["name"], "group_size");
     assert_eq!(
@@ -253,7 +276,7 @@ fn writes_json_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&output).unwrap()["schema_version"],
-        3
+        4
     );
 }
 
@@ -267,6 +290,6 @@ fn writes_yaml_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_yaml::from_str::<serde_yaml::Value>(&output).unwrap()["schema_version"],
-        3
+        4
     );
 }

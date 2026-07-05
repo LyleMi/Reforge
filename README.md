@@ -8,14 +8,13 @@
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
   <img alt="MSRV" src="https://img.shields.io/badge/MSRV-1.85-2f855a">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-76%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-83%20passing-brightgreen">
   <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20json%20%7C%20yaml-6b46c1">
 </p>
 
-Reforge is a Rust CLI for finding refactoring signals in source trees. It scans
-code for oversized files, structural complexity, repeated implementation
-patterns, similar functions, and agent-written-code drift so you can spot the
-areas most likely to benefit from consolidation.
+Reforge is a Rust CLI for reporting source-tree quality signals. It collects
+raw file, function, type, and optional git churn metrics first, then derives
+hotspots and findings from that project-wide model.
 
 It is designed for quick local audits, CI-friendly reports, and reviewing large
 or fast-moving codebases before refactoring work starts.
@@ -24,7 +23,11 @@ or fast-moving codebases before refactoring work starts.
 
 - Scans Rust, JavaScript, TypeScript/TSX, Python, and Go source files.
 - Uses Tree-sitter for structural analysis and similar-function detection.
-- Reports human-readable, JSON, or YAML output.
+- Reports human-readable, JSON, or YAML output with raw metrics, percentile
+  summaries, hotspots, and findings.
+- Ranks hotspots with `static`, `churn`, or `hybrid` models.
+- Collects git churn in repositories by default with graceful fallback outside
+  git history.
 - Skips common generated and dependency directories by default.
 - Groups noisy findings such as TODO/FIXME markers and similar functions.
 - Includes drift checks for duplicate abstractions, data shapes, config keys,
@@ -40,6 +43,12 @@ For stable machine-readable output:
 
 ```powershell
 cargo run -- scan . --output json --progress never
+```
+
+Disable churn collection for deterministic static-only scans:
+
+```powershell
+cargo run -- scan . --churn off --hotspot-model static --output json --progress never
 ```
 
 To write a report to disk:
@@ -76,11 +85,19 @@ reforge scan D:\path\to\project
 
 ## What Reforge Detects
 
-Reforge reports findings as `info`, `warning`, or `critical` priority. The
-score is a 0-100 refactoring priority, not a defect probability. It combines
-the signal's maintenance impact, threshold intensity, cross-file spread,
-detector confidence, and actionability. Priority bands are `info` below 35,
-`warning` from 35 through 69, and `critical` from 70 upward.
+Reforge reports quality data in four layers:
+
+- `raw_metrics`: file, function, type, and churn measurements for the scanned
+  tree.
+- `metrics_summary`: project-level percentile distributions such as LOC,
+  complexity, imports, and churn.
+- `hotspots`: model-ranked locations with `static_risk`, `churn_risk`, and a
+  0-100 score.
+- `findings`: actionable signals derived from raw metrics and pattern
+  detectors.
+
+Scores are refactoring priority, not defect probability. Priority bands are
+`info` below 35, `warning` from 35 through 69, and `critical` from 70 upward.
 
 Core scan signals:
 
@@ -137,6 +154,13 @@ Tune similar-function detection:
 cargo run -- scan . --min-function-tokens 60 --function-similarity 0.85
 ```
 
+Control churn and hotspot ranking:
+
+```powershell
+cargo run -- scan . --churn auto --hotspot-model hybrid
+cargo run -- scan . --churn on --churn-window-days 90 --churn-max-commit-lines 1000
+```
+
 Include test files in similarity or structural checks:
 
 ```powershell
@@ -175,10 +199,48 @@ Signals
 ```
 
 Human output includes a summary, signal counts, grouped findings, and a short
-reason for each ranking. JSON and YAML use schema version 3, preserve the
-existing finding fields, and add `metrics[].dimension`, `metrics[].normalized`,
-`score_breakdown`, and `rank_reason`. Very large similar-function groups
-include representative `related_locations` so reports stay bounded.
+reason for each ranking. JSON and YAML use schema version 4 and include
+`summary`, `metrics_summary`, `raw_metrics`, `hotspots`, and `findings`. Very
+large similar-function groups include representative `related_locations` so
+reports stay bounded.
+
+## Git Churn
+
+`--churn auto` is the default. In a git repository, Reforge runs `git log`
+with `--no-merges`, `--numstat`, and the configured time window. Outside a git
+repository, `auto` falls back to the static model and records the reason in
+`summary.churn`.
+
+Use `--churn on` when churn is required; scans fail if git history is
+unavailable. Use `--churn off` to skip git entirely. Binary numstat rows,
+paths outside the scan root, and commits above `--churn-max-commit-lines` are
+ignored so mechanical changes do not dominate the hotspot model.
+
+Hotspot models:
+
+- `static`: ranks by size, complexity, coupling, duplication, drift, and test
+  risk.
+- `churn`: ranks primarily by commits touched, changed lines, authors, and
+  weighted churn.
+- `hybrid`: default, using `static_risk * 0.65 + churn_risk * 0.35`.
+
+## Configuration
+
+When `--config` is not provided, Reforge looks for `reforge.toml` from the scan
+root upward. CLI values override config values; existing threshold defaults use
+config values when the CLI option is not changed.
+
+```toml
+max-file-lines = 600
+max-function-complexity = 12
+max-imports = 25
+
+churn = "auto"
+hotspot-model = "hybrid"
+churn-window-days = 180
+churn-max-commit-lines = 2000
+ignore-paths = ["vendor", "generated/snapshots"]
+```
 
 ## CLI Reference
 
@@ -203,6 +265,11 @@ include representative `related_locations` so reports stay bounded.
 | `--min-repeated-literal-occurrences` | `4` | Report repeated literals. |
 | `--min-data-clump-occurrences` | `3` | Report repeated parameter groups. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
+| `--config` | discovered | Read a `reforge.toml` config file. |
+| `--churn` | `auto` | Use `auto`, `on`, or `off` for git churn metrics. |
+| `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
+| `--churn-window-days` | `180` | Days of git history to include. |
+| `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
 | `--output` | inferred | Use `human`, `json`, or `yaml`. |
 | `--output-file` | stdout | Write the report to a file. |
 | `--progress` | `auto` | Use `auto`, `always`, or `never`. |
@@ -227,5 +294,4 @@ is currently no separate `tests/` directory.
 
 - Broaden Tree-sitter structural support beyond Rust, JavaScript/TypeScript,
   Python, and Go.
-- Add richer repository-distribution context for priority scoring.
 - Expand drift checks for framework-specific boundaries and generated code.

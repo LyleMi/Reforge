@@ -1,21 +1,24 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use serde::{Serialize, Serializer, ser::SerializeStruct};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
-use crate::cli::ScanArgs;
+use crate::cli::{ChurnMode, HotspotModel, ScanArgs};
 use crate::similar_functions::{
     ParsedSourceFile, SimilarFunctionOptions, SimilarFunctionProgress, SourceFile,
     parse_source_file, scan_parsed_similar_functions_report_with_progress,
 };
-use crate::structural::{StructureOptions, is_supported_structure_source};
+use crate::structural::{
+    StructureOptions, collect_raw_structure_metrics, is_supported_structure_source,
+};
 
 const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     "node_modules",
@@ -30,9 +33,26 @@ const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     ".vite",
 ];
 const PERCENT_SCALE: usize = 100;
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 3;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 4;
 const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 const PERCENTILE_MIN_SAMPLE: usize = 5;
+const DEFAULT_MAX_FILE_LINES: usize = 800;
+const DEFAULT_MAX_DIR_FILES: usize = 40;
+const DEFAULT_MIN_SIMILAR_FUNCTIONS: usize = 3;
+const DEFAULT_MIN_FUNCTION_TOKENS: usize = 80;
+const DEFAULT_FUNCTION_SIMILARITY: f64 = 0.85;
+const DEFAULT_MAX_FUNCTION_LINES: usize = 80;
+const DEFAULT_MAX_FUNCTION_COMPLEXITY: usize = 15;
+const DEFAULT_MAX_NESTING_DEPTH: usize = 4;
+const DEFAULT_MAX_FUNCTION_PARAMETERS: usize = 5;
+const DEFAULT_MAX_TYPE_LINES: usize = 250;
+const DEFAULT_MAX_TYPE_MEMBERS: usize = 30;
+const DEFAULT_MAX_IMPORTS: usize = 35;
+const DEFAULT_MAX_PUBLIC_ITEMS: usize = 30;
+const DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES: usize = 4;
+const DEFAULT_MIN_DATA_CLUMP_OCCURRENCES: usize = 3;
+const DEFAULT_CHURN_WINDOW_DAYS: usize = 180;
+const DEFAULT_CHURN_MAX_COMMIT_LINES: usize = 2_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -470,8 +490,8 @@ fn unique_related_file_count(related_locations: &[RelatedLocation]) -> usize {
         .len()
 }
 
-fn finalize_scoring(findings: &mut [Finding]) {
-    let percentile_values = percentile_metric_values(findings);
+fn finalize_scoring(findings: &mut [Finding], raw_metrics: &RawMetrics) {
+    let percentile_values = percentile_metric_values(raw_metrics);
 
     for finding in findings {
         for metric in &mut finding.metrics {
@@ -503,22 +523,56 @@ fn finalize_scoring(findings: &mut [Finding]) {
     }
 }
 
-fn percentile_metric_values(findings: &[Finding]) -> BTreeMap<String, Vec<usize>> {
+fn percentile_metric_values(raw_metrics: &RawMetrics) -> BTreeMap<String, Vec<usize>> {
     let mut values = BTreeMap::<String, Vec<usize>>::new();
 
-    for finding in findings {
-        for metric in &finding.metrics {
-            let dimension = metric_dimension(finding.kind, &metric.name);
-            if matches!(
-                dimension,
-                MetricDimension::Size | MetricDimension::Complexity
-            ) {
-                values
-                    .entry(metric.name.clone())
-                    .or_default()
-                    .push(metric.value);
-            }
-        }
+    for file in &raw_metrics.files {
+        values
+            .entry("file_lines".to_string())
+            .or_default()
+            .push(file.loc);
+        values
+            .entry("imports".to_string())
+            .or_default()
+            .push(file.imports);
+        values
+            .entry("public_items".to_string())
+            .or_default()
+            .push(file.public_items);
+        values
+            .entry("directory_files".to_string())
+            .or_default()
+            .push(file.directory_source_files);
+    }
+
+    for function in &raw_metrics.functions {
+        values
+            .entry("function_lines".to_string())
+            .or_default()
+            .push(function.loc);
+        values
+            .entry("function_complexity".to_string())
+            .or_default()
+            .push(function.complexity);
+        values
+            .entry("nesting_depth".to_string())
+            .or_default()
+            .push(function.nesting_depth);
+        values
+            .entry("function_parameters".to_string())
+            .or_default()
+            .push(function.parameter_count);
+    }
+
+    for type_metric in &raw_metrics.types {
+        values
+            .entry("type_lines".to_string())
+            .or_default()
+            .push(type_metric.loc);
+        values
+            .entry("type_members".to_string())
+            .or_default()
+            .push(type_metric.member_count);
     }
 
     for values in values.values_mut() {
@@ -557,8 +611,11 @@ fn normalized_metric_value(
 pub struct ScanSummary {
     pub scanned_files: usize,
     pub finding_count: usize,
+    pub hotspot_count: usize,
     pub similar_function_group_count: usize,
     pub duration_ms: u128,
+    pub hotspot_model: HotspotModel,
+    pub churn: ChurnSummary,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
@@ -568,11 +625,111 @@ pub struct ScanStats {
     pub function_candidates: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ChurnSummary {
+    pub mode: ChurnMode,
+    pub enabled: bool,
+    pub status: String,
+    pub reason: Option<String>,
+    pub window_days: usize,
+    pub max_commit_lines: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct ChurnFileMetric {
+    pub commits_touched: usize,
+    pub lines_added: usize,
+    pub lines_deleted: usize,
+    pub authors_count: usize,
+    pub recent_weighted_churn: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FileRawMetric {
+    pub path: String,
+    pub loc: usize,
+    pub imports: usize,
+    pub public_items: usize,
+    pub directory_source_files: usize,
+    pub is_test: bool,
+    pub churn: ChurnFileMetric,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FunctionRawMetric {
+    pub path: String,
+    pub name: String,
+    pub line: usize,
+    pub loc: usize,
+    pub complexity: usize,
+    pub nesting_depth: usize,
+    pub parameter_count: usize,
+    pub is_test: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypeRawMetric {
+    pub path: String,
+    pub name: String,
+    pub line: usize,
+    pub loc: usize,
+    pub member_count: usize,
+    pub is_test: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct RawMetrics {
+    pub files: Vec<FileRawMetric>,
+    pub functions: Vec<FunctionRawMetric>,
+    pub types: Vec<TypeRawMetric>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MetricPercentiles {
+    pub p50: usize,
+    pub p75: usize,
+    pub p90: usize,
+    pub p95: usize,
+    pub max: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MetricsSummary {
+    pub files: BTreeMap<String, MetricPercentiles>,
+    pub functions: BTreeMap<String, MetricPercentiles>,
+    pub types: BTreeMap<String, MetricPercentiles>,
+    pub churn: BTreeMap<String, MetricPercentiles>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HotspotLevel {
+    File,
+    Function,
+    Type,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Hotspot {
+    pub level: HotspotLevel,
+    pub path: String,
+    pub line: Option<usize>,
+    pub name: Option<String>,
+    pub score: u8,
+    pub severity: Severity,
+    pub static_risk: f64,
+    pub churn_risk: f64,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ScanReport {
     pub schema_version: u8,
     pub summary: ScanSummary,
     pub stats: ScanStats,
+    pub metrics_summary: MetricsSummary,
+    pub raw_metrics: RawMetrics,
+    pub hotspots: Vec<Hotspot>,
     pub findings: Vec<Finding>,
 }
 
@@ -581,6 +738,7 @@ struct SourceScan {
     findings: Vec<Finding>,
     parsed_sources: Vec<ParsedSourceFile>,
     structure_sources: Vec<SourceFile>,
+    raw_metrics: RawMetrics,
     stats: ScanStats,
 }
 
@@ -594,6 +752,7 @@ struct SourceScanPlan {
 #[derive(Debug, Clone, Copy)]
 struct FileScanOptions {
     max_file_lines: usize,
+    directory_source_files: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -780,18 +939,25 @@ pub(crate) fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
 pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<ScanReport> {
     let started_at = Instant::now();
     let root = resolve_scan_root(args)?;
+    let effective_args = effective_scan_args(args, &root)?;
     let mut scan = SourceScan::default();
-    let source_plan = collect_source_scan_plan(&root, args)?;
+    let source_plan = collect_source_scan_plan(&root, &effective_args)?;
 
     let total_source_files = progress
         .wants_detailed_progress()
         .then_some(source_plan.source_files.len());
 
     report_scan_start(progress, &root, total_source_files);
-    scan_sources(source_plan, args, total_source_files, progress, &mut scan)?;
+    scan_sources(
+        source_plan,
+        &effective_args,
+        total_source_files,
+        progress,
+        &mut scan,
+    )?;
     let similar_function_group_count = {
         let mut signals = ScanSignalContext {
-            args,
+            args: &effective_args,
             progress,
             scan: &mut scan,
         };
@@ -799,13 +965,29 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         signals.scan_agent_drift_signals();
         signals.scan_similarity_signals()?
     };
-    finalize_scoring(&mut scan.findings);
+    merge_structure_raw_metrics(&mut scan.raw_metrics, &scan.parsed_sources);
+    let churn_summary = collect_churn_metrics(&root, &effective_args, &mut scan.raw_metrics)?;
+    let metrics_summary = summarize_raw_metrics(&scan.raw_metrics);
+    finalize_scoring(&mut scan.findings, &scan.raw_metrics);
+    let hotspots = rank_hotspots(
+        &scan.raw_metrics,
+        &metrics_summary,
+        effective_args
+            .hotspot_model
+            .expect("effective args should set hotspot model"),
+    );
+    apply_hotspot_scores_to_findings(&mut scan.findings, &hotspots);
 
     let summary = ScanSummary {
         scanned_files: scan.stats.source_files_scanned,
         finding_count: scan.findings.len(),
+        hotspot_count: hotspots.len(),
         similar_function_group_count,
         duration_ms: started_at.elapsed().as_millis(),
+        hotspot_model: effective_args
+            .hotspot_model
+            .expect("effective args should set hotspot model"),
+        churn: churn_summary,
     };
 
     progress.report(&format!(
@@ -818,8 +1000,871 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         schema_version: SCAN_REPORT_SCHEMA_VERSION,
         summary,
         stats: scan.stats,
+        metrics_summary,
+        raw_metrics: scan.raw_metrics,
+        hotspots,
         findings: scan.findings,
     })
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
+struct ReforgeConfig {
+    max_file_lines: Option<usize>,
+    max_dir_files: Option<usize>,
+    min_similar_functions: Option<usize>,
+    min_function_tokens: Option<usize>,
+    function_similarity: Option<f64>,
+    max_function_lines: Option<usize>,
+    max_function_complexity: Option<usize>,
+    max_nesting_depth: Option<usize>,
+    max_function_parameters: Option<usize>,
+    max_type_lines: Option<usize>,
+    max_type_members: Option<usize>,
+    max_imports: Option<usize>,
+    max_public_items: Option<usize>,
+    min_repeated_literal_occurrences: Option<usize>,
+    min_data_clump_occurrences: Option<usize>,
+    churn: Option<ChurnMode>,
+    hotspot_model: Option<HotspotModel>,
+    churn_window_days: Option<usize>,
+    churn_max_commit_lines: Option<usize>,
+    ignore_paths: Vec<String>,
+}
+
+fn effective_scan_args(args: &ScanArgs, root: &Path) -> Result<ScanArgs> {
+    let mut effective = args.clone();
+    let config = load_config(args, root)?;
+
+    if let Some(config) = config {
+        apply_config_defaults(&mut effective, &config);
+    }
+
+    effective.churn = Some(
+        args.churn
+            .unwrap_or(effective.churn.unwrap_or(ChurnMode::Auto)),
+    );
+    effective.hotspot_model = Some(
+        args.hotspot_model
+            .unwrap_or(effective.hotspot_model.unwrap_or(HotspotModel::Hybrid)),
+    );
+    effective.churn_window_days = Some(
+        args.churn_window_days.unwrap_or(
+            effective
+                .churn_window_days
+                .unwrap_or(DEFAULT_CHURN_WINDOW_DAYS),
+        ),
+    );
+    effective.churn_max_commit_lines = Some(
+        args.churn_max_commit_lines.unwrap_or(
+            effective
+                .churn_max_commit_lines
+                .unwrap_or(DEFAULT_CHURN_MAX_COMMIT_LINES),
+        ),
+    );
+
+    Ok(effective)
+}
+
+fn load_config(args: &ScanArgs, root: &Path) -> Result<Option<ReforgeConfig>> {
+    let config_path = if let Some(path) = &args.config {
+        Some(path.clone())
+    } else {
+        discover_config_path(root)
+    };
+
+    let Some(path) = config_path else {
+        return Ok(None);
+    };
+
+    let contents = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read config file {}", path.display()))?;
+    let config = toml::from_str(&contents)
+        .with_context(|| format!("failed to parse config file {}", path.display()))?;
+    Ok(Some(config))
+}
+
+fn discover_config_path(root: &Path) -> Option<PathBuf> {
+    let mut current = if root.is_file() {
+        root.parent()?.to_path_buf()
+    } else {
+        root.to_path_buf()
+    };
+
+    loop {
+        let candidate = current.join("reforge.toml");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
+fn apply_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
+    apply_usize_default(
+        &mut args.max_file_lines,
+        DEFAULT_MAX_FILE_LINES,
+        config.max_file_lines,
+    );
+    apply_usize_default(
+        &mut args.max_dir_files,
+        DEFAULT_MAX_DIR_FILES,
+        config.max_dir_files,
+    );
+    apply_usize_default(
+        &mut args.min_similar_functions,
+        DEFAULT_MIN_SIMILAR_FUNCTIONS,
+        config.min_similar_functions,
+    );
+    apply_usize_default(
+        &mut args.min_function_tokens,
+        DEFAULT_MIN_FUNCTION_TOKENS,
+        config.min_function_tokens,
+    );
+    if (args.function_similarity - DEFAULT_FUNCTION_SIMILARITY).abs() < f64::EPSILON
+        && let Some(value) = config.function_similarity
+    {
+        args.function_similarity = value;
+    }
+    apply_usize_default(
+        &mut args.max_function_lines,
+        DEFAULT_MAX_FUNCTION_LINES,
+        config.max_function_lines,
+    );
+    apply_usize_default(
+        &mut args.max_function_complexity,
+        DEFAULT_MAX_FUNCTION_COMPLEXITY,
+        config.max_function_complexity,
+    );
+    apply_usize_default(
+        &mut args.max_nesting_depth,
+        DEFAULT_MAX_NESTING_DEPTH,
+        config.max_nesting_depth,
+    );
+    apply_usize_default(
+        &mut args.max_function_parameters,
+        DEFAULT_MAX_FUNCTION_PARAMETERS,
+        config.max_function_parameters,
+    );
+    apply_usize_default(
+        &mut args.max_type_lines,
+        DEFAULT_MAX_TYPE_LINES,
+        config.max_type_lines,
+    );
+    apply_usize_default(
+        &mut args.max_type_members,
+        DEFAULT_MAX_TYPE_MEMBERS,
+        config.max_type_members,
+    );
+    apply_usize_default(
+        &mut args.max_imports,
+        DEFAULT_MAX_IMPORTS,
+        config.max_imports,
+    );
+    apply_usize_default(
+        &mut args.max_public_items,
+        DEFAULT_MAX_PUBLIC_ITEMS,
+        config.max_public_items,
+    );
+    apply_usize_default(
+        &mut args.min_repeated_literal_occurrences,
+        DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES,
+        config.min_repeated_literal_occurrences,
+    );
+    apply_usize_default(
+        &mut args.min_data_clump_occurrences,
+        DEFAULT_MIN_DATA_CLUMP_OCCURRENCES,
+        config.min_data_clump_occurrences,
+    );
+
+    args.churn = args.churn.or(config.churn);
+    args.hotspot_model = args.hotspot_model.or(config.hotspot_model);
+    args.churn_window_days = args.churn_window_days.or(config.churn_window_days);
+    args.churn_max_commit_lines = args
+        .churn_max_commit_lines
+        .or(config.churn_max_commit_lines);
+    if args.ignore_paths.is_empty() {
+        args.ignore_paths = config.ignore_paths.clone();
+    }
+}
+
+fn apply_usize_default(target: &mut usize, default: usize, configured: Option<usize>) {
+    if *target == default
+        && let Some(value) = configured
+    {
+        *target = value;
+    }
+}
+
+fn merge_structure_raw_metrics(raw_metrics: &mut RawMetrics, parsed_sources: &[ParsedSourceFile]) {
+    let structure_metrics = collect_raw_structure_metrics(parsed_sources);
+    let by_path = structure_metrics
+        .into_iter()
+        .map(|metric| (metric.path.clone(), metric))
+        .collect::<BTreeMap<_, _>>();
+
+    for file_metric in &mut raw_metrics.files {
+        if let Some(structure_metric) = by_path.get(&file_metric.path) {
+            file_metric.imports = structure_metric.imports;
+            file_metric.public_items = structure_metric.public_items;
+            file_metric.is_test = structure_metric.is_test;
+        }
+    }
+
+    raw_metrics.functions = by_path
+        .values()
+        .flat_map(|metric| metric.functions.clone())
+        .map(|function| FunctionRawMetric {
+            path: function.path,
+            name: function.name,
+            line: function.line,
+            loc: function.loc,
+            complexity: function.complexity,
+            nesting_depth: function.nesting_depth,
+            parameter_count: function.parameter_count,
+            is_test: function.is_test,
+        })
+        .collect();
+    raw_metrics.types = by_path
+        .values()
+        .flat_map(|metric| metric.types.clone())
+        .map(|type_metric| TypeRawMetric {
+            path: type_metric.path,
+            name: type_metric.name,
+            line: type_metric.line,
+            loc: type_metric.loc,
+            member_count: type_metric.member_count,
+            is_test: type_metric.is_test,
+        })
+        .collect();
+}
+
+fn collect_churn_metrics(
+    root: &Path,
+    args: &ScanArgs,
+    raw_metrics: &mut RawMetrics,
+) -> Result<ChurnSummary> {
+    let mode = args.churn.expect("effective args should set churn mode");
+    let window_days = args
+        .churn_window_days
+        .expect("effective args should set churn window");
+    let max_commit_lines = args
+        .churn_max_commit_lines
+        .expect("effective args should set churn max commit lines");
+
+    if mode == ChurnMode::Off {
+        return Ok(churn_summary(
+            mode,
+            false,
+            "disabled",
+            Some("churn collection disabled by configuration".to_string()),
+            window_days,
+            max_commit_lines,
+        ));
+    }
+
+    match collect_git_churn(root, window_days, max_commit_lines) {
+        Ok(churn_by_path) => {
+            for file_metric in &mut raw_metrics.files {
+                if let Some(churn) = churn_by_path.get(&file_metric.path) {
+                    file_metric.churn = churn.clone();
+                }
+            }
+
+            Ok(churn_summary(
+                mode,
+                true,
+                "enabled",
+                None,
+                window_days,
+                max_commit_lines,
+            ))
+        }
+        Err(error) if mode == ChurnMode::Auto => Ok(churn_summary(
+            mode,
+            false,
+            "unavailable",
+            Some(error.to_string()),
+            window_days,
+            max_commit_lines,
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+fn churn_summary(
+    mode: ChurnMode,
+    enabled: bool,
+    status: &str,
+    reason: Option<String>,
+    window_days: usize,
+    max_commit_lines: usize,
+) -> ChurnSummary {
+    ChurnSummary {
+        mode,
+        enabled,
+        status: status.to_string(),
+        reason,
+        window_days,
+        max_commit_lines,
+    }
+}
+
+fn collect_git_churn(
+    root: &Path,
+    window_days: usize,
+    max_commit_lines: usize,
+) -> Result<BTreeMap<String, ChurnFileMetric>> {
+    let command_root = if root.is_file() {
+        root.parent().unwrap_or(root)
+    } else {
+        root
+    };
+    let git_root_output = Command::new("git")
+        .arg("-C")
+        .arg(command_root)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .context("failed to run git rev-parse")?;
+    if !git_root_output.status.success() {
+        anyhow::bail!("scan root is not inside a git repository");
+    }
+
+    let git_root_text = String::from_utf8_lossy(&git_root_output.stdout);
+    let git_root = PathBuf::from(git_root_text.trim());
+    let scan_relative = root
+        .strip_prefix(&git_root)
+        .ok()
+        .map(path_to_git_slash)
+        .unwrap_or_default();
+    let since = format!("{window_days} days ago");
+    let log_output = Command::new("git")
+        .arg("-C")
+        .arg(&git_root)
+        .args([
+            "log",
+            "--no-merges",
+            &format!("--since={since}"),
+            "--numstat",
+            "--format=commit:%H%x09%an",
+        ])
+        .output()
+        .context("failed to run git log")?;
+    if !log_output.status.success() {
+        anyhow::bail!("failed to collect git churn");
+    }
+
+    let churn_by_relative_path = parse_git_numstat_churn(
+        &String::from_utf8_lossy(&log_output.stdout),
+        &scan_relative,
+        max_commit_lines,
+    );
+    Ok(churn_by_relative_path
+        .into_iter()
+        .map(|(path, churn)| (display_path(&git_root.join(path)), churn))
+        .collect())
+}
+
+#[derive(Debug, Clone)]
+struct PendingCommitChurn {
+    author: String,
+    files: Vec<(String, usize, usize)>,
+    total_lines: usize,
+}
+
+fn parse_git_numstat_churn(
+    output: &str,
+    scan_relative: &str,
+    max_commit_lines: usize,
+) -> BTreeMap<String, ChurnFileMetric> {
+    let mut churn_by_path = BTreeMap::<String, ChurnFileMetric>::new();
+    let mut authors_by_path = BTreeMap::<String, BTreeSet<String>>::new();
+    let mut pending: Option<PendingCommitChurn> = None;
+
+    for line in output.lines() {
+        if let Some(header) = line.strip_prefix("commit:") {
+            flush_pending_commit(
+                &mut churn_by_path,
+                &mut authors_by_path,
+                pending.take(),
+                max_commit_lines,
+            );
+            let author = header
+                .split_once('\t')
+                .map(|(_, author)| author)
+                .unwrap_or_default()
+                .to_string();
+            pending = Some(PendingCommitChurn {
+                author,
+                files: Vec::new(),
+                total_lines: 0,
+            });
+            continue;
+        }
+
+        let Some(commit) = pending.as_mut() else {
+            continue;
+        };
+        let fields = line.split('\t').collect::<Vec<_>>();
+        if fields.len() < 3 || fields[0] == "-" || fields[1] == "-" {
+            continue;
+        }
+        let Ok(added) = fields[0].parse::<usize>() else {
+            continue;
+        };
+        let Ok(deleted) = fields[1].parse::<usize>() else {
+            continue;
+        };
+        let path = normalize_git_numstat_path(fields[2]);
+        if !path_in_scan_root(&path, scan_relative) {
+            continue;
+        }
+        commit.total_lines += added + deleted;
+        commit.files.push((path, added, deleted));
+    }
+
+    flush_pending_commit(
+        &mut churn_by_path,
+        &mut authors_by_path,
+        pending,
+        max_commit_lines,
+    );
+    for (path, authors) in authors_by_path {
+        if let Some(metric) = churn_by_path.get_mut(&path) {
+            metric.authors_count = authors.len();
+        }
+    }
+    churn_by_path
+}
+
+fn flush_pending_commit(
+    churn_by_path: &mut BTreeMap<String, ChurnFileMetric>,
+    authors_by_path: &mut BTreeMap<String, BTreeSet<String>>,
+    pending: Option<PendingCommitChurn>,
+    max_commit_lines: usize,
+) {
+    let Some(pending) = pending else {
+        return;
+    };
+    if pending.total_lines > max_commit_lines {
+        return;
+    }
+
+    for (path, added, deleted) in pending.files {
+        let metric = churn_by_path.entry(path.clone()).or_default();
+        metric.commits_touched += 1;
+        metric.lines_added += added;
+        metric.lines_deleted += deleted;
+        metric.recent_weighted_churn += added + deleted;
+        if !pending.author.is_empty() {
+            authors_by_path
+                .entry(path)
+                .or_default()
+                .insert(pending.author.clone());
+        }
+    }
+}
+
+fn normalize_git_numstat_path(path: &str) -> String {
+    let path = path
+        .rsplit_once(" => ")
+        .map(|(_, new_path)| new_path)
+        .unwrap_or(path);
+    path.trim_matches(['{', '}']).replace('\\', "/")
+}
+
+fn path_in_scan_root(path: &str, scan_relative: &str) -> bool {
+    scan_relative.is_empty()
+        || path == scan_relative
+        || path
+            .strip_prefix(scan_relative)
+            .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
+fn path_to_git_slash(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn summarize_raw_metrics(raw_metrics: &RawMetrics) -> MetricsSummary {
+    MetricsSummary {
+        files: percentile_map([
+            (
+                "loc",
+                raw_metrics.files.iter().map(|metric| metric.loc).collect(),
+            ),
+            (
+                "imports",
+                raw_metrics
+                    .files
+                    .iter()
+                    .map(|metric| metric.imports)
+                    .collect(),
+            ),
+            (
+                "public_items",
+                raw_metrics
+                    .files
+                    .iter()
+                    .map(|metric| metric.public_items)
+                    .collect(),
+            ),
+            (
+                "directory_source_files",
+                raw_metrics
+                    .files
+                    .iter()
+                    .map(|metric| metric.directory_source_files)
+                    .collect(),
+            ),
+        ]),
+        functions: percentile_map([
+            (
+                "loc",
+                raw_metrics
+                    .functions
+                    .iter()
+                    .map(|metric| metric.loc)
+                    .collect(),
+            ),
+            (
+                "complexity",
+                raw_metrics
+                    .functions
+                    .iter()
+                    .map(|metric| metric.complexity)
+                    .collect(),
+            ),
+            (
+                "nesting_depth",
+                raw_metrics
+                    .functions
+                    .iter()
+                    .map(|metric| metric.nesting_depth)
+                    .collect(),
+            ),
+            (
+                "parameter_count",
+                raw_metrics
+                    .functions
+                    .iter()
+                    .map(|metric| metric.parameter_count)
+                    .collect(),
+            ),
+        ]),
+        types: percentile_map([
+            (
+                "loc",
+                raw_metrics.types.iter().map(|metric| metric.loc).collect(),
+            ),
+            (
+                "member_count",
+                raw_metrics
+                    .types
+                    .iter()
+                    .map(|metric| metric.member_count)
+                    .collect(),
+            ),
+        ]),
+        churn: percentile_map([
+            (
+                "commits_touched",
+                raw_metrics
+                    .files
+                    .iter()
+                    .map(|metric| metric.churn.commits_touched)
+                    .collect(),
+            ),
+            (
+                "lines_added",
+                raw_metrics
+                    .files
+                    .iter()
+                    .map(|metric| metric.churn.lines_added)
+                    .collect(),
+            ),
+            (
+                "lines_deleted",
+                raw_metrics
+                    .files
+                    .iter()
+                    .map(|metric| metric.churn.lines_deleted)
+                    .collect(),
+            ),
+            (
+                "authors_count",
+                raw_metrics
+                    .files
+                    .iter()
+                    .map(|metric| metric.churn.authors_count)
+                    .collect(),
+            ),
+            (
+                "recent_weighted_churn",
+                raw_metrics
+                    .files
+                    .iter()
+                    .map(|metric| metric.churn.recent_weighted_churn)
+                    .collect(),
+            ),
+        ]),
+    }
+}
+
+fn percentile_map<const N: usize>(
+    inputs: [(&'static str, Vec<usize>); N],
+) -> BTreeMap<String, MetricPercentiles> {
+    inputs
+        .into_iter()
+        .filter_map(|(name, values)| {
+            (!values.is_empty()).then(|| (name.to_string(), percentiles(values)))
+        })
+        .collect()
+}
+
+fn percentiles(mut values: Vec<usize>) -> MetricPercentiles {
+    values.sort_unstable();
+    MetricPercentiles {
+        p50: percentile(&values, 0.50),
+        p75: percentile(&values, 0.75),
+        p90: percentile(&values, 0.90),
+        p95: percentile(&values, 0.95),
+        max: values.last().copied().unwrap_or(0),
+    }
+}
+
+fn percentile(values: &[usize], percentile: f64) -> usize {
+    if values.is_empty() {
+        return 0;
+    }
+
+    let index = ((values.len() - 1) as f64 * percentile).ceil() as usize;
+    values[index.min(values.len() - 1)]
+}
+
+fn rank_hotspots(
+    raw_metrics: &RawMetrics,
+    metrics_summary: &MetricsSummary,
+    model: HotspotModel,
+) -> Vec<Hotspot> {
+    let mut hotspots = Vec::new();
+
+    for file in &raw_metrics.files {
+        let static_risk = strongest_risk([
+            threshold_risk(file.loc, DEFAULT_MAX_FILE_LINES),
+            threshold_risk(file.imports, DEFAULT_MAX_IMPORTS) * 0.80,
+            threshold_risk(file.public_items, DEFAULT_MAX_PUBLIC_ITEMS) * 0.80,
+            threshold_risk(file.directory_source_files, DEFAULT_MAX_DIR_FILES) * 0.65,
+            percentile_risk(file.loc, &metrics_summary.files, "loc") * 0.35,
+        ]);
+        let churn_risk = file_churn_risk(file, metrics_summary);
+        hotspots.push(hotspot(
+            HotspotLevel::File,
+            file.path.clone(),
+            None,
+            None,
+            static_risk,
+            churn_risk,
+            model,
+        ));
+    }
+
+    for function in &raw_metrics.functions {
+        let static_risk = strongest_risk([
+            threshold_risk(function.loc, DEFAULT_MAX_FUNCTION_LINES),
+            threshold_risk(function.complexity, DEFAULT_MAX_FUNCTION_COMPLEXITY),
+            threshold_risk(function.nesting_depth, DEFAULT_MAX_NESTING_DEPTH) * 0.85,
+            threshold_risk(function.parameter_count, DEFAULT_MAX_FUNCTION_PARAMETERS) * 0.75,
+            percentile_risk(function.loc, &metrics_summary.functions, "loc") * 0.35,
+        ]);
+        let file_churn_risk = raw_metrics
+            .files
+            .iter()
+            .find(|file| file.path == function.path)
+            .map(|file| file_churn_risk(file, metrics_summary))
+            .unwrap_or(0.0);
+        let churn_risk = if static_risk >= 35.0 {
+            file_churn_risk
+        } else {
+            0.0
+        };
+        hotspots.push(hotspot(
+            HotspotLevel::Function,
+            function.path.clone(),
+            Some(function.line),
+            Some(function.name.clone()),
+            static_risk,
+            churn_risk,
+            model,
+        ));
+    }
+
+    for type_metric in &raw_metrics.types {
+        let static_risk = strongest_risk([
+            threshold_risk(type_metric.loc, DEFAULT_MAX_TYPE_LINES),
+            threshold_risk(type_metric.member_count, DEFAULT_MAX_TYPE_MEMBERS),
+            percentile_risk(type_metric.loc, &metrics_summary.types, "loc") * 0.35,
+        ]);
+        let file_churn_risk = raw_metrics
+            .files
+            .iter()
+            .find(|file| file.path == type_metric.path)
+            .map(|file| file_churn_risk(file, metrics_summary))
+            .unwrap_or(0.0);
+        let churn_risk = if static_risk >= 35.0 {
+            file_churn_risk
+        } else {
+            0.0
+        };
+        hotspots.push(hotspot(
+            HotspotLevel::Type,
+            type_metric.path.clone(),
+            Some(type_metric.line),
+            Some(type_metric.name.clone()),
+            static_risk,
+            churn_risk,
+            model,
+        ));
+    }
+
+    hotspots.retain(|hotspot| hotspot.score >= 35);
+    hotspots.sort_by(|left, right| {
+        right
+            .score
+            .cmp(&left.score)
+            .then_with(|| left.path.cmp(&right.path))
+            .then_with(|| left.line.cmp(&right.line))
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    hotspots
+}
+
+fn strongest_risk<const N: usize>(risks: [f64; N]) -> f64 {
+    risks.into_iter().fold(0.0, f64::max).clamp(0.0, 100.0)
+}
+
+fn percentile_risk(
+    value: usize,
+    summary: &BTreeMap<String, MetricPercentiles>,
+    metric: &str,
+) -> f64 {
+    if value == 0 {
+        return 0.0;
+    }
+
+    let Some(percentiles) = summary.get(metric) else {
+        return 0.0;
+    };
+
+    if value >= percentiles.p95 {
+        95.0
+    } else if value >= percentiles.p90 {
+        85.0
+    } else if value >= percentiles.p75 {
+        65.0
+    } else if value >= percentiles.p50 {
+        45.0
+    } else {
+        20.0
+    }
+}
+
+fn threshold_risk(value: usize, threshold: usize) -> f64 {
+    if threshold == 0 || value < threshold {
+        return 0.0;
+    }
+
+    normalized_threshold_excess(value as f64 / threshold as f64) * 100.0
+}
+
+fn file_churn_risk(file: &FileRawMetric, metrics_summary: &MetricsSummary) -> f64 {
+    strongest_risk([
+        percentile_risk(
+            file.churn.commits_touched,
+            &metrics_summary.churn,
+            "commits_touched",
+        ),
+        percentile_risk(
+            file.churn.recent_weighted_churn,
+            &metrics_summary.churn,
+            "recent_weighted_churn",
+        ),
+        percentile_risk(
+            file.churn.authors_count,
+            &metrics_summary.churn,
+            "authors_count",
+        ) * 0.70,
+    ])
+}
+
+fn hotspot(
+    level: HotspotLevel,
+    path: String,
+    line: Option<usize>,
+    name: Option<String>,
+    static_risk: f64,
+    churn_risk: f64,
+    model: HotspotModel,
+) -> Hotspot {
+    let score = match model {
+        HotspotModel::Static => static_risk,
+        HotspotModel::Churn => churn_risk,
+        HotspotModel::Hybrid => (static_risk * 0.65) + (churn_risk * 0.35),
+    }
+    .round()
+    .clamp(0.0, 100.0) as u8;
+    let reason = hotspot_reason(static_risk, churn_risk, model);
+
+    Hotspot {
+        level,
+        path,
+        line,
+        name,
+        score,
+        severity: severity_for_score(score),
+        static_risk,
+        churn_risk,
+        reason,
+    }
+}
+
+fn hotspot_reason(static_risk: f64, churn_risk: f64, model: HotspotModel) -> String {
+    let model_reason = match model {
+        HotspotModel::Static => "static model",
+        HotspotModel::Churn => "churn model",
+        HotspotModel::Hybrid => "hybrid model",
+    };
+    if churn_risk >= 70.0 && static_risk >= 70.0 {
+        format!("{model_reason}: high static risk and high churn")
+    } else if churn_risk >= static_risk {
+        format!("{model_reason}: churn dominates")
+    } else {
+        format!("{model_reason}: static risk dominates")
+    }
+}
+
+fn apply_hotspot_scores_to_findings(findings: &mut [Finding], hotspots: &[Hotspot]) {
+    for finding in findings {
+        if let Some(hotspot) = best_hotspot_for_finding(finding, hotspots) {
+            finding.score = hotspot.score;
+            finding.severity = severity_for_score(finding.score);
+            finding.rank_reason = format!("{}; {}", finding.rank_reason, hotspot.reason);
+        }
+    }
+}
+
+fn best_hotspot_for_finding<'a>(finding: &Finding, hotspots: &'a [Hotspot]) -> Option<&'a Hotspot> {
+    hotspots
+        .iter()
+        .filter(|hotspot| {
+            hotspot.path == finding.path
+                && (finding.line.is_none()
+                    || hotspot.line.is_none()
+                    || hotspot.line == finding.line
+                    || hotspot.level == HotspotLevel::File)
+        })
+        .max_by_key(|hotspot| hotspot.score)
 }
 
 struct ScanSignalContext<'a> {
@@ -933,12 +1978,16 @@ fn scan_sources(
     progress: &mut dyn ProgressSink,
     scan: &mut SourceScan,
 ) -> Result<()> {
-    let file_options = FileScanOptions {
-        max_file_lines: args.max_file_lines,
-    };
-
     scan.stats.directories_scanned = source_plan.directories_scanned;
     for path in &source_plan.source_files {
+        let file_options = FileScanOptions {
+            max_file_lines: args.max_file_lines,
+            directory_source_files: path
+                .parent()
+                .and_then(|parent| source_plan.directory_source_files.get(parent))
+                .copied()
+                .unwrap_or(0),
+        };
         scan_file(path, file_options, scan)?;
         report_file_scan_progress(progress, &scan.stats, total_source_files, path);
     }
@@ -1033,11 +2082,23 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
         .with_context(|| format!("failed to read source file {}", path.display()))?;
     let source: Arc<str> = Arc::from(source);
     let line_count = source.lines().count();
+    let display_path = display_path(path);
+    let is_test = is_test_source(path);
+
+    scan.raw_metrics.files.push(FileRawMetric {
+        path: display_path.clone(),
+        loc: line_count,
+        imports: 0,
+        public_items: 0,
+        directory_source_files: options.directory_source_files,
+        is_test,
+        churn: ChurnFileMetric::default(),
+    });
 
     if line_count > options.max_file_lines {
         scan.findings.push(finding(
             FindingKind::LargeFile,
-            display_path(path),
+            display_path.clone(),
             Some(1),
             format!("file has {line_count} lines; consider splitting responsibilities"),
             vec![FindingMetric::threshold(
@@ -1054,7 +2115,7 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
         if has_debt_marker(line) {
             scan.findings.push(finding(
                 FindingKind::DebtMarker,
-                display_path(path),
+                display_path.clone(),
                 Some(index + 1),
                 "technical-debt marker found",
                 Vec::new(),
@@ -1063,7 +2124,6 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
         }
     }
 
-    let display_path = display_path(path);
     if is_supported_structure_source(path) {
         let source_file = SourceFile {
             path: path.to_path_buf(),
@@ -1172,6 +2232,27 @@ fn should_visit_entry(entry: &DirEntry, root: &Path, args: &ScanArgs) -> bool {
     is_root
         || ((args.include_hidden || !is_hidden(entry))
             && (args.include_generated || !is_default_excluded_dir(entry)))
+            && !is_ignored_path(entry.path(), root, args)
+}
+
+fn is_ignored_path(path: &Path, root: &Path, args: &ScanArgs) -> bool {
+    if args.ignore_paths.is_empty() {
+        return false;
+    }
+
+    let relative = path
+        .strip_prefix(root)
+        .ok()
+        .map(display_path)
+        .unwrap_or_else(|| display_path(path));
+    args.ignore_paths.iter().any(|ignore| {
+        let ignore = ignore.replace('\\', "/").trim_matches('/').to_string();
+        !ignore.is_empty()
+            && (relative == ignore
+                || relative
+                    .strip_prefix(&ignore)
+                    .is_some_and(|suffix| suffix.starts_with('/')))
+    })
 }
 
 fn pluralize(count: usize, noun: &str) -> String {

@@ -47,6 +47,38 @@ struct TypeMetric {
     members: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RawStructureFileMetric {
+    pub path: String,
+    pub imports: usize,
+    pub public_items: usize,
+    pub is_test: bool,
+    pub functions: Vec<RawStructureFunctionMetric>,
+    pub types: Vec<RawStructureTypeMetric>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RawStructureFunctionMetric {
+    pub path: String,
+    pub name: String,
+    pub line: usize,
+    pub loc: usize,
+    pub complexity: usize,
+    pub nesting_depth: usize,
+    pub parameter_count: usize,
+    pub is_test: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RawStructureTypeMetric {
+    pub path: String,
+    pub name: String,
+    pub line: usize,
+    pub loc: usize,
+    pub member_count: usize,
+    pub is_test: bool,
+}
+
 type Occurrence = RelatedLocation;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -164,6 +196,59 @@ pub(crate) fn scan_parsed_structure(
         .extend(directory_drift_findings(&signals.directory_files, options));
 
     Ok(signals.findings)
+}
+
+pub(crate) fn collect_raw_structure_metrics(
+    files: &[ParsedSourceFile],
+) -> Vec<RawStructureFileMetric> {
+    files
+        .iter()
+        .map(|file| {
+            let root = file.tree.root_node();
+            let is_test = is_test_source(&file.file.path);
+            let traversal = StructureTraversal {
+                source: &file.file.source,
+                family: file.family,
+                include_test_structure: true,
+            };
+            let mut signals = FileSignals::default();
+            let ast_signals =
+                collect_production_ast_signals(&file.file, root, traversal, &mut signals);
+            let path = file.file.display_path.clone();
+            RawStructureFileMetric {
+                path: path.clone(),
+                imports: count_imports(root, file.family),
+                public_items: count_public_items(root, traversal),
+                is_test,
+                functions: ast_signals
+                    .functions
+                    .into_iter()
+                    .map(|function| RawStructureFunctionMetric {
+                        path: path.clone(),
+                        name: function.name,
+                        line: function.line,
+                        loc: function.lines,
+                        complexity: function.complexity,
+                        nesting_depth: function.nesting_depth,
+                        parameter_count: function.parameter_count,
+                        is_test,
+                    })
+                    .collect(),
+                types: ast_signals
+                    .types
+                    .into_iter()
+                    .map(|type_metric| RawStructureTypeMetric {
+                        path: path.clone(),
+                        name: type_metric.name,
+                        line: type_metric.line,
+                        loc: type_metric.lines,
+                        member_count: type_metric.members,
+                        is_test,
+                    })
+                    .collect(),
+            }
+        })
+        .collect()
 }
 
 pub fn is_supported_structure_source(path: &Path) -> bool {

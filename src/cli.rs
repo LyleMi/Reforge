@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser)]
 #[command(name = "reforge")]
@@ -16,7 +17,7 @@ pub enum Command {
     Scan(ScanArgs),
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Clone, Args)]
 pub struct ScanArgs {
     /// Directory or file to scan.
     #[arg(default_value = ".")]
@@ -98,6 +99,30 @@ pub struct ScanArgs {
     #[arg(long)]
     pub include_test_structure: bool,
 
+    /// Configured paths to skip during scanning.
+    #[arg(skip)]
+    pub ignore_paths: Vec<String>,
+
+    /// Optional configuration file. When omitted, reforge.toml is discovered from the scan root.
+    #[arg(long)]
+    pub config: Option<PathBuf>,
+
+    /// Git churn collection mode.
+    #[arg(long, value_enum)]
+    pub churn: Option<ChurnMode>,
+
+    /// Hotspot ranking model.
+    #[arg(long, value_enum)]
+    pub hotspot_model: Option<HotspotModel>,
+
+    /// Number of days of git history to include in churn metrics.
+    #[arg(long)]
+    pub churn_window_days: Option<usize>,
+
+    /// Skip commits whose numstat added+deleted line count exceeds this value.
+    #[arg(long)]
+    pub churn_max_commit_lines: Option<usize>,
+
     /// Output format.
     #[arg(long, value_enum)]
     pub output: Option<OutputFormat>,
@@ -134,6 +159,22 @@ pub enum ColorMode {
     Auto,
     Always,
     Never,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChurnMode {
+    Auto,
+    On,
+    Off,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HotspotModel {
+    Static,
+    Churn,
+    Hybrid,
 }
 
 impl ScanArgs {
@@ -402,5 +443,28 @@ mod tests {
         assert!(!ColorMode::Auto.enabled(false));
         assert!(ColorMode::Always.enabled(false));
         assert!(!ColorMode::Never.enabled(true));
+    }
+
+    #[test]
+    fn parses_quality_model_options() {
+        let cli = Cli::parse_from([
+            "reforge",
+            "scan",
+            ".",
+            "--churn",
+            "on",
+            "--hotspot-model",
+            "static",
+            "--churn-window-days",
+            "90",
+            "--churn-max-commit-lines",
+            "1000",
+        ]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.churn, Some(ChurnMode::On));
+        assert_eq!(args.hotspot_model, Some(HotspotModel::Static));
+        assert_eq!(args.churn_window_days, Some(90));
+        assert_eq!(args.churn_max_commit_lines, Some(1000));
     }
 }

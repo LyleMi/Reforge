@@ -89,10 +89,11 @@ impl ReportRenderContext<'_> {
             .push_str(&paint(self.color, "Reforge scan report", AnsiStyle::Header));
         self.output.push('\n');
         self.output.push_str(&format!(
-            "Scanned {} files in {} ms; {} findings; {} similar function groups.\n",
+            "Scanned {} files in {} ms; {} findings; {} hotspots; {} similar function groups.\n",
             self.report.summary.scanned_files,
             self.report.summary.duration_ms,
             self.report.summary.finding_count,
+            self.report.summary.hotspot_count,
             self.report.summary.similar_function_group_count
         ));
     }
@@ -103,14 +104,24 @@ impl ReportRenderContext<'_> {
             .push_str(&paint(self.color, "Summary", AnsiStyle::Section));
         self.output.push('\n');
         self.output.push_str(&format!(
-            "  Source files: {}\n  Directories: {}\n  Function candidates: {}\n",
+            "  Source files: {}\n  Directories: {}\n  Function candidates: {}\n  Hotspot model: {}\n  Churn: {}{}\n",
             self.report.stats.source_files_scanned,
             self.report.stats.directories_scanned,
-            self.report.stats.function_candidates
+            self.report.stats.function_candidates,
+            hotspot_model_label(self.report.summary.hotspot_model),
+            self.report.summary.churn.status,
+            self.report
+                .summary
+                .churn
+                .reason
+                .as_ref()
+                .map(|reason| format!(" ({reason})"))
+                .unwrap_or_default()
         ));
     }
 
     fn render_findings(&mut self) {
+        self.render_hotspots();
         self.output.push('\n');
         self.output
             .push_str(&paint(self.color, "Findings", AnsiStyle::Section));
@@ -127,6 +138,38 @@ impl ReportRenderContext<'_> {
                     .push_str(&render_related_locations(finding, self.color));
             }
         }
+    }
+
+    fn render_hotspots(&mut self) {
+        if self.report.hotspots.is_empty() {
+            return;
+        }
+
+        self.output.push('\n');
+        self.output
+            .push_str(&paint(self.color, "Hotspots", AnsiStyle::Section));
+        self.output.push('\n');
+        for hotspot in self.report.hotspots.iter().take(10) {
+            self.output.push_str(&format!(
+                "  [{} score={}] {}{} - {}\n",
+                hotspot.severity,
+                hotspot.score,
+                hotspot.path,
+                hotspot
+                    .line
+                    .map(|line| format!(":{line}"))
+                    .unwrap_or_default(),
+                hotspot.reason
+            ));
+        }
+    }
+}
+
+fn hotspot_model_label(model: crate::cli::HotspotModel) -> &'static str {
+    match model {
+        crate::cli::HotspotModel::Static => "static",
+        crate::cli::HotspotModel::Churn => "churn",
+        crate::cli::HotspotModel::Hybrid => "hybrid",
     }
 }
 
