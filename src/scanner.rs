@@ -153,6 +153,7 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
         scan_file(
             &root,
             args.max_file_lines,
+            args.include_test_similarity,
             &mut findings,
             &mut similarity_sources,
             &mut stats,
@@ -176,6 +177,7 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
                 scan_file(
                     entry.path(),
                     args.max_file_lines,
+                    args.include_test_similarity,
                     &mut findings,
                     &mut similarity_sources,
                     &mut stats,
@@ -229,6 +231,7 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
 fn scan_file(
     path: &Path,
     max_file_lines: usize,
+    include_test_similarity: bool,
     findings: &mut Vec<Finding>,
     similarity_sources: &mut Vec<SourceFile>,
     stats: &mut ScanStats,
@@ -269,7 +272,7 @@ fn scan_file(
         }
     }
 
-    if is_supported_similarity_source(path) {
+    if is_supported_similarity_source(path) && (include_test_similarity || !is_test_source(path)) {
         similarity_sources.push(SourceFile {
             path: path.to_path_buf(),
             display_path: display_path(path),
@@ -362,6 +365,29 @@ fn is_default_excluded_dir(entry: &DirEntry) -> bool {
             .is_some_and(|name| DEFAULT_EXCLUDED_DIRS.contains(&name))
 }
 
+fn is_test_source(path: &Path) -> bool {
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+
+    if file_name.starts_with("test_")
+        || file_name.contains(".test.")
+        || file_name.contains(".spec.")
+        || file_name.ends_with("_test.go")
+        || file_name.ends_with("_test.py")
+        || file_name.ends_with("_test.rs")
+    {
+        return true;
+    }
+
+    path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .is_some_and(|name| matches!(name, "test" | "tests" | "__tests__" | "spec" | "specs"))
+    })
+}
+
 fn display_path(path: &Path) -> String {
     let display = path.to_string_lossy().replace('\\', "/");
     display
@@ -392,8 +418,9 @@ mod tests {
             include_hidden: false,
             include_generated,
             min_similar_functions: 3,
-            min_function_tokens: 40,
-            function_similarity: 0.80,
+            min_function_tokens: 80,
+            function_similarity: 0.85,
+            include_test_similarity: false,
             output: crate::cli::OutputFormat::Human,
             progress: crate::cli::ProgressMode::Auto,
         }
@@ -541,6 +568,85 @@ function gamma(rows) {
                 .all(|finding| !finding.message.contains("structurally similar"))
         );
         Ok(())
+    }
+
+    #[test]
+    fn excludes_test_files_from_similarity_by_default() -> Result<()> {
+        let root = test_root("exclude-test-similarity");
+        fs::create_dir_all(root.join("src"))?;
+        fs::write(
+            root.join("src/app_test.go"),
+            r#"
+package app
+
+func Alpha(items []Item) int {
+    total := 0
+    for _, item := range items {
+        if item.Score > 10 {
+            total += item.Score * 2
+        } else {
+            total += item.Score
+        }
+    }
+    return total
+}
+
+func Beta(records []Item) int {
+    sum := 1
+    for _, record := range records {
+        if record.Score > 20 {
+            sum += record.Score * 2
+        } else {
+            sum += record.Score
+        }
+    }
+    return sum
+}
+
+func Gamma(rows []Item) int {
+    acc := 2
+    for _, row := range rows {
+        if row.Score > 30 {
+            acc += row.Score * 2
+        } else {
+            acc += row.Score
+        }
+    }
+    return acc
+}
+"#,
+        )?;
+
+        let mut args = scan_args(root.clone(), false);
+        args.min_function_tokens = 12;
+        let default_findings = scan_path(&args)?;
+
+        args.include_test_similarity = true;
+        let included_findings = scan_path(&args)?;
+
+        fs::remove_dir_all(root)?;
+
+        assert!(
+            default_findings
+                .iter()
+                .all(|finding| finding.kind != FindingKind::SimilarFunctions)
+        );
+        assert!(
+            included_findings
+                .iter()
+                .any(|finding| finding.kind == FindingKind::SimilarFunctions)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn recognizes_common_test_source_names() {
+        assert!(is_test_source(Path::new("src/app_test.go")));
+        assert!(is_test_source(Path::new("src/app.test.ts")));
+        assert!(is_test_source(Path::new("src/app.spec.tsx")));
+        assert!(is_test_source(Path::new("tests/app.rs")));
+        assert!(is_test_source(Path::new("src/test_app.py")));
+        assert!(!is_test_source(Path::new("src/app.go")));
     }
 
     #[test]

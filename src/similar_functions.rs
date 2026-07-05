@@ -337,10 +337,10 @@ fn normalize_node(
     if node.child_count() == 0 {
         if node.is_named() {
             tokens.push(interner.intern(kind));
-        } else if let Ok(text) = node.utf8_text(source) {
-            if !text.trim().is_empty() {
-                tokens.push(interner.intern(text));
-            }
+        } else if let Ok(text) = node.utf8_text(source)
+            && !text.trim().is_empty()
+        {
+            tokens.push(interner.intern(text));
         }
         return;
     }

@@ -14,6 +14,7 @@ cargo run -- scan D:\path\to\project --max-file-lines 600
 cargo run -- scan . --max-dir-files 30
 cargo run -- scan . --include-generated
 cargo run -- scan . --min-function-tokens 60 --function-similarity 0.85
+cargo run -- scan . --include-test-similarity
 ```
 
 By default, scans skip common dependency and generated output directories such
@@ -23,7 +24,9 @@ Current signals include source files above `--max-file-lines`, directories with
 more direct source files than `--max-dir-files`, comment-based TODO/FIXME
 markers, and groups of at least `--min-similar-functions` named functions or
 methods whose normalized bodies have at least `--min-function-tokens` and meet
-`--function-similarity`.
+`--function-similarity`. Similar-function analysis skips common test file names
+and test directories by default; pass `--include-test-similarity` when test
+duplication is the intended target.
 
 ## Roadmap
 

@@ -43,12 +43,16 @@ pub struct ScanArgs {
     pub min_similar_functions: usize,
 
     /// Ignore functions whose normalized body has fewer tokens than this threshold.
-    #[arg(long, default_value_t = 40)]
+    #[arg(long, default_value_t = 80)]
     pub min_function_tokens: usize,
 
     /// Minimum normalized token similarity for functions to be grouped.
-    #[arg(long, default_value_t = 0.80)]
+    #[arg(long, default_value_t = 0.85)]
     pub function_similarity: f64,
+
+    /// Include test files in similar-function analysis.
+    #[arg(long)]
+    pub include_test_similarity: bool,
 
     /// Output format.
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
@@ -104,6 +108,24 @@ mod tests {
         assert_eq!(args.min_similar_functions, 4);
         assert_eq!(args.min_function_tokens, 25);
         assert_eq!(args.function_similarity, 0.9);
+    }
+
+    #[test]
+    fn uses_stricter_default_similarity_thresholds() {
+        let cli = Cli::parse_from(["reforge", "scan", "."]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.min_function_tokens, 80);
+        assert_eq!(args.function_similarity, 0.85);
+        assert!(!args.include_test_similarity);
+    }
+
+    #[test]
+    fn parses_test_similarity_flag() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--include-test-similarity"]);
+
+        let Command::Scan(args) = cli.command;
+        assert!(args.include_test_similarity);
     }
 
     #[test]
