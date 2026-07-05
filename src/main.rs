@@ -51,6 +51,7 @@ fn main() -> Result<()> {
                         }
                     }
                     OutputFormat::Json => report::write_json_report(writer, &report)?,
+                    OutputFormat::Yaml => report::write_yaml_report(writer, &report)?,
                 }
             } else {
                 match output_format {
@@ -62,6 +63,7 @@ fn main() -> Result<()> {
                         }
                     }
                     OutputFormat::Json => handle_output_result(report::print_json_report(&report))?,
+                    OutputFormat::Yaml => handle_output_result(report::print_yaml_report(&report))?,
                 }
             }
         }

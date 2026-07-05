@@ -17,6 +17,7 @@ cargo run -- scan . --min-function-tokens 60 --function-similarity 0.85
 cargo run -- scan . --include-test-similarity
 cargo run -- scan . --progress always --color always
 cargo run -- scan . --output json --output-file reforge-report.json --progress never
+cargo run -- scan . --output yaml --output-file reforge-report.yaml --progress never
 ```
 
 By default, scans skip common dependency and generated output directories such
@@ -30,14 +31,16 @@ methods whose normalized bodies have at least `--min-function-tokens` and meet
 and test directories by default; pass `--include-test-similarity` when test
 duplication is the intended target.
 
-Use `--output-file <path>` to write either the human or JSON report to a file
-instead of stdout. A `.json` output file selects JSON output unless `--output`
-is set explicitly. Existing files are overwritten.
+Use `--output-file <path>` to write the human, JSON, or YAML report to a file
+instead of stdout. A `.json` output file selects JSON output, and `.yaml` or
+`.yml` selects YAML output, unless `--output` is set explicitly. Existing files
+are overwritten.
 
 The default human report includes a summary, signal counts, and grouped
 findings. Repeated TODO/FIXME markers in the same file are grouped, and
 similar-function groups show only a few representative locations. Use
-`--output json` when you need every finding and related location.
+`--output json` or `--output yaml` when you need every finding and related
+location.
 
 Progress defaults to `auto`, which shows a dynamic percentage on stderr only
 when stderr is a terminal. Use `--progress always` or `--progress never` to

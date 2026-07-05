@@ -20,6 +20,10 @@ pub fn print_json_report(report: &ScanReport) -> Result<()> {
     write_json_report(std::io::stdout().lock(), report)
 }
 
+pub fn print_yaml_report(report: &ScanReport) -> Result<()> {
+    write_yaml_report(std::io::stdout().lock(), report)
+}
+
 pub fn write_human_report(mut writer: impl Write, report: &ScanReport) -> io::Result<()> {
     writer.write_all(render_human_report(report).as_bytes())
 }
@@ -35,6 +39,15 @@ pub fn write_human_report_colored(
 pub fn write_json_report(mut writer: impl Write, report: &ScanReport) -> Result<()> {
     writer.write_all(serde_json::to_string_pretty(report)?.as_bytes())?;
     writer.write_all(b"\n")?;
+    Ok(())
+}
+
+pub fn write_yaml_report(mut writer: impl Write, report: &ScanReport) -> Result<()> {
+    let output = serde_yaml::to_string(report)?;
+    writer.write_all(output.as_bytes())?;
+    if !output.ends_with('\n') {
+        writer.write_all(b"\n")?;
+    }
     Ok(())
 }
 
@@ -620,6 +633,20 @@ mod tests {
         assert!(output.ends_with('\n'));
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&output).unwrap()["summary"]["scanned_files"],
+            2
+        );
+    }
+
+    #[test]
+    fn writes_yaml_report_to_writer() {
+        let mut output = Vec::new();
+
+        write_yaml_report(&mut output, &report(Vec::new())).unwrap();
+
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.ends_with('\n'));
+        assert_eq!(
+            serde_yaml::from_str::<serde_yaml::Value>(&output).unwrap()["summary"]["scanned_files"],
             2
         );
     }

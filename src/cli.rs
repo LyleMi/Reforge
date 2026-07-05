@@ -119,6 +119,7 @@ pub struct ScanArgs {
 pub enum OutputFormat {
     Human,
     Json,
+    Yaml,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -137,21 +138,24 @@ pub enum ColorMode {
 
 impl ScanArgs {
     pub fn output_format(&self) -> OutputFormat {
-        self.output.unwrap_or_else(|| {
-            if self.output_file_has_json_extension() {
-                OutputFormat::Json
-            } else {
-                OutputFormat::Human
-            }
-        })
+        self.output
+            .unwrap_or_else(|| match self.output_file_extension() {
+                Some(extension) if extension.eq_ignore_ascii_case("json") => OutputFormat::Json,
+                Some(extension)
+                    if extension.eq_ignore_ascii_case("yaml")
+                        || extension.eq_ignore_ascii_case("yml") =>
+                {
+                    OutputFormat::Yaml
+                }
+                _ => OutputFormat::Human,
+            })
     }
 
-    fn output_file_has_json_extension(&self) -> bool {
+    fn output_file_extension(&self) -> Option<&str> {
         self.output_file
             .as_ref()
             .and_then(|path| path.extension())
             .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
     }
 }
 
@@ -288,6 +292,15 @@ mod tests {
     }
 
     #[test]
+    fn parses_yaml_output_format() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output", "yaml"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output, Some(OutputFormat::Yaml));
+        assert_eq!(args.output_format(), OutputFormat::Yaml);
+    }
+
+    #[test]
     fn parses_output_file() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.json"]);
 
@@ -312,6 +325,22 @@ mod tests {
     }
 
     #[test]
+    fn infers_yaml_output_format_from_output_file_extension() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.yaml"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output_format(), OutputFormat::Yaml);
+    }
+
+    #[test]
+    fn infers_yaml_output_format_from_yml_output_file_extension() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "REPORT.YML"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output_format(), OutputFormat::Yaml);
+    }
+
+    #[test]
     fn keeps_explicit_output_format_when_output_file_extension_is_json() {
         let cli = Cli::parse_from([
             "reforge",
@@ -325,6 +354,22 @@ mod tests {
 
         let Command::Scan(args) = cli.command;
         assert_eq!(args.output_format(), OutputFormat::Human);
+    }
+
+    #[test]
+    fn keeps_explicit_output_format_when_output_file_extension_is_yaml() {
+        let cli = Cli::parse_from([
+            "reforge",
+            "scan",
+            ".",
+            "--output-file",
+            "report.yaml",
+            "--output",
+            "json",
+        ]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output_format(), OutputFormat::Json);
     }
 
     #[test]
