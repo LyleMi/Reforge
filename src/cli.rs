@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
 #[command(name = "reforge")]
@@ -49,6 +49,37 @@ pub struct ScanArgs {
     /// Minimum normalized token similarity for functions to be grouped.
     #[arg(long, default_value_t = 0.80)]
     pub function_similarity: f64,
+
+    /// Output format.
+    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
+    pub output: OutputFormat,
+
+    /// Progress reporting mode. Auto writes to stderr only when stderr is a TTY.
+    #[arg(long, value_enum, default_value_t = ProgressMode::Auto)]
+    pub progress: ProgressMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum OutputFormat {
+    Human,
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ProgressMode {
+    Auto,
+    Always,
+    Never,
+}
+
+impl ProgressMode {
+    pub fn enabled(self, stderr_is_tty: bool) -> bool {
+        match self {
+            ProgressMode::Auto => stderr_is_tty,
+            ProgressMode::Always => true,
+            ProgressMode::Never => false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -73,5 +104,29 @@ mod tests {
         assert_eq!(args.min_similar_functions, 4);
         assert_eq!(args.min_function_tokens, 25);
         assert_eq!(args.function_similarity, 0.9);
+    }
+
+    #[test]
+    fn parses_output_format() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output", "json"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output, OutputFormat::Json);
+    }
+
+    #[test]
+    fn parses_progress_mode() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--progress", "never"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.progress, ProgressMode::Never);
+    }
+
+    #[test]
+    fn resolves_progress_modes() {
+        assert!(ProgressMode::Auto.enabled(true));
+        assert!(!ProgressMode::Auto.enabled(false));
+        assert!(ProgressMode::Always.enabled(false));
+        assert!(!ProgressMode::Never.enabled(true));
     }
 }

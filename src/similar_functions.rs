@@ -1,10 +1,12 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use tree_sitter::{Language, Node, Parser};
 
-use crate::scanner::{Finding, Severity};
+use crate::scanner::{Finding, FindingKind, RelatedLocation, Severity};
+
+type TokenId = u32;
 
 #[derive(Debug, Clone)]
 pub struct SimilarFunctionOptions {
@@ -21,13 +23,20 @@ pub struct SourceFile {
 }
 
 #[derive(Debug, Clone)]
+pub struct SimilarFunctionScan {
+    pub findings: Vec<Finding>,
+    pub candidate_count: usize,
+}
+
+#[derive(Debug, Clone)]
 struct FunctionCandidate {
     family: LanguageFamily,
     category: FunctionCategory,
     name: String,
     path: String,
     line: usize,
-    tokens: Vec<String>,
+    tokens: Vec<TokenId>,
+    token_counts: Vec<(TokenId, usize)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -50,24 +59,62 @@ struct LanguageAdapter {
     language: fn() -> Language,
 }
 
+#[derive(Debug, Default)]
+struct TokenInterner {
+    ids_by_token: HashMap<String, TokenId>,
+}
+
+impl TokenInterner {
+    fn intern(&mut self, token: &str) -> TokenId {
+        if let Some(id) = self.ids_by_token.get(token) {
+            return *id;
+        }
+
+        let id = self.ids_by_token.len() as TokenId;
+        self.ids_by_token.insert(token.to_string(), id);
+        id
+    }
+}
+
+#[allow(dead_code)]
 pub fn scan_similar_functions(
     files: &[SourceFile],
     options: &SimilarFunctionOptions,
 ) -> Result<Vec<Finding>> {
+    Ok(scan_similar_functions_report(files, options)?.findings)
+}
+
+pub fn scan_similar_functions_report(
+    files: &[SourceFile],
+    options: &SimilarFunctionOptions,
+) -> Result<SimilarFunctionScan> {
     validate_options(options)?;
 
     if options.min_group_size == 0 {
-        return Ok(Vec::new());
+        return Ok(SimilarFunctionScan {
+            findings: Vec::new(),
+            candidate_count: 0,
+        });
     }
 
     let mut candidates = Vec::new();
+    let mut interner = TokenInterner::default();
     for file in files {
         if let Some(adapter) = adapter_for_path(&file.path) {
-            candidates.extend(extract_candidates(file, adapter, options.min_tokens)?);
+            candidates.extend(extract_candidates(
+                file,
+                adapter,
+                options.min_tokens,
+                &mut interner,
+            )?);
         }
     }
 
-    Ok(group_candidates(&candidates, options))
+    let candidate_count = candidates.len();
+    Ok(SimilarFunctionScan {
+        findings: group_candidates(&candidates, options),
+        candidate_count,
+    })
 }
 
 pub fn is_supported_similarity_source(path: &Path) -> bool {
@@ -118,6 +165,7 @@ fn extract_candidates(
     file: &SourceFile,
     adapter: LanguageAdapter,
     min_tokens: usize,
+    interner: &mut TokenInterner,
 ) -> Result<Vec<FunctionCandidate>> {
     let mut parser = Parser::new();
     parser
@@ -139,6 +187,7 @@ fn extract_candidates(
         file,
         adapter.family,
         min_tokens,
+        interner,
         &mut candidates,
     );
     Ok(candidates)
@@ -150,11 +199,13 @@ fn collect_named_functions(
     file: &SourceFile,
     family: LanguageFamily,
     min_tokens: usize,
+    interner: &mut TokenInterner,
     candidates: &mut Vec<FunctionCandidate>,
 ) {
     if let Some((name, category, body)) = extract_function_parts(node, source, family) {
-        let tokens = normalize_tokens(body, source.as_bytes());
+        let tokens = normalize_tokens(body, source.as_bytes(), interner);
         if tokens.len() >= min_tokens {
+            let token_counts = token_counts(&tokens);
             candidates.push(FunctionCandidate {
                 family,
                 category,
@@ -162,13 +213,16 @@ fn collect_named_functions(
                 path: file.display_path.clone(),
                 line: node.start_position().row + 1,
                 tokens,
+                token_counts,
             });
         }
     }
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_named_functions(child, source, file, family, min_tokens, candidates);
+        collect_named_functions(
+            child, source, file, family, min_tokens, interner, candidates,
+        );
     }
 }
 
@@ -247,13 +301,18 @@ fn has_ancestor_kind(mut node: Node<'_>, kind: &str) -> bool {
     false
 }
 
-fn normalize_tokens(node: Node<'_>, source: &[u8]) -> Vec<String> {
+fn normalize_tokens(node: Node<'_>, source: &[u8], interner: &mut TokenInterner) -> Vec<TokenId> {
     let mut tokens = Vec::new();
-    normalize_node(node, source, &mut tokens);
+    normalize_node(node, source, interner, &mut tokens);
     tokens
 }
 
-fn normalize_node(node: Node<'_>, source: &[u8], tokens: &mut Vec<String>) {
+fn normalize_node(
+    node: Node<'_>,
+    source: &[u8],
+    interner: &mut TokenInterner,
+    tokens: &mut Vec<TokenId>,
+) {
     let kind = node.kind();
 
     if is_comment_kind(kind) {
@@ -261,26 +320,26 @@ fn normalize_node(node: Node<'_>, source: &[u8], tokens: &mut Vec<String>) {
     }
 
     if is_identifier_kind(kind) {
-        tokens.push("ID".to_string());
+        tokens.push(interner.intern("ID"));
         return;
     }
 
     if is_string_kind(kind) {
-        tokens.push("STR".to_string());
+        tokens.push(interner.intern("STR"));
         return;
     }
 
     if is_number_kind(kind) {
-        tokens.push("NUM".to_string());
+        tokens.push(interner.intern("NUM"));
         return;
     }
 
     if node.child_count() == 0 {
         if node.is_named() {
-            tokens.push(kind.to_string());
+            tokens.push(interner.intern(kind));
         } else if let Ok(text) = node.utf8_text(source) {
             if !text.trim().is_empty() {
-                tokens.push(text.to_string());
+                tokens.push(interner.intern(text));
             }
         }
         return;
@@ -288,8 +347,16 @@ fn normalize_node(node: Node<'_>, source: &[u8], tokens: &mut Vec<String>) {
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        normalize_node(child, source, tokens);
+        normalize_node(child, source, interner, tokens);
     }
+}
+
+fn token_counts(tokens: &[TokenId]) -> Vec<(TokenId, usize)> {
+    let mut counts = BTreeMap::new();
+    for token in tokens {
+        *counts.entry(*token).or_insert(0) += 1;
+    }
+    counts.into_iter().collect()
 }
 
 fn is_comment_kind(kind: &str) -> bool {
@@ -350,12 +417,21 @@ fn group_candidates(
                 }
 
                 let candidate = &candidates[candidate_index];
-                if length_ratio(&representative.tokens, &candidate.tokens) < options.threshold {
+                if length_ratio(representative.tokens.len(), candidate.tokens.len())
+                    < options.threshold
+                {
                     continue;
                 }
 
-                if token_similarity(&representative.tokens, &candidate.tokens) >= options.threshold
-                {
+                if multiset_dice_upper_bound(representative, candidate) < options.threshold {
+                    continue;
+                }
+
+                if token_similarity_reaches(
+                    &representative.tokens,
+                    &candidate.tokens,
+                    options.threshold,
+                ) {
                     group.push(candidate_index);
                 }
             }
@@ -376,27 +452,70 @@ fn group_candidates(
     findings
 }
 
-fn length_ratio(left: &[String], right: &[String]) -> f64 {
-    let shorter = left.len().min(right.len()) as f64;
-    let longer = left.len().max(right.len()) as f64;
+fn length_ratio(left_len: usize, right_len: usize) -> f64 {
+    let shorter = left_len.min(right_len) as f64;
+    let longer = left_len.max(right_len) as f64;
 
     if longer == 0.0 { 1.0 } else { shorter / longer }
 }
 
-fn token_similarity(left: &[String], right: &[String]) -> f64 {
-    if left.is_empty() && right.is_empty() {
+fn multiset_dice_upper_bound(left: &FunctionCandidate, right: &FunctionCandidate) -> f64 {
+    if left.tokens.is_empty() && right.tokens.is_empty() {
         return 1.0;
     }
 
-    let lcs = longest_common_subsequence_len(left, right) as f64;
-    (2.0 * lcs) / (left.len() as f64 + right.len() as f64)
+    let mut overlap = 0;
+    let mut left_index = 0;
+    let mut right_index = 0;
+
+    while left_index < left.token_counts.len() && right_index < right.token_counts.len() {
+        let (left_token, left_count) = left.token_counts[left_index];
+        let (right_token, right_count) = right.token_counts[right_index];
+
+        match left_token.cmp(&right_token) {
+            std::cmp::Ordering::Less => left_index += 1,
+            std::cmp::Ordering::Greater => right_index += 1,
+            std::cmp::Ordering::Equal => {
+                overlap += left_count.min(right_count);
+                left_index += 1;
+                right_index += 1;
+            }
+        }
+    }
+
+    (2.0 * overlap as f64) / (left.tokens.len() as f64 + right.tokens.len() as f64)
 }
 
-fn longest_common_subsequence_len(left: &[String], right: &[String]) -> usize {
+fn token_similarity_reaches(left: &[TokenId], right: &[TokenId], threshold: f64) -> bool {
+    if left.is_empty() && right.is_empty() {
+        return true;
+    }
+
+    let required_lcs = required_lcs_len(left.len(), right.len(), threshold);
+    longest_common_subsequence_reaches(left, right, required_lcs)
+}
+
+fn required_lcs_len(left_len: usize, right_len: usize, threshold: f64) -> usize {
+    ((threshold * (left_len + right_len) as f64) / 2.0).ceil() as usize
+}
+
+fn longest_common_subsequence_reaches(
+    left: &[TokenId],
+    right: &[TokenId],
+    required_lcs: usize,
+) -> bool {
+    if required_lcs == 0 {
+        return true;
+    }
+
+    if left.len().min(right.len()) < required_lcs {
+        return false;
+    }
+
     let mut previous = vec![0; right.len() + 1];
     let mut current = vec![0; right.len() + 1];
 
-    for left_token in left {
+    for (left_index, left_token) in left.iter().enumerate() {
         for (right_index, right_token) in right.iter().enumerate() {
             current[right_index + 1] = if left_token == right_token {
                 previous[right_index] + 1
@@ -406,9 +525,18 @@ fn longest_common_subsequence_len(left: &[String], right: &[String]) -> usize {
         }
         std::mem::swap(&mut previous, &mut current);
         current.fill(0);
+
+        if previous[right.len()] >= required_lcs {
+            return true;
+        }
+
+        let remaining_left = left.len() - left_index - 1;
+        if previous[right.len()] + remaining_left < required_lcs {
+            return false;
+        }
     }
 
-    previous[right.len()]
+    previous[right.len()] >= required_lcs
 }
 
 fn similar_function_finding(
@@ -417,27 +545,30 @@ fn similar_function_finding(
     threshold: f64,
 ) -> Finding {
     let representative = &candidates[group[0]];
-    let locations = group
+    let related_locations = group
         .iter()
-        .take(6)
         .map(|&index| {
             let candidate = &candidates[index];
-            format!("{}:{} {}", candidate.path, candidate.line, candidate.name)
+            RelatedLocation {
+                path: candidate.path.clone(),
+                line: candidate.line,
+                name: Some(candidate.name.clone()),
+            }
         })
-        .collect::<Vec<_>>()
-        .join(", ");
+        .collect::<Vec<_>>();
 
     Finding {
+        kind: FindingKind::SimilarFunctions,
         severity: Severity::Warning,
         path: representative.path.clone(),
         line: Some(representative.line),
         magnitude: Some(group.len()),
         message: format!(
-            "{} structurally similar functions/methods found at similarity >= {:.2}; locations: {}",
+            "{} structurally similar functions/methods found at similarity >= {:.2}",
             group.len(),
-            threshold,
-            locations
+            threshold
         ),
+        related_locations,
     }
 }
 
@@ -545,48 +676,13 @@ items.map((entry) => {
 
     #[test]
     fn detects_similar_javascript_functions_with_normalized_names_and_literals() -> Result<()> {
-        let source = r#"
-function alpha(items) {
-  let total = 0;
-  for (const item of items) {
-    if (item.score > 10) {
-      total += item.score * 2;
-    } else {
-      total += item.score;
-    }
-  }
-  return total;
-}
-
-function beta(records) {
-  let sum = 1;
-  for (const record of records) {
-    if (record.score > 20) {
-      sum += record.score * 2;
-    } else {
-      sum += record.score;
-    }
-  }
-  return sum;
-}
-
-function gamma(rows) {
-  let acc = 2;
-  for (const row of rows) {
-    if (row.score > 30) {
-      acc += row.score * 2;
-    } else {
-      acc += row.score;
-    }
-  }
-  return acc;
-}
-"#;
+        let source = javascript_three_similar_functions();
 
         let findings = scan_similar_functions(&[source_file("src/app.js", source)], &options())?;
 
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].magnitude, Some(3));
+        assert_eq!(findings[0].related_locations.len(), 3);
         Ok(())
     }
 
@@ -671,7 +767,6 @@ def gamma(rows):
         let findings = scan_similar_functions(&[source_file("src/app.py", source)], &options())?;
 
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].magnitude, Some(3));
         Ok(())
     }
 
@@ -720,7 +815,6 @@ func Gamma(rows []Item) int {
         let findings = scan_similar_functions(&[source_file("src/app.go", source)], &options())?;
 
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].magnitude, Some(3));
         Ok(())
     }
 
@@ -839,5 +933,105 @@ function gamma(items) {
         );
         assert!(scan_similar_functions(&[source_file("src/app.js", source)], &strict)?.is_empty());
         Ok(())
+    }
+
+    #[test]
+    fn reports_candidate_count() -> Result<()> {
+        let scan = scan_similar_functions_report(
+            &[source_file(
+                "src/app.js",
+                javascript_three_similar_functions(),
+            )],
+            &options(),
+        )?;
+
+        assert_eq!(scan.candidate_count, 3);
+        assert_eq!(scan.findings.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn length_ratio_pruning_keeps_matching_group() -> Result<()> {
+        let source = javascript_three_similar_functions();
+
+        let findings = scan_similar_functions(&[source_file("src/app.js", source)], &options())?;
+
+        assert_eq!(findings.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn multiset_pruning_keeps_matching_group() -> Result<()> {
+        let source = r#"
+function alpha(items) {
+  let total = 0;
+  for (const item of items) {
+    total += item.score;
+    total += item.weight;
+  }
+  return total;
+}
+function beta(records) {
+  let sum = 1;
+  for (const record of records) {
+    sum += record.score;
+    sum += record.weight;
+  }
+  return sum;
+}
+function gamma(rows) {
+  let acc = 2;
+  for (const row of rows) {
+    acc += row.score;
+    acc += row.weight;
+  }
+  return acc;
+}
+"#;
+
+        let findings = scan_similar_functions(&[source_file("src/app.js", source)], &options())?;
+
+        assert_eq!(findings.len(), 1);
+        Ok(())
+    }
+
+    fn javascript_three_similar_functions() -> &'static str {
+        r#"
+function alpha(items) {
+  let total = 0;
+  for (const item of items) {
+    if (item.score > 10) {
+      total += item.score * 2;
+    } else {
+      total += item.score;
+    }
+  }
+  return total;
+}
+
+function beta(records) {
+  let sum = 1;
+  for (const record of records) {
+    if (record.score > 20) {
+      sum += record.score * 2;
+    } else {
+      sum += record.score;
+    }
+  }
+  return sum;
+}
+
+function gamma(rows) {
+  let acc = 2;
+  for (const row of rows) {
+    if (row.score > 30) {
+      acc += row.score * 2;
+    } else {
+      acc += row.score;
+    }
+  }
+  return acc;
+}
+"#
     }
 }

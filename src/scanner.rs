@@ -1,13 +1,17 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use anyhow::{Context, Result};
+use serde::Serialize;
 use walkdir::{DirEntry, WalkDir};
 
 use crate::cli::ScanArgs;
 use crate::similar_functions::{
-    SimilarFunctionOptions, SourceFile, is_supported_similarity_source, scan_similar_functions,
+    SimilarFunctionOptions, SourceFile, is_supported_similarity_source,
+    scan_similar_functions_report,
 };
 
 const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
@@ -23,22 +27,117 @@ const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     ".vite",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingKind {
+    LargeFile,
+    LargeDirectory,
+    DebtMarker,
+    SimilarFunctions,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
     Warning,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RelatedLocation {
+    pub path: String,
+    pub line: usize,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Finding {
+    pub kind: FindingKind,
     pub severity: Severity,
     pub path: String,
     pub line: Option<usize>,
     pub magnitude: Option<usize>,
     pub message: String,
+    pub related_locations: Vec<RelatedLocation>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ScanSummary {
+    pub scanned_files: usize,
+    pub finding_count: usize,
+    pub similar_function_group_count: usize,
+    pub duration_ms: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct ScanStats {
+    pub source_files_scanned: usize,
+    pub directories_scanned: usize,
+    pub function_candidates: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ScanReport {
+    pub summary: ScanSummary,
+    pub stats: ScanStats,
+    pub findings: Vec<Finding>,
+}
+
+pub trait ProgressSink {
+    fn report(&mut self, message: &str);
+}
+
+pub struct NoopProgress;
+
+impl ProgressSink for NoopProgress {
+    fn report(&mut self, _message: &str) {}
+}
+
+pub struct StderrProgress;
+
+impl StderrProgress {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl ProgressSink for StderrProgress {
+    fn report(&mut self, message: &str) {
+        let _ = writeln!(std::io::stderr(), "{message}");
+    }
+}
+
+#[cfg(test)]
+pub struct WriterProgress<W: Write> {
+    writer: W,
+}
+
+#[cfg(test)]
+impl<W: Write> WriterProgress<W> {
+    pub fn new(writer: W) -> Self {
+        Self { writer }
+    }
+
+    pub fn into_inner(self) -> W {
+        self.writer
+    }
+}
+
+#[cfg(test)]
+impl<W: Write> ProgressSink for WriterProgress<W> {
+    fn report(&mut self, message: &str) {
+        let _ = writeln!(self.writer, "{message}");
+    }
+}
+
+#[allow(dead_code)]
 pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
+    let mut progress = NoopProgress;
+    Ok(scan_report(args, &mut progress)?.findings)
+}
+
+pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<ScanReport> {
+    let started_at = Instant::now();
     let root = args
         .path
         .canonicalize()
@@ -46,6 +145,9 @@ pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
 
     let mut findings = Vec::new();
     let mut similarity_sources = Vec::new();
+    let mut stats = ScanStats::default();
+
+    progress.report(&format!("Scanning {}", display_path(&root)));
 
     if root.is_file() {
         scan_file(
@@ -53,6 +155,7 @@ pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
             args.max_file_lines,
             &mut findings,
             &mut similarity_sources,
+            &mut stats,
         )?;
     } else {
         let mut directory_source_files = BTreeMap::new();
@@ -65,12 +168,17 @@ pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
         }) {
             let entry = entry?;
 
+            if entry.file_type().is_dir() {
+                stats.directories_scanned += 1;
+            }
+
             if entry.file_type().is_file() && is_supported_source(entry.path()) {
                 scan_file(
                     entry.path(),
                     args.max_file_lines,
                     &mut findings,
                     &mut similarity_sources,
+                    &mut stats,
                 )?;
                 count_source_file_parent(entry.path(), &mut directory_source_files);
             }
@@ -79,16 +187,43 @@ pub fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
         scan_directories(&directory_source_files, args.max_dir_files, &mut findings);
     }
 
-    findings.extend(scan_similar_functions(
+    progress.report(&format!(
+        "Analyzing similar functions in {} files",
+        similarity_sources.len()
+    ));
+
+    let similarity_scan = scan_similar_functions_report(
         &similarity_sources,
         &SimilarFunctionOptions {
             min_group_size: args.min_similar_functions,
             min_tokens: args.min_function_tokens,
             threshold: args.function_similarity,
         },
-    )?);
+    )?;
+    stats.function_candidates = similarity_scan.candidate_count;
+    findings.extend(similarity_scan.findings);
 
-    Ok(findings)
+    let similar_function_group_count = findings
+        .iter()
+        .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
+        .count();
+    let summary = ScanSummary {
+        scanned_files: stats.source_files_scanned,
+        finding_count: findings.len(),
+        similar_function_group_count,
+        duration_ms: started_at.elapsed().as_millis(),
+    };
+
+    progress.report(&format!(
+        "Finished scan: {} files, {} findings",
+        summary.scanned_files, summary.finding_count
+    ));
+
+    Ok(ScanReport {
+        summary,
+        stats,
+        findings,
+    })
 }
 
 fn scan_file(
@@ -96,10 +231,13 @@ fn scan_file(
     max_file_lines: usize,
     findings: &mut Vec<Finding>,
     similarity_sources: &mut Vec<SourceFile>,
+    stats: &mut ScanStats,
 ) -> Result<()> {
     if !is_supported_source(path) {
         return Ok(());
     }
+
+    stats.source_files_scanned += 1;
 
     let source = fs::read_to_string(path)
         .with_context(|| format!("failed to read source file {}", path.display()))?;
@@ -107,22 +245,26 @@ fn scan_file(
 
     if line_count > max_file_lines {
         findings.push(Finding {
+            kind: FindingKind::LargeFile,
             severity: Severity::Warning,
             path: display_path(path),
             line: Some(1),
             magnitude: Some(line_count),
             message: format!("file has {line_count} lines; consider splitting responsibilities"),
+            related_locations: Vec::new(),
         });
     }
 
     for (index, line) in source.lines().enumerate() {
         if has_debt_marker(line) {
             findings.push(Finding {
+                kind: FindingKind::DebtMarker,
                 severity: Severity::Info,
                 path: display_path(path),
                 line: Some(index + 1),
                 magnitude: None,
                 message: "technical-debt marker found".to_string(),
+                related_locations: Vec::new(),
             });
         }
     }
@@ -154,6 +296,7 @@ fn scan_directories(
     for (directory, file_count) in directory_source_files {
         if *file_count > max_dir_files {
             findings.push(Finding {
+                kind: FindingKind::LargeDirectory,
                 severity: Severity::Warning,
                 path: display_path(directory),
                 line: None,
@@ -161,6 +304,7 @@ fn scan_directories(
                 message: format!(
                     "directory contains {file_count} source files; consider grouping related responsibilities"
                 ),
+                related_locations: Vec::new(),
             });
         }
     }
@@ -219,7 +363,11 @@ fn is_default_excluded_dir(entry: &DirEntry) -> bool {
 }
 
 fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    let display = path.to_string_lossy().replace('\\', "/");
+    display
+        .strip_prefix("//?/")
+        .unwrap_or(display.as_str())
+        .to_string()
 }
 
 #[cfg(test)]
@@ -246,6 +394,8 @@ mod tests {
             min_similar_functions: 3,
             min_function_tokens: 40,
             function_similarity: 0.80,
+            output: crate::cli::OutputFormat::Human,
+            progress: crate::cli::ProgressMode::Auto,
         }
     }
 
@@ -298,6 +448,7 @@ mod tests {
         fs::remove_dir_all(root)?;
 
         assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].kind, FindingKind::LargeDirectory);
         assert!(findings[0].path.ends_with("src"));
         assert_eq!(findings[0].line, None);
         assert_eq!(findings[0].magnitude, Some(3));
@@ -382,6 +533,7 @@ function gamma(rows) {
         fs::remove_dir_all(root)?;
 
         assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].kind, FindingKind::SimilarFunctions);
         assert_eq!(findings[0].magnitude, Some(3));
         assert!(
             stricter_findings
@@ -389,5 +541,17 @@ function gamma(rows) {
                 .all(|finding| !finding.message.contains("structurally similar"))
         );
         Ok(())
+    }
+
+    #[test]
+    fn writer_progress_outputs_messages() {
+        let mut progress = WriterProgress::new(Vec::new());
+
+        progress.report("Scanning example");
+        progress.report("Finished scan");
+
+        let output = String::from_utf8(progress.into_inner()).unwrap();
+        assert!(output.contains("Scanning example"));
+        assert!(output.contains("Finished scan"));
     }
 }
