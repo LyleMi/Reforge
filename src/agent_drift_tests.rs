@@ -6,7 +6,7 @@ fn source_file(path: &str, source: &str) -> SourceFile {
     SourceFile {
         path: PathBuf::from(path),
         display_path: path.to_string(),
-        source: source.to_string(),
+        source: source.into(),
     }
 }
 

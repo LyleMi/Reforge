@@ -173,6 +173,32 @@ fn renders_json_report_shape() {
 }
 
 #[test]
+fn caps_serialized_similar_function_locations() {
+    let mut finding = finding("src/a.rs", Some(75));
+    finding.kind = FindingKind::SimilarFunctions;
+    finding.related_locations = (0..75)
+        .map(|index| RelatedLocation {
+            path: format!("src/{index}.rs"),
+            line: index + 1,
+            name: Some(format!("func_{index}")),
+        })
+        .collect();
+    let report = report(vec![finding]);
+
+    let value: serde_json::Value =
+        serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+
+    assert_eq!(value["findings"][0]["magnitude"], 75);
+    assert_eq!(
+        value["findings"][0]["related_locations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        50
+    );
+}
+
+#[test]
 fn renders_agent_drift_signal_counts_and_related_locations() {
     let kinds = [
         FindingKind::ParallelImplementation,

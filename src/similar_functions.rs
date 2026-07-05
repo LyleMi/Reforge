@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use tree_sitter::{Node, Parser};
@@ -25,7 +26,7 @@ pub struct SimilarFunctionOptions {
 pub struct SourceFile {
     pub path: PathBuf,
     pub display_path: String,
-    pub source: String,
+    pub source: Arc<str>,
 }
 
 #[derive(Debug, Clone)]
@@ -163,7 +164,7 @@ fn extract_candidates(
         .set_language(&adapter.language())
         .with_context(|| format!("failed to load parser for {}", file.display_path))?;
 
-    let Some(tree) = parser.parse(&file.source, None) else {
+    let Some(tree) = parser.parse(file.source.as_ref(), None) else {
         return Ok(Vec::new());
     };
 
@@ -482,6 +483,7 @@ fn group_candidate_bucket(
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
     let mut used = vec![false; candidates.len()];
+    let mut lcs_workspace = LcsWorkspace::default();
     let bucket = CandidateBucket {
         candidates,
         indexes,
@@ -497,9 +499,12 @@ fn group_candidate_bucket(
         let group = collect_similar_group(
             &bucket,
             &used,
-            representative_position,
-            representative_index,
+            Representative {
+                position: representative_position,
+                index: representative_index,
+            },
             progress,
+            &mut lcs_workspace,
         );
 
         if group.len() >= options.min_group_size {
@@ -524,22 +529,29 @@ struct CandidateBucket<'a> {
     threshold: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Representative {
+    position: usize,
+    index: usize,
+}
+
 fn collect_similar_group(
     bucket: &CandidateBucket<'_>,
     used: &[bool],
-    representative_position: usize,
-    representative_index: usize,
+    representative: Representative,
     progress: &mut ComparisonProgress<'_>,
+    lcs_workspace: &mut LcsWorkspace,
 ) -> Vec<usize> {
-    let representative = &bucket.candidates[representative_index];
-    let mut group = vec![representative_index];
+    let representative_candidate = &bucket.candidates[representative.index];
+    let mut group = vec![representative.index];
 
-    for &candidate_index in bucket.indexes.iter().skip(representative_position + 1) {
+    for &candidate_index in bucket.indexes.iter().skip(representative.position + 1) {
         if !used[candidate_index]
             && candidates_are_similar(
-                representative,
+                representative_candidate,
                 &bucket.candidates[candidate_index],
                 bucket.threshold,
+                lcs_workspace,
             )
         {
             group.push(candidate_index);
@@ -554,10 +566,20 @@ fn candidates_are_similar(
     representative: &FunctionCandidate,
     candidate: &FunctionCandidate,
     threshold: f64,
+    lcs_workspace: &mut LcsWorkspace,
 ) -> bool {
+    if representative.tokens == candidate.tokens {
+        return true;
+    }
+
     length_ratio(representative.tokens.len(), candidate.tokens.len()) >= threshold
         && multiset_dice_upper_bound(representative, candidate) >= threshold
-        && token_similarity_reaches(&representative.tokens, &candidate.tokens, threshold)
+        && token_similarity_reaches(
+            &representative.tokens,
+            &candidate.tokens,
+            threshold,
+            lcs_workspace,
+        )
 }
 
 struct ComparisonProgress<'a> {
@@ -630,13 +652,40 @@ fn multiset_dice_upper_bound(left: &FunctionCandidate, right: &FunctionCandidate
     (2.0 * overlap as f64) / (left.tokens.len() as f64 + right.tokens.len() as f64)
 }
 
-fn token_similarity_reaches(left: &[TokenId], right: &[TokenId], threshold: f64) -> bool {
+#[derive(Debug, Default)]
+struct LcsWorkspace {
+    previous: Vec<usize>,
+    current: Vec<usize>,
+}
+
+impl LcsWorkspace {
+    fn prepare(&mut self, width: usize) {
+        if self.previous.len() < width {
+            self.previous.resize(width, 0);
+        } else {
+            self.previous[..width].fill(0);
+        }
+
+        if self.current.len() < width {
+            self.current.resize(width, 0);
+        } else {
+            self.current[..width].fill(0);
+        }
+    }
+}
+
+fn token_similarity_reaches(
+    left: &[TokenId],
+    right: &[TokenId],
+    threshold: f64,
+    lcs_workspace: &mut LcsWorkspace,
+) -> bool {
     if left.is_empty() && right.is_empty() {
         return true;
     }
 
     let required_lcs = required_lcs_len(left.len(), right.len(), threshold);
-    longest_common_subsequence_reaches(left, right, required_lcs)
+    longest_common_subsequence_reaches(left, right, required_lcs, lcs_workspace)
 }
 
 fn required_lcs_len(left_len: usize, right_len: usize, threshold: f64) -> usize {
@@ -647,6 +696,7 @@ fn longest_common_subsequence_reaches(
     left: &[TokenId],
     right: &[TokenId],
     required_lcs: usize,
+    lcs_workspace: &mut LcsWorkspace,
 ) -> bool {
     if required_lcs == 0 {
         return true;
@@ -656,8 +706,10 @@ fn longest_common_subsequence_reaches(
         return false;
     }
 
-    let mut previous = vec![0; right.len() + 1];
-    let mut current = vec![0; right.len() + 1];
+    let width = right.len() + 1;
+    lcs_workspace.prepare(width);
+    let mut previous = &mut lcs_workspace.previous;
+    let mut current = &mut lcs_workspace.current;
 
     for (left_index, left_token) in left.iter().enumerate() {
         for (right_index, right_token) in right.iter().enumerate() {

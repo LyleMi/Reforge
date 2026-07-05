@@ -107,7 +107,7 @@ pub fn scan_structure(files: &[SourceFile], options: &StructureOptions) -> Resul
             .set_language(&adapter.language())
             .with_context(|| format!("failed to load parser for {}", file.display_path))?;
 
-        let Some(tree) = parser.parse(&file.source, None) else {
+        let Some(tree) = parser.parse(file.source.as_ref(), None) else {
             continue;
         };
 

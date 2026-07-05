@@ -2,10 +2,11 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use serde::Serialize;
+use serde::{Serialize, Serializer, ser::SerializeStruct};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
@@ -29,6 +30,7 @@ const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     ".vite",
 ];
 const PERCENT_SCALE: usize = 100;
+const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -75,7 +77,7 @@ pub struct RelatedLocation {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
     pub kind: FindingKind,
     pub severity: Severity,
@@ -84,6 +86,33 @@ pub struct Finding {
     pub magnitude: Option<usize>,
     pub message: String,
     pub related_locations: Vec<RelatedLocation>,
+}
+
+impl Serialize for Finding {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Finding", 7)?;
+        state.serialize_field("kind", &self.kind)?;
+        state.serialize_field("severity", &self.severity)?;
+        state.serialize_field("path", &self.path)?;
+        state.serialize_field("line", &self.line)?;
+        state.serialize_field("magnitude", &self.magnitude)?;
+        state.serialize_field("message", &self.message)?;
+        state.serialize_field("related_locations", serialized_related_locations(self))?;
+        state.end()
+    }
+}
+
+fn serialized_related_locations(finding: &Finding) -> &[RelatedLocation] {
+    if finding.kind == FindingKind::SimilarFunctions
+        && finding.related_locations.len() > SERIALIZED_SIMILAR_LOCATION_LIMIT
+    {
+        &finding.related_locations[..SERIALIZED_SIMILAR_LOCATION_LIMIT]
+    } else {
+        &finding.related_locations
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -114,6 +143,13 @@ struct SourceScan {
     similarity_sources: Vec<SourceFile>,
     structure_sources: Vec<SourceFile>,
     stats: ScanStats,
+}
+
+#[derive(Debug, Default)]
+struct SourceScanPlan {
+    source_files: Vec<PathBuf>,
+    directory_source_files: BTreeMap<PathBuf, usize>,
+    directories_scanned: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -315,15 +351,14 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     let started_at = Instant::now();
     let root = resolve_scan_root(args)?;
     let mut scan = SourceScan::default();
+    let source_plan = collect_source_scan_plan(&root, args)?;
 
-    let total_source_files = if progress.wants_detailed_progress() {
-        Some(count_source_files(&root, args)?)
-    } else {
-        None
-    };
+    let total_source_files = progress
+        .wants_detailed_progress()
+        .then_some(source_plan.source_files.len());
 
     report_scan_start(progress, &root, total_source_files);
-    scan_sources(&root, args, total_source_files, progress, &mut scan)?;
+    scan_sources(source_plan, args, total_source_files, progress, &mut scan)?;
     let similar_function_group_count = {
         let mut signals = ScanSignalContext {
             args,
@@ -458,7 +493,7 @@ fn report_scan_start(
 }
 
 fn scan_sources(
-    root: &Path,
+    source_plan: SourceScanPlan,
     args: &ScanArgs,
     total_source_files: Option<usize>,
     progress: &mut dyn ProgressSink,
@@ -469,32 +504,14 @@ fn scan_sources(
         include_test_similarity: args.include_test_similarity,
     };
 
-    if root.is_file() {
-        scan_file(root, file_options, scan)?;
-        report_file_scan_progress(progress, &scan.stats, total_source_files, root);
-        return Ok(());
-    }
-
-    let mut directory_source_files = BTreeMap::new();
-    for entry in WalkDir::new(root)
-        .into_iter()
-        .filter_entry(|entry| should_visit_entry(entry, root, args))
-    {
-        let entry = entry?;
-
-        if entry.file_type().is_dir() {
-            scan.stats.directories_scanned += 1;
-        }
-
-        if entry.file_type().is_file() && is_supported_source(entry.path()) {
-            scan_file(entry.path(), file_options, scan)?;
-            report_file_scan_progress(progress, &scan.stats, total_source_files, entry.path());
-            count_source_file_parent(entry.path(), &mut directory_source_files);
-        }
+    scan.stats.directories_scanned = source_plan.directories_scanned;
+    for path in &source_plan.source_files {
+        scan_file(path, file_options, scan)?;
+        report_file_scan_progress(progress, &scan.stats, total_source_files, path);
     }
 
     scan_directories(
-        &directory_source_files,
+        &source_plan.directory_source_files,
         args.max_dir_files,
         &mut scan.findings,
     );
@@ -545,23 +562,31 @@ impl SimilarFunctionProgress for ScanSimilarityProgress<'_> {
     }
 }
 
-fn count_source_files(root: &Path, args: &ScanArgs) -> Result<usize> {
+fn collect_source_scan_plan(root: &Path, args: &ScanArgs) -> Result<SourceScanPlan> {
+    let mut plan = SourceScanPlan::default();
+
     if root.is_file() {
-        return Ok(usize::from(is_supported_source(root)));
+        if is_supported_source(root) {
+            plan.source_files.push(root.to_path_buf());
+        }
+        return Ok(plan);
     }
 
-    let mut count = 0;
     for entry in WalkDir::new(root)
         .into_iter()
         .filter_entry(|entry| should_visit_entry(entry, root, args))
     {
         let entry = entry?;
-        if entry.file_type().is_file() && is_supported_source(entry.path()) {
-            count += 1;
+        if entry.file_type().is_dir() {
+            plan.directories_scanned += 1;
+        } else if entry.file_type().is_file() && is_supported_source(entry.path()) {
+            let path = entry.path().to_path_buf();
+            count_source_file_parent(&path, &mut plan.directory_source_files);
+            plan.source_files.push(path);
         }
     }
 
-    Ok(count)
+    Ok(plan)
 }
 
 fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Result<()> {
@@ -573,6 +598,7 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
 
     let source = fs::read_to_string(path)
         .with_context(|| format!("failed to read source file {}", path.display()))?;
+    let source: Arc<str> = Arc::from(source);
     let line_count = source.lines().count();
 
     if line_count > options.max_file_lines {
@@ -606,7 +632,7 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
         scan.structure_sources.push(SourceFile {
             path: path.to_path_buf(),
             display_path: display_path.clone(),
-            source: source.clone(),
+            source: Arc::clone(&source),
         });
     }
 

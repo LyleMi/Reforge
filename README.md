@@ -53,9 +53,10 @@ are overwritten.
 The default human report includes a summary, signal counts, and grouped
 findings. Repeated TODO/FIXME markers in the same file are grouped, and
 similar-function and agent-drift groups show only a few representative
-locations. Use
-`--output json` or `--output yaml` when you need every finding and related
-location.
+locations. Use `--output json` or `--output yaml` when you need structured
+findings. Machine-readable output keeps the full group size in `magnitude`;
+very large similar-function groups include only representative
+`related_locations` to keep reports bounded.
 
 Progress defaults to `auto`, which shows a dynamic percentage on stderr only
 when stderr is a terminal. Use `--progress always` or `--progress never` to
