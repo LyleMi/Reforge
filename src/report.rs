@@ -9,7 +9,11 @@ const RELATED_LOCATION_LIMIT: usize = 3;
 const DEBT_MARKER_LINE_LIMIT: usize = 6;
 
 pub fn print_human_report(report: &ScanReport) -> io::Result<()> {
-    write_human_report(std::io::stdout().lock(), report)
+    write_human_report_colored(std::io::stdout().lock(), report, false)
+}
+
+pub fn print_human_report_colored(report: &ScanReport, color: bool) -> io::Result<()> {
+    write_human_report_colored(std::io::stdout().lock(), report, color)
 }
 
 pub fn print_json_report(report: &ScanReport) -> Result<()> {
@@ -20,6 +24,14 @@ pub fn write_human_report(mut writer: impl Write, report: &ScanReport) -> io::Re
     writer.write_all(render_human_report(report).as_bytes())
 }
 
+pub fn write_human_report_colored(
+    mut writer: impl Write,
+    report: &ScanReport,
+    color: bool,
+) -> io::Result<()> {
+    writer.write_all(render_human_report_colored(report, color).as_bytes())
+}
+
 pub fn write_json_report(mut writer: impl Write, report: &ScanReport) -> Result<()> {
     writer.write_all(serde_json::to_string_pretty(report)?.as_bytes())?;
     writer.write_all(b"\n")?;
@@ -27,7 +39,15 @@ pub fn write_json_report(mut writer: impl Write, report: &ScanReport) -> Result<
 }
 
 pub fn render_human_report(report: &ScanReport) -> String {
+    render_human_report_colored(report, false)
+}
+
+pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
     let mut output = String::new();
+    let breakdown = FindingBreakdown::from_findings(&report.findings);
+
+    output.push_str(&paint(color, "Reforge scan report", AnsiStyle::Header));
+    output.push('\n');
     output.push_str(&format!(
         "Scanned {} files in {} ms; {} findings; {} similar function groups.\n",
         report.summary.scanned_files,
@@ -35,8 +55,30 @@ pub fn render_human_report(report: &ScanReport) -> String {
         report.summary.finding_count,
         report.summary.similar_function_group_count
     ));
+    output.push('\n');
+    output.push_str(&paint(color, "Summary", AnsiStyle::Section));
+    output.push('\n');
+    output.push_str(&format!(
+        "  Source files: {}\n  Directories: {}\n  Function candidates: {}\n",
+        report.stats.source_files_scanned,
+        report.stats.directories_scanned,
+        report.stats.function_candidates
+    ));
+    output.push('\n');
+    output.push_str(&paint(color, "Signals", AnsiStyle::Section));
+    output.push('\n');
+    output.push_str(&format!(
+        "  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n",
+        breakdown.warnings,
+        breakdown.info,
+        breakdown.large_files,
+        breakdown.large_directories,
+        breakdown.debt_markers,
+        breakdown.similar_functions
+    ));
 
     if report.findings.is_empty() {
+        output.push('\n');
         output.push_str("No refactoring signals found.\n");
         return output;
     }
@@ -46,9 +88,13 @@ pub fn render_human_report(report: &ScanReport) -> String {
         by_path.entry(&finding.path).or_default().push(finding);
     }
 
+    output.push('\n');
+    output.push_str(&paint(color, "Findings", AnsiStyle::Section));
+    output.push('\n');
+
     for (path, findings) in by_path {
         output.push('\n');
-        output.push_str(path);
+        output.push_str(&paint(color, path, AnsiStyle::Path));
         output.push('\n');
 
         for finding in findings
@@ -56,11 +102,11 @@ pub fn render_human_report(report: &ScanReport) -> String {
             .filter(|finding| finding.kind != FindingKind::DebtMarker)
         {
             output.push_str("  ");
-            output.push_str(&render_finding_line(finding));
+            output.push_str(&render_finding_line(finding, color));
             output.push('\n');
 
             if finding.kind == FindingKind::SimilarFunctions {
-                output.push_str(&render_related_locations(finding));
+                output.push_str(&render_related_locations(finding, color));
             }
         }
 
@@ -71,7 +117,7 @@ pub fn render_human_report(report: &ScanReport) -> String {
             .collect::<Vec<_>>();
         if !debt_markers.is_empty() {
             output.push_str("  ");
-            output.push_str(&render_debt_marker_group(&debt_markers));
+            output.push_str(&render_debt_marker_group(&debt_markers, color));
             output.push('\n');
         }
     }
@@ -98,14 +144,14 @@ fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
     sorted
 }
 
-fn render_finding_line(finding: &Finding) -> String {
+fn render_finding_line(finding: &Finding, color: bool) -> String {
     let location = finding
         .line
         .map(|line| format!(":{line}"))
         .unwrap_or_default();
+    let severity = render_severity(&finding.severity, color);
     format!(
-        "[{}]{} {}",
-        finding.severity,
+        "{severity}{} {}",
         location,
         concise_finding_message(finding)
     )
@@ -132,20 +178,28 @@ fn concise_finding_message(finding: &Finding) -> String {
     }
 }
 
-fn render_debt_marker_group(findings: &[&Finding]) -> String {
+fn render_debt_marker_group(findings: &[&Finding], color: bool) -> String {
     if findings.len() == 1 {
         let location = findings[0]
             .line
             .map(|line| format!(":{line}"))
             .unwrap_or_default();
-        return format!("[{}]{} debt marker", findings[0].severity, location);
+        return format!(
+            "{}{} debt marker",
+            render_severity(&findings[0].severity, color),
+            location
+        );
     }
 
     let lines = findings
         .iter()
         .filter_map(|finding| finding.line)
         .collect::<Vec<_>>();
-    let mut message = format!("[{}] {} debt markers", findings[0].severity, findings.len());
+    let mut message = format!(
+        "{} {} debt markers",
+        render_severity(&findings[0].severity, color),
+        findings.len()
+    );
 
     if !lines.is_empty() {
         let shown = lines
@@ -176,7 +230,7 @@ fn pluralize(count: usize, noun: &str) -> String {
     }
 }
 
-fn render_related_locations(finding: &Finding) -> String {
+fn render_related_locations(finding: &Finding, color: bool) -> String {
     let mut output = String::new();
 
     for location in finding
@@ -185,9 +239,12 @@ fn render_related_locations(finding: &Finding) -> String {
         .take(RELATED_LOCATION_LIMIT)
     {
         output.push_str("    - ");
-        output.push_str(&location.path);
-        output.push(':');
-        output.push_str(&location.line.to_string());
+        output.push_str(&paint(color, &location.path, AnsiStyle::Path));
+        output.push_str(&paint(
+            color,
+            &format!(":{}", location.line),
+            AnsiStyle::Location,
+        ));
         if let Some(name) = &location.name {
             output.push(' ');
             output.push_str(name);
@@ -203,6 +260,73 @@ fn render_related_locations(finding: &Finding) -> String {
     }
 
     output
+}
+
+#[derive(Debug, Default)]
+struct FindingBreakdown {
+    warnings: usize,
+    info: usize,
+    large_files: usize,
+    large_directories: usize,
+    debt_markers: usize,
+    similar_functions: usize,
+}
+
+impl FindingBreakdown {
+    fn from_findings(findings: &[Finding]) -> Self {
+        let mut breakdown = Self::default();
+
+        for finding in findings {
+            match finding.severity {
+                Severity::Warning => breakdown.warnings += 1,
+                Severity::Info => breakdown.info += 1,
+            }
+
+            match finding.kind {
+                FindingKind::LargeFile => breakdown.large_files += 1,
+                FindingKind::LargeDirectory => breakdown.large_directories += 1,
+                FindingKind::DebtMarker => breakdown.debt_markers += 1,
+                FindingKind::SimilarFunctions => breakdown.similar_functions += 1,
+            }
+        }
+
+        breakdown
+    }
+}
+
+enum AnsiStyle {
+    Header,
+    Section,
+    Path,
+    Location,
+    Warning,
+    Info,
+}
+
+fn render_severity(severity: &Severity, color: bool) -> String {
+    let label = format!("[{severity}]");
+    let style = match severity {
+        Severity::Warning => AnsiStyle::Warning,
+        Severity::Info => AnsiStyle::Info,
+    };
+    paint(color, &label, style)
+}
+
+fn paint(color: bool, text: &str, style: AnsiStyle) -> String {
+    if !color {
+        return text.to_string();
+    }
+
+    let code = match style {
+        AnsiStyle::Header => "1;36",
+        AnsiStyle::Section => "1",
+        AnsiStyle::Path => "36",
+        AnsiStyle::Location => "2",
+        AnsiStyle::Warning => "33",
+        AnsiStyle::Info => "34",
+    };
+
+    format!("\x1b[{code}m{text}\x1b[0m")
 }
 
 impl std::fmt::Display for Severity {
@@ -286,7 +410,10 @@ mod tests {
     fn renders_empty_human_report_clearly() {
         let output = render_human_report(&report(Vec::new()));
 
+        assert!(output.contains("Reforge scan report"));
         assert!(output.contains("Scanned 2 files"));
+        assert!(output.contains("Summary"));
+        assert!(output.contains("Signals"));
         assert!(output.contains("No refactoring signals found."));
     }
 
@@ -334,8 +461,17 @@ mod tests {
 
         let output = render_human_report(&report(findings));
 
-        assert_eq!(output.matches("debt markers").count(), 1);
+        assert!(output.contains("Debt markers: 8"));
         assert!(output.contains("[info] 8 debt markers: lines 1, 2, 3, 4, 5, 6 (+2 more)"));
+    }
+
+    #[test]
+    fn renders_colored_human_report_when_enabled() {
+        let output =
+            render_human_report_colored(&report(vec![finding("src/a.rs", Some(900))]), true);
+
+        assert!(output.contains("\u{1b}[1;36mReforge scan report\u{1b}[0m"));
+        assert!(output.contains("\u{1b}[33m[warning]\u{1b}[0m"));
     }
 
     #[test]

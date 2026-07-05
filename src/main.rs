@@ -19,10 +19,16 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Scan(args) => {
             let output_format = args.output_format();
-            let progress_enabled = args.progress.enabled(std::io::stderr().is_terminal());
+            let stderr_is_tty = std::io::stderr().is_terminal();
+            let stdout_is_tty = std::io::stdout().is_terminal();
+            let progress_enabled = args.progress.enabled(stderr_is_tty);
+            let color_enabled = matches!(output_format, OutputFormat::Human)
+                && args
+                    .color
+                    .enabled(args.output_file.is_none() && stdout_is_tty);
 
             let report = if progress_enabled {
-                let mut progress = StderrProgress::new();
+                let mut progress = StderrProgress::new(stderr_is_tty);
                 scanner::scan_report(&args, &mut progress)?
             } else {
                 let mut progress = NoopProgress;
@@ -36,13 +42,23 @@ fn main() -> Result<()> {
                 let writer = BufWriter::new(file);
 
                 match output_format {
-                    OutputFormat::Human => report::write_human_report(writer, &report)?,
+                    OutputFormat::Human => {
+                        if color_enabled {
+                            report::write_human_report_colored(writer, &report, true)?
+                        } else {
+                            report::write_human_report(writer, &report)?
+                        }
+                    }
                     OutputFormat::Json => report::write_json_report(writer, &report)?,
                 }
             } else {
                 match output_format {
                     OutputFormat::Human => {
-                        handle_output_result(report::print_human_report(&report))?
+                        if color_enabled {
+                            handle_output_result(report::print_human_report_colored(&report, true))?
+                        } else {
+                            handle_output_result(report::print_human_report(&report))?
+                        }
                     }
                     OutputFormat::Json => handle_output_result(report::print_json_report(&report))?,
                 }

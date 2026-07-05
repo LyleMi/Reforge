@@ -65,6 +65,10 @@ pub struct ScanArgs {
     /// Progress reporting mode. Auto writes to stderr only when stderr is a TTY.
     #[arg(long, value_enum, default_value_t = ProgressMode::Auto)]
     pub progress: ProgressMode,
+
+    /// Colorize human output. Auto writes colors only when stdout is a TTY.
+    #[arg(long, value_enum, default_value_t = ColorMode::Auto)]
+    pub color: ColorMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -75,6 +79,13 @@ pub enum OutputFormat {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ProgressMode {
+    Auto,
+    Always,
+    Never,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ColorMode {
     Auto,
     Always,
     Never,
@@ -106,6 +117,16 @@ impl ProgressMode {
             ProgressMode::Auto => stderr_is_tty,
             ProgressMode::Always => true,
             ProgressMode::Never => false,
+        }
+    }
+}
+
+impl ColorMode {
+    pub fn enabled(self, stdout_is_tty: bool) -> bool {
+        match self {
+            ColorMode::Auto => stdout_is_tty,
+            ColorMode::Always => true,
+            ColorMode::Never => false,
         }
     }
 }
@@ -215,5 +236,21 @@ mod tests {
         assert!(!ProgressMode::Auto.enabled(false));
         assert!(ProgressMode::Always.enabled(false));
         assert!(!ProgressMode::Never.enabled(true));
+    }
+
+    #[test]
+    fn parses_color_mode() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--color", "never"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.color, ColorMode::Never);
+    }
+
+    #[test]
+    fn resolves_color_modes() {
+        assert!(ColorMode::Auto.enabled(true));
+        assert!(!ColorMode::Auto.enabled(false));
+        assert!(ColorMode::Always.enabled(false));
+        assert!(!ColorMode::Never.enabled(true));
     }
 }

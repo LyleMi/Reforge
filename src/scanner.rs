@@ -85,6 +85,23 @@ pub struct ScanReport {
 
 pub trait ProgressSink {
     fn report(&mut self, message: &str);
+
+    fn report_scan_progress(&mut self, completed: usize, total: usize, path: &str) {
+        if total == 0 {
+            return;
+        }
+
+        let percent = completed.saturating_mul(100) / total;
+        self.report(&format!(
+            "[{percent:>3}%] Scanning source files ({completed}/{total}) {path}"
+        ));
+    }
+
+    fn wants_detailed_progress(&self) -> bool {
+        false
+    }
+
+    fn finish(&mut self) {}
 }
 
 pub struct NoopProgress;
@@ -93,17 +110,64 @@ impl ProgressSink for NoopProgress {
     fn report(&mut self, _message: &str) {}
 }
 
-pub struct StderrProgress;
+pub struct StderrProgress {
+    dynamic: bool,
+    last_dynamic_len: usize,
+    last_bucket: Option<usize>,
+}
 
 impl StderrProgress {
-    pub fn new() -> Self {
-        Self
+    pub fn new(dynamic: bool) -> Self {
+        Self {
+            dynamic,
+            last_dynamic_len: 0,
+            last_bucket: None,
+        }
+    }
+
+    fn finish_dynamic_line(&mut self) {
+        if self.last_dynamic_len > 0 {
+            let _ = writeln!(std::io::stderr());
+            self.last_dynamic_len = 0;
+        }
     }
 }
 
 impl ProgressSink for StderrProgress {
     fn report(&mut self, message: &str) {
+        self.finish_dynamic_line();
         let _ = writeln!(std::io::stderr(), "{message}");
+    }
+
+    fn report_scan_progress(&mut self, completed: usize, total: usize, path: &str) {
+        if total == 0 {
+            return;
+        }
+
+        let percent = completed.saturating_mul(100) / total;
+        let message = format!("[{percent:>3}%] Scanning source files ({completed}/{total}) {path}");
+
+        if self.dynamic {
+            let padding = self.last_dynamic_len.saturating_sub(message.len());
+            let mut stderr = std::io::stderr().lock();
+            let _ = write!(stderr, "\r{message}{}", " ".repeat(padding));
+            let _ = stderr.flush();
+            self.last_dynamic_len = message.len();
+        } else {
+            let bucket = percent / 10;
+            if self.last_bucket != Some(bucket) || completed == total {
+                self.report(&message);
+                self.last_bucket = Some(bucket);
+            }
+        }
+    }
+
+    fn wants_detailed_progress(&self) -> bool {
+        true
+    }
+
+    fn finish(&mut self) {
+        self.finish_dynamic_line();
     }
 }
 
@@ -128,6 +192,10 @@ impl<W: Write> ProgressSink for WriterProgress<W> {
     fn report(&mut self, message: &str) {
         let _ = writeln!(self.writer, "{message}");
     }
+
+    fn wants_detailed_progress(&self) -> bool {
+        true
+    }
 }
 
 #[allow(dead_code)]
@@ -147,7 +215,20 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
     let mut similarity_sources = Vec::new();
     let mut stats = ScanStats::default();
 
-    progress.report(&format!("Scanning {}", display_path(&root)));
+    let total_source_files = if progress.wants_detailed_progress() {
+        Some(count_source_files(&root, args)?)
+    } else {
+        None
+    };
+
+    match total_source_files {
+        Some(total) => progress.report(&format!(
+            "Scanning {} ({total} source {})",
+            display_path(&root),
+            pluralize(total, "file")
+        )),
+        None => progress.report(&format!("Scanning {}", display_path(&root))),
+    }
 
     if root.is_file() {
         scan_file(
@@ -158,15 +239,16 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
             &mut similarity_sources,
             &mut stats,
         )?;
+        if let Some(total) = total_source_files {
+            progress.report_scan_progress(stats.source_files_scanned, total, &display_path(&root));
+        }
     } else {
         let mut directory_source_files = BTreeMap::new();
 
-        for entry in WalkDir::new(&root).into_iter().filter_entry(|entry| {
-            let is_root = entry.path() == root.as_path();
-            is_root
-                || ((args.include_hidden || !is_hidden(entry))
-                    && (args.include_generated || !is_default_excluded_dir(entry)))
-        }) {
+        for entry in WalkDir::new(&root)
+            .into_iter()
+            .filter_entry(|entry| should_visit_entry(entry, &root, args))
+        {
             let entry = entry?;
 
             if entry.file_type().is_dir() {
@@ -182,6 +264,13 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
                     &mut similarity_sources,
                     &mut stats,
                 )?;
+                if let Some(total) = total_source_files {
+                    progress.report_scan_progress(
+                        stats.source_files_scanned,
+                        total,
+                        &display_path(entry.path()),
+                    );
+                }
                 count_source_file_parent(entry.path(), &mut directory_source_files);
             }
         }
@@ -220,12 +309,32 @@ pub fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<S
         "Finished scan: {} files, {} findings",
         summary.scanned_files, summary.finding_count
     ));
+    progress.finish();
 
     Ok(ScanReport {
         summary,
         stats,
         findings,
     })
+}
+
+fn count_source_files(root: &Path, args: &ScanArgs) -> Result<usize> {
+    if root.is_file() {
+        return Ok(usize::from(is_supported_source(root)));
+    }
+
+    let mut count = 0;
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_entry(|entry| should_visit_entry(entry, root, args))
+    {
+        let entry = entry?;
+        if entry.file_type().is_file() && is_supported_source(entry.path()) {
+            count += 1;
+        }
+    }
+
+    Ok(count)
 }
 
 fn scan_file(
@@ -365,6 +474,21 @@ fn is_default_excluded_dir(entry: &DirEntry) -> bool {
             .is_some_and(|name| DEFAULT_EXCLUDED_DIRS.contains(&name))
 }
 
+fn should_visit_entry(entry: &DirEntry, root: &Path, args: &ScanArgs) -> bool {
+    let is_root = entry.path() == root;
+    is_root
+        || ((args.include_hidden || !is_hidden(entry))
+            && (args.include_generated || !is_default_excluded_dir(entry)))
+}
+
+fn pluralize(count: usize, noun: &str) -> String {
+    if count == 1 {
+        noun.to_string()
+    } else {
+        format!("{noun}s")
+    }
+}
+
 fn is_test_source(path: &Path) -> bool {
     let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
@@ -424,6 +548,7 @@ mod tests {
             output: Some(crate::cli::OutputFormat::Human),
             output_file: None,
             progress: crate::cli::ProgressMode::Auto,
+            color: crate::cli::ColorMode::Auto,
         }
     }
 
@@ -660,5 +785,23 @@ func Gamma(rows []Item) int {
         let output = String::from_utf8(progress.into_inner()).unwrap();
         assert!(output.contains("Scanning example"));
         assert!(output.contains("Finished scan"));
+    }
+
+    #[test]
+    fn scan_report_outputs_percent_progress_when_enabled() -> Result<()> {
+        let root = test_root("percent-progress");
+        fs::create_dir_all(root.join("src"))?;
+        fs::write(root.join("src/one.rs"), "fn one() {}\n")?;
+        fs::write(root.join("src/two.rs"), "fn two() {}\n")?;
+
+        let mut progress = WriterProgress::new(Vec::new());
+        let _ = scan_report(&scan_args(root.clone(), false), &mut progress)?;
+
+        fs::remove_dir_all(root)?;
+
+        let output = String::from_utf8(progress.into_inner()).unwrap();
+        assert!(output.contains("[ 50%] Scanning source files (1/2)"));
+        assert!(output.contains("[100%] Scanning source files (2/2)"));
+        Ok(())
     }
 }
