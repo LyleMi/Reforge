@@ -74,8 +74,10 @@ Progress is abstracted behind `ProgressSink`. `NoopProgress` is used when
 progress is disabled. `StderrProgress` writes either dynamic terminal progress
 or coarser line-oriented progress, depending on whether stderr is a TTY.
 
-Human output is rendered from the same `ScanReport` as JSON and YAML. Color is
-applied only to human output.
+Human output is rendered from the same `ScanReport` as JSON and YAML. The
+terminal-oriented renderer lives in `src/output/human.rs`; `src/output/mod.rs`
+keeps the format entry points and JSON/YAML writers. Color is applied only to
+human output.
 
 ## Extension Points
 

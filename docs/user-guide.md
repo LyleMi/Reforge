@@ -107,6 +107,15 @@ to control ANSI color in human output.
 
 ## Reading Results
 
+Human output is organized for quick terminal triage:
+
+- `Result`: total threshold signals, severity counts, hotspot watchlist size,
+  and similar-function group count.
+- `Scan details`: source files, directories, and function candidates scanned.
+- `Signal mix`: finding counts by detector kind, shown when findings exist.
+- `Findings`: actionable threshold signals sorted by priority.
+- `Watchlist`: hotspot locations ranked by static risk, churn risk, or both.
+
 Reports contain four main layers:
 
 - `raw_metrics`: file, function, type, and churn measurements.

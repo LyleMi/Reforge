@@ -212,26 +212,38 @@ cargo run -- scan . --output yaml --output-file reforge-report.yaml --progress n
 ## Sample Output
 
 ```text
-Reforge scan report
-Scanned 15 files in 420 ms; 2 findings; 1 hotspots; 0 similar function groups.
+Reforge scan
+15 files  420 ms  model hybrid  churn enabled
 
-Summary
-  Source files: 15
-  Directories: 6
-  Function candidates: 93
-  Hotspot model: hybrid
-  Churn: enabled
+Result
+  Signals              2  critical 0 | warning 2 | info 0
+  Watchlist            1 hotspots
+  Similar groups       0
 
-Signals
-  Critical: 0
-  Warnings: 2
-  Info: 0
-  Large files: 2
+Scan details
+  Source files         15
+  Directories          6
+  Function candidates  93
+
+Signal mix
+  large file           2
+
+Findings
+  warning  p=58 c=1.00  large file: 1200 lines
+            src/report.rs:1
+            metrics file_lines=1200/800 lines
+            rank high impact, high confidence
+
+Watchlist
+  severity pri  target  why
+  warning   56  src/report.rs  churn dominates
 ```
 
-Human output includes a summary, signal counts, grouped findings, and a short
-reason for each ranking. JSON and YAML use schema version 8 and include
-`summary`, `metrics_summary`, `raw_metrics`, `hotspots`, and `findings`.
+Human output is organized for terminal triage: `Result` separates threshold
+signals from the hotspot `Watchlist`, `Signal mix` summarizes finding kinds,
+and each finding includes the ranking reason. JSON and YAML use schema version
+8 and include `summary`, `metrics_summary`, `raw_metrics`, `hotspots`, and
+`findings`.
 Findings expose `priority`, `confidence`, `priority_factors`,
 `rank_explanation`, `metrics`, and `related_locations`; legacy v4 fields
 `score`, `score_breakdown`, and `rank_reason` are not emitted. Very large

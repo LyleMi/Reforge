@@ -165,12 +165,12 @@ fn large_type_scores_from_strongest_metric() {
 fn renders_empty_human_report_clearly() {
     let output = render_human_report(&report(Vec::new()));
 
-    assert!(output.contains("Reforge scan report"));
-    assert!(output.contains("Scanned 2 files"));
-    assert!(output.contains("Summary"));
-    assert!(output.contains("Signals"));
-    assert!(output.contains("Kinds     none"));
-    assert!(output.contains("No refactoring signals found."));
+    assert!(output.contains("Reforge scan"));
+    assert!(output.contains("2 files"));
+    assert!(output.contains("Result"));
+    assert!(output.contains("Signals              0  critical 0 | warning 0 | info 0"));
+    assert!(output.contains("Scan details"));
+    assert!(output.contains("No threshold signals found."));
 }
 
 #[test]
@@ -207,17 +207,17 @@ fn human_report_sorts_by_priority_and_renders_priority_confidence_and_metrics() 
     assert!(warning_index < info_index);
     assert!(output.contains("warning  p=58 c=1.00"));
     assert!(output.contains("warning  p=48 c=1.00"));
-    assert!(output.contains("Kinds"));
+    assert!(output.contains("Signal mix"));
     assert!(output.contains("large file"));
-    assert!(output.contains("metrics: file_lines=1200/800 lines"));
-    assert!(output.contains("rank: high complexity, high confidence"));
+    assert!(output.contains("metrics file_lines=1200/800 lines"));
+    assert!(output.contains("rank high complexity, high confidence"));
 }
 
 #[test]
 fn renders_colored_human_report_when_enabled() {
     let output = render_human_report_colored(&report(vec![large_file("src/a.rs", 900)]), true);
 
-    assert!(output.contains("\u{1b}[1;36mReforge scan report\u{1b}[0m"));
+    assert!(output.contains("\u{1b}[1;36mReforge scan\u{1b}[0m"));
     assert!(output.contains("\u{1b}[1;33mwarning \u{1b}[0m p=47 c=1.00"));
 }
 
@@ -238,10 +238,10 @@ fn renders_hotspots_even_when_no_findings() {
         }],
     ));
 
-    assert!(output.contains("Hotspots 1"));
-    assert!(output.contains("Hotspots\n"));
-    assert!(output.contains("warning  p=61  src/hot.rs:12"));
-    assert!(output.contains("No refactoring signals found."));
+    assert!(output.contains("Watchlist            1 hotspots"));
+    assert!(output.contains("Watchlist\n"));
+    assert!(output.contains("warning   61  src/hot.rs:12"));
+    assert!(output.contains("No threshold signals found."));
 }
 
 #[test]
