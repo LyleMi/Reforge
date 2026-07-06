@@ -1,6 +1,12 @@
 use std::io::Write;
 
+use terminal_size::{Width, terminal_size};
+
 const PERCENT_SCALE: usize = 100;
+const DEFAULT_DYNAMIC_WIDTH: usize = 120;
+const MIN_DYNAMIC_WIDTH: usize = 20;
+const DYNAMIC_WIDTH_MARGIN: usize = 1;
+const TRUNCATION_MARKER: &str = "...";
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ProgressEvent<'a> {
@@ -92,6 +98,7 @@ impl StderrProgress {
 
     fn report_percent_progress(&mut self, message: &str, event: ProgressEvent<'_>) {
         if self.dynamic {
+            let message = fit_dynamic_message(message, dynamic_line_width());
             let padding = self.last_dynamic_len.saturating_sub(message.len());
             let mut stderr = std::io::stderr().lock();
             let _ = write!(stderr, "\r{message}{}", " ".repeat(padding));
@@ -150,6 +157,28 @@ impl ProgressSink for StderrProgress {
     }
 }
 
+fn dynamic_line_width() -> usize {
+    terminal_size()
+        .map(|(Width(width), _)| usize::from(width))
+        .filter(|width| *width >= MIN_DYNAMIC_WIDTH)
+        .unwrap_or(DEFAULT_DYNAMIC_WIDTH)
+}
+
+fn fit_dynamic_message(message: &str, terminal_width: usize) -> String {
+    let max_width = terminal_width
+        .saturating_sub(DYNAMIC_WIDTH_MARGIN)
+        .max(TRUNCATION_MARKER.len());
+    let char_count = message.chars().count();
+    if char_count <= max_width {
+        return message.to_string();
+    }
+
+    let prefix_width = max_width.saturating_sub(TRUNCATION_MARKER.len());
+    let mut fitted = message.chars().take(prefix_width).collect::<String>();
+    fitted.push_str(TRUNCATION_MARKER);
+    fitted
+}
+
 #[cfg(test)]
 pub struct WriterProgress<W: Write> {
     writer: W,
@@ -174,5 +203,27 @@ impl<W: Write> ProgressSink for WriterProgress<W> {
 
     fn wants_detailed_progress(&self) -> bool {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fits_dynamic_message_within_terminal_width() {
+        let message = "[ 50%] Scanning source files (1/2) src/generated/very/long/path/example.ts";
+
+        let fitted = fit_dynamic_message(message, 40);
+
+        assert_eq!(fitted.chars().count(), 39);
+        assert!(fitted.ends_with(TRUNCATION_MARKER));
+    }
+
+    #[test]
+    fn leaves_short_dynamic_message_unchanged() {
+        let message = "[100%] Scanning source files (2/2)";
+
+        assert_eq!(fit_dynamic_message(message, 80), message);
     }
 }
