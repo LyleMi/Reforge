@@ -18,6 +18,7 @@ fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
         max_dir_files: 40,
         include_hidden: false,
         include_generated,
+        no_gitignore: false,
         min_similar_functions: 3,
         min_function_tokens: 80,
         function_similarity: 0.85,
@@ -71,7 +72,7 @@ fn write_project_marker(root: &Path) -> Result<()> {
 
 fn cli_flags_doc() -> &'static str {
     "--max-file-lines --max-dir-files --include-hidden --include-generated \
---min-similar-functions --min-function-tokens --function-similarity \
+--no-gitignore --ignore-path --min-similar-functions --min-function-tokens --function-similarity \
 --include-test-similarity --max-function-lines --max-function-complexity \
 --max-nesting-depth --max-function-parameters --max-type-lines \
 --max-type-members --max-imports --max-public-items \
@@ -468,6 +469,71 @@ fn config_ignore_paths_skip_matching_subtrees() -> Result<()> {
 }
 
 #[test]
+fn cli_ignore_paths_are_added_to_config_ignore_paths() -> Result<()> {
+    let root = test_root("cli-and-config-ignore-paths");
+    fs::create_dir_all(root.join("src"))?;
+    fs::create_dir_all(root.join("vendor"))?;
+    fs::create_dir_all(root.join("fixtures"))?;
+    fs::write(root.join("reforge.toml"), "ignore-paths = [\"vendor\"]\n")?;
+    fs::write(root.join("src/main.rs"), "// TODO: reported\n")?;
+    fs::write(root.join("vendor/ignored.rs"), "// TODO: ignored\n")?;
+    fs::write(root.join("fixtures/ignored.rs"), "// TODO: ignored\n")?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.ignore_paths.push("fixtures".to_string());
+    let findings = scan_path(&args)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert_eq!(findings.len(), 1);
+    assert!(findings[0].path.ends_with("src/main.rs"));
+    Ok(())
+}
+
+#[test]
+fn gitignore_paths_are_skipped_by_default() -> Result<()> {
+    let root = test_root("gitignore-paths");
+    fs::create_dir_all(root.join("src"))?;
+    fs::create_dir_all(root.join("vendor"))?;
+    fs::write(root.join(".gitignore"), "vendor/\n")?;
+    fs::write(root.join("src/main.rs"), "// TODO: reported\n")?;
+    fs::write(root.join("vendor/ignored.rs"), "// TODO: ignored\n")?;
+
+    let args = scan_args(root.clone(), false);
+    let findings = scan_path(&args)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert_eq!(findings.len(), 1);
+    assert!(findings[0].path.ends_with("src/main.rs"));
+    Ok(())
+}
+
+#[test]
+fn can_disable_gitignore_filtering() -> Result<()> {
+    let root = test_root("no-gitignore");
+    fs::create_dir_all(root.join("src"))?;
+    fs::create_dir_all(root.join("vendor"))?;
+    fs::write(root.join(".gitignore"), "vendor/\n")?;
+    fs::write(root.join("src/main.rs"), "// TODO: reported\n")?;
+    fs::write(root.join("vendor/included.rs"), "// TODO: reported\n")?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.no_gitignore = true;
+    let findings = scan_path(&args)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert_eq!(findings.len(), 2);
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.path.ends_with("vendor/included.rs"))
+    );
+    Ok(())
+}
+
+#[test]
 fn reports_missing_project_documentation_for_project_roots() -> Result<()> {
     let root = test_root("missing-project-docs");
     write_project_marker(&root)?;
@@ -575,7 +641,7 @@ fn reports_stale_cli_documentation_when_flags_are_missing() -> Result<()> {
         .iter()
         .find(|finding| finding.kind == FindingKind::StaleCliDocumentation)
         .expect("stale CLI docs should be reported");
-    assert_eq!(metric_value(stale, "missing_cli_flags"), Some(26));
+    assert_eq!(metric_value(stale, "missing_cli_flags"), Some(28));
     assert!(stale.message.contains("--max-file-lines"));
     Ok(())
 }

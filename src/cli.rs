@@ -39,6 +39,10 @@ pub struct ScanArgs {
     #[arg(long)]
     pub include_generated: bool,
 
+    /// Do not apply .gitignore rules during scanning.
+    #[arg(long)]
+    pub no_gitignore: bool,
+
     /// Report groups with at least this many structurally similar functions.
     #[arg(long, default_value_t = 3)]
     pub min_similar_functions: usize,
@@ -99,8 +103,8 @@ pub struct ScanArgs {
     #[arg(long)]
     pub include_test_structure: bool,
 
-    /// Configured paths to skip during scanning.
-    #[arg(skip)]
+    /// Additional path to skip during scanning. Can be repeated.
+    #[arg(long = "ignore-path", value_name = "PATH")]
     pub ignore_paths: Vec<String>,
 
     /// Optional configuration file. When omitted, reforge.toml is discovered from the scan root.
@@ -321,6 +325,24 @@ mod tests {
         assert_eq!(args.min_repeated_literal_occurrences, 4);
         assert_eq!(args.min_data_clump_occurrences, 3);
         assert!(!args.include_test_structure);
+    }
+
+    #[test]
+    fn parses_scan_ignore_options() {
+        let cli = Cli::parse_from([
+            "reforge",
+            "scan",
+            ".",
+            "--ignore-path",
+            "vendor",
+            "--ignore-path",
+            "generated/snapshots",
+            "--no-gitignore",
+        ]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.ignore_paths, ["vendor", "generated/snapshots"]);
+        assert!(args.no_gitignore);
     }
 
     #[test]

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use walkdir::{DirEntry, WalkDir};
+use ignore::{DirEntry, WalkBuilder};
 
 use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
 use crate::cli::ScanArgs;
@@ -380,14 +380,28 @@ fn collect_source_scan_plan(root: &Path, args: &ScanArgs) -> Result<SourceScanPl
         return Ok(plan);
     }
 
-    for entry in WalkDir::new(root)
-        .into_iter()
-        .filter_entry(|entry| should_visit_entry(entry, root, args))
+    let mut builder = WalkBuilder::new(root);
+    builder
+        .hidden(!args.include_hidden)
+        .git_ignore(!args.no_gitignore)
+        .git_global(!args.no_gitignore)
+        .git_exclude(!args.no_gitignore)
+        .require_git(false);
+
+    let root_for_filter = root.to_path_buf();
+    let args_for_filter = args.clone();
+    for entry in builder
+        .filter_entry(move |entry| should_visit_entry(entry, &root_for_filter, &args_for_filter))
+        .build()
     {
         let entry = entry?;
-        if entry.file_type().is_dir() {
+        let Some(file_type) = entry.file_type() else {
+            continue;
+        };
+
+        if file_type.is_dir() {
             plan.directories_scanned += 1;
-        } else if entry.file_type().is_file() && is_supported_source(entry.path()) {
+        } else if file_type.is_file() && is_supported_source(entry.path()) {
             let path = entry.path().to_path_buf();
             count_source_file_parent(&path, &mut plan.directory_source_files);
             plan.source_files.push(path);
@@ -543,7 +557,9 @@ fn is_hidden(entry: &DirEntry) -> bool {
 }
 
 fn is_default_excluded_dir(entry: &DirEntry) -> bool {
-    entry.file_type().is_dir()
+    entry
+        .file_type()
+        .is_some_and(|file_type| file_type.is_dir())
         && entry
             .file_name()
             .to_str()

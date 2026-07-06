@@ -28,7 +28,7 @@ or fast-moving codebases before refactoring work starts.
 - Ranks hotspots with `static`, `churn`, or `hybrid` models.
 - Collects git churn in repositories by default with graceful fallback outside
   git history.
-- Skips common generated and dependency directories by default.
+- Skips common generated, dependency, and git-ignored paths by default.
 - Groups noisy findings such as TODO/FIXME markers and similar functions.
 - Includes drift checks for duplicate abstractions, data shapes, config keys,
   fixture factories, generic buckets, and adapter boundary bypasses.
@@ -160,6 +160,13 @@ Include generated and dependency directories:
 cargo run -- scan . --include-generated
 ```
 
+Skip additional paths or disable git ignore filtering:
+
+```powershell
+cargo run -- scan . --ignore-path vendor --ignore-path generated/snapshots
+cargo run -- scan . --no-gitignore
+```
+
 Tune similar-function detection:
 
 ```powershell
@@ -267,6 +274,8 @@ ignore-paths = ["vendor", "generated/snapshots"]
 | `--max-dir-files` | `40` | Report directories above this direct source-file count. |
 | `--include-hidden` | `false` | Include hidden files and directories. |
 | `--include-generated` | `false` | Include dependency and generated output directories. |
+| `--no-gitignore` | `false` | Do not apply git ignore rules during scanning. |
+| `--ignore-path` | none | Additional path to skip; can be repeated. |
 | `--min-similar-functions` | `3` | Minimum group size for similar-function findings. |
 | `--min-function-tokens` | `80` | Ignore smaller normalized function bodies. |
 | `--function-similarity` | `0.85` | Minimum normalized token similarity. |
@@ -293,7 +302,8 @@ ignore-paths = ["vendor", "generated/snapshots"]
 | `--color` | `auto` | Use `auto`, `always`, or `never`. |
 
 By default, scans skip common generated and dependency directories such as
-`target`, `node_modules`, `dist`, `build`, and `out`.
+`target`, `node_modules`, `dist`, `build`, and `out`, and they also apply git
+ignore rules. Use `--no-gitignore` to scan paths ignored by git.
 
 ## Development
 

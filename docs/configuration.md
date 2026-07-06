@@ -22,8 +22,9 @@ used only when the CLI value is still the built-in default. Explicit CLI values
 win.
 
 Boolean flags such as `--include-hidden`, `--include-generated`,
-`--include-test-similarity`, and `--include-test-structure` are CLI-only today.
-They are not read from `reforge.toml`.
+`--no-gitignore`, `--include-test-similarity`, and
+`--include-test-structure` are CLI-only today. They are not read from
+`reforge.toml`.
 
 ## Example
 
@@ -79,7 +80,7 @@ ignore-paths = [
 | `hotspot-model` | `hybrid` | `--hotspot-model` |
 | `churn-window-days` | `180` | `--churn-window-days` |
 | `churn-max-commit-lines` | `2000` | `--churn-max-commit-lines` |
-| `ignore-paths` | `[]` | none |
+| `ignore-paths` | `[]` | `--ignore-path` |
 
 `churn` accepts `auto`, `on`, or `off`. `hotspot-model` accepts `static`,
 `churn`, or `hybrid`.
@@ -101,3 +102,8 @@ This skips `vendor`, `vendor/foo.rs`, `src/generated`, and
 
 The built-in generated/dependency exclusions still apply unless
 `--include-generated` is passed.
+
+Reforge also applies `.gitignore`, `.git/info/exclude`, and global git ignore
+rules by default. Use `--no-gitignore` when you intentionally want to scan
+paths ignored by git. `--include-generated` only disables Reforge's built-in
+generated/dependency directory list; it does not override git ignore rules.

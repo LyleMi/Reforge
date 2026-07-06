@@ -72,9 +72,13 @@ source files with these extensions:
 By default, hidden files are skipped and common generated or dependency
 directories are skipped, including `target`, `node_modules`, `dist`, `build`,
 `out`, `coverage`, `.next`, `.nuxt`, `.svelte-kit`, and `.vite`.
+Git ignore rules are also applied by default, including `.gitignore`,
+`.git/info/exclude`, and global git ignore files.
 
 Use `--include-hidden` to include hidden paths and `--include-generated` to
-include generated or dependency directories.
+include generated or dependency directories. Use `--ignore-path <PATH>` to add
+Reforge-specific ignored paths, and use `--no-gitignore` to scan paths ignored
+by git.
 
 ## Output
 
@@ -146,6 +150,8 @@ reforge scan [OPTIONS] [PATH]
 | `--max-dir-files` | `40` | Report directories above this direct source-file count. |
 | `--include-hidden` | `false` | Include hidden files and directories. |
 | `--include-generated` | `false` | Include dependency and generated output directories. |
+| `--no-gitignore` | `false` | Do not apply git ignore rules during scanning. |
+| `--ignore-path` | none | Additional path to skip; can be repeated. |
 | `--min-similar-functions` | `3` | Report similar-function groups at or above this size. |
 | `--min-function-tokens` | `80` | Ignore smaller normalized function bodies. |
 | `--function-similarity` | `0.85` | Minimum normalized token similarity for grouping. |
@@ -211,7 +217,8 @@ required.
 
 Unexpected generated files in results: check whether `--include-generated` was
 used and whether `ignore-paths` in `reforge.toml` should include local output
-directories.
+directories. If a path is ignored by git and you still want to scan it, add
+`--no-gitignore`.
 
 No similar functions found: lower `--min-function-tokens`, lower
 `--function-similarity`, or add `--include-test-similarity` if test code is in
