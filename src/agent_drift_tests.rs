@@ -42,6 +42,10 @@ fn detects_parallel_implementations_and_shadowed_helpers() {
             "src/feature_b/helpers.ts",
             "export function normalizePattern(value: string) { return value.trim().toLowerCase(); }",
         ),
+        source_file(
+            "src/feature_c/helpers.ts",
+            "export function normalizePattern(text: string) { return text.trim().toLowerCase(); }",
+        ),
     ];
 
     let findings = scan_agent_drift(&files, &options());
@@ -50,8 +54,8 @@ fn detects_parallel_implementations_and_shadowed_helpers() {
         .iter()
         .find(|finding| finding.kind == FindingKind::ParallelImplementation)
         .expect("parallel implementation finding");
-    assert_eq!(metric_value(parallel, "group_size"), Some(2));
-    assert_eq!(parallel.related_locations.len(), 2);
+    assert_eq!(metric_value(parallel, "group_size"), Some(3));
+    assert_eq!(parallel.related_locations.len(), 3);
     assert!(has_kind(&findings, FindingKind::ShadowedAbstraction));
 }
 
@@ -83,7 +87,7 @@ fn example() {
 }
 
 #[test]
-fn reports_two_cross_file_parallel_implementations_at_default_thresholds() {
+fn skips_two_cross_file_parallel_implementations_at_default_thresholds() {
     let files = vec![
         source_file(
             "src/similar_functions.rs",
@@ -99,16 +103,10 @@ fn reports_two_cross_file_parallel_implementations_at_default_thresholds() {
 
     let findings = scan_agent_drift(&files, &opts);
 
-    let finding = findings
-        .iter()
-        .find(|finding| finding.kind == FindingKind::ParallelImplementation)
-        .expect("parallel implementation finding");
-    assert_eq!(metric_value(finding, "group_size"), Some(2));
-    assert_eq!(finding.related_locations.len(), 2);
     assert!(
         findings
             .iter()
-            .all(|finding| finding.kind != FindingKind::ShadowedAbstraction),
+            .all(|finding| finding.kind != FindingKind::ParallelImplementation),
         "{findings:#?}"
     );
 }
@@ -246,6 +244,10 @@ fn detects_generic_bucket_directories() {
             "src/utils/route_mapper.ts",
             "export function mapRoutePattern() {}",
         ),
+        source_file(
+            "src/utils/audit_sink.ts",
+            "export function writeAuditSink() {}",
+        ),
     ];
 
     let findings = scan_agent_drift(&files, &options());
@@ -256,7 +258,7 @@ fn detects_generic_bucket_directories() {
         .expect("generic bucket finding");
     assert_eq!(finding.path, "src/utils");
     assert!(metric_value(finding, "group_size").unwrap_or_default() >= 4);
-    assert_eq!(finding.related_locations.len(), 4);
+    assert_eq!(finding.related_locations.len(), 5);
 }
 
 #[test]
@@ -333,6 +335,14 @@ fn detects_adapter_boundary_bypasses_when_boundary_exists() {
             "src/jobs/sync.ts",
             "export function syncUsers() { return axios.get('/api/users'); }",
         ),
+        source_file(
+            "src/reports/users.ts",
+            "export function reportUsers() { return fetch('/api/users'); }",
+        ),
+        source_file(
+            "src/workers/users.ts",
+            "export function refreshUsers() { return fetch('/api/users'); }",
+        ),
     ];
 
     let findings = scan_agent_drift(&files, &options());
@@ -341,8 +351,8 @@ fn detects_adapter_boundary_bypasses_when_boundary_exists() {
         .iter()
         .find(|finding| finding.kind == FindingKind::AdapterBoundaryBypass)
         .expect("adapter bypass finding");
-    assert_eq!(metric_value(finding, "group_size"), Some(2));
-    assert_eq!(finding.related_locations.len(), 2);
+    assert_eq!(metric_value(finding, "group_size"), Some(4));
+    assert_eq!(finding.related_locations.len(), 4);
 }
 
 #[test]
@@ -373,6 +383,37 @@ fn skips_adapter_boundary_bypasses_in_support_scripts() {
 }
 
 #[test]
+fn skips_adapter_boundary_bypasses_in_cli_entrypoints() {
+    let files = vec![
+        source_file(
+            "src/shared/logger.ts",
+            "export function logInfo(message: string) { return message; }",
+        ),
+        source_file(
+            "src/cli/import.ts",
+            "export function importData() { console.log('import'); }",
+        ),
+        source_file(
+            "src/cli/export.ts",
+            "export function exportData() { console.log('export'); }",
+        ),
+        source_file(
+            "src/cli/check.ts",
+            "export function checkData() { console.log('check'); }",
+        ),
+    ];
+
+    let findings = scan_agent_drift(&files, &options());
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::AdapterBoundaryBypass),
+        "{findings:#?}"
+    );
+}
+
+#[test]
 fn detects_stale_compatibility_paths_without_exit_boundary() {
     let files = vec![source_file(
         "src/api/user_legacy.ts",
@@ -380,6 +421,9 @@ fn detects_stale_compatibility_paths_without_exit_boundary() {
 export function mapLegacyUser(payload: LegacyUser) {
   if (payload.v1) {
     return fallbackUserMapper(payload);
+  }
+  if (payload.v2) {
+    return legacyUserMapper(payload);
   }
   return mapCurrentUser(payload);
 }
@@ -393,8 +437,8 @@ export function mapLegacyUser(payload: LegacyUser) {
         .find(|finding| finding.kind == FindingKind::StaleCompatibilityPath)
         .expect("stale compatibility path finding");
     assert_eq!(finding.path, "src/api/user_legacy.ts");
-    assert_eq!(metric_value(finding, "group_size"), Some(2));
-    assert_eq!(finding.related_locations.len(), 2);
+    assert_eq!(metric_value(finding, "group_size"), Some(3));
+    assert_eq!(finding.related_locations.len(), 3);
 }
 
 #[test]

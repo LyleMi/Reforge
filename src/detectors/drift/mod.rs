@@ -153,13 +153,18 @@ fn collect_file_signals(
         collect_compatibility_paths(file, compatibility_path_intent(&file_words), signals);
     }
 
-    if !is_test && !is_support_script_source(&file_words) {
+    if !is_test && !is_operational_entrypoint_source(&file_words) {
         collect_boundary_bypasses(file, boundaries, signals);
     }
 }
 
-fn is_support_script_source(file_words: &[String]) -> bool {
-    file_words.iter().any(|word| word == "script")
+fn is_operational_entrypoint_source(file_words: &[String]) -> bool {
+    file_words.iter().any(|word| {
+        matches!(
+            word.as_str(),
+            "bin" | "cli" | "cmd" | "command" | "commands" | "script" | "scripts"
+        )
+    })
 }
 
 fn collect_function_signals(
@@ -431,7 +436,7 @@ fn parallel_implementation_findings(
     functions: &[FunctionSignal],
     _options: &AgentDriftOptions,
 ) -> Vec<Finding> {
-    let threshold = 2;
+    let threshold = 3;
     let mut groups = BTreeMap::<String, Vec<Occurrence>>::new();
 
     for function in functions.iter().filter(|function| !function.is_test) {
@@ -468,7 +473,7 @@ fn shadowed_abstraction_findings(
     functions: &[FunctionSignal],
     _options: &AgentDriftOptions,
 ) -> Vec<Finding> {
-    let threshold = 2;
+    let threshold = 3;
     let mut groups = BTreeMap::<String, Vec<Occurrence>>::new();
 
     for function in functions.iter().filter(|function| !function.is_test) {
@@ -590,7 +595,7 @@ fn generic_bucket_findings(
     let concept_threshold = (options.max_dir_files / 4).clamp(4, 12);
 
     for directory in directories.values() {
-        if directory.files.len() < 3 || directory.concepts.len() < concept_threshold {
+        if directory.files.len() < 4 || directory.concepts.len() < concept_threshold {
             continue;
         }
 
@@ -625,7 +630,7 @@ fn generic_bucket_findings(
         ));
     }
 
-    let generic_file_threshold = concept_threshold.max(8);
+    let generic_file_threshold = concept_threshold.max(18);
     for (concepts, occurrence) in generic_files {
         let concept_count = concepts.split(", ").count();
         if concept_count < generic_file_threshold {
@@ -667,7 +672,8 @@ fn adapter_boundary_bypass_findings(
             .map(|occurrence| occurrence.path.as_str())
             .collect::<BTreeSet<_>>()
             .len();
-        if group.len() < 2 || unique_files < 2 {
+        let threshold = 4;
+        if group.len() < threshold || unique_files < 3 {
             continue;
         }
 
@@ -685,7 +691,7 @@ fn adapter_boundary_bypass_findings(
                 vec![FindingMetric::threshold(
                     "group_size",
                     group.len(),
-                    2,
+                    threshold,
                     "bypasses",
                 )],
             )

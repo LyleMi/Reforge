@@ -50,7 +50,7 @@ pub(super) fn stale_compatibility_path_findings(
         group.sort_by(|left, right| left.path.cmp(&right.path).then(left.line.cmp(&right.line)));
         group.dedup_by(|left, right| left.path == right.path && left.line == right.line);
 
-        let threshold = 2;
+        let threshold = 3;
         if group.len() < threshold {
             continue;
         }

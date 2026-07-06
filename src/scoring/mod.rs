@@ -30,12 +30,12 @@ const IMPACT_SCORES: &[(FindingKind, f64)] = &[
     (FindingKind::RepeatedLiteral, 30.0),
     (FindingKind::HappyPathOnlyTests, 35.0),
     (FindingKind::FileNamingDrift, 40.0),
-    (FindingKind::ShadowedAbstraction, 45.0),
+    (FindingKind::ShadowedAbstraction, 35.0),
     (FindingKind::TestDuplication, 45.0),
     (FindingKind::ConfigKeyDrift, 50.0),
     (FindingKind::FixtureFactoryDrift, 50.0),
-    (FindingKind::GenericBucketDrift, 50.0),
-    (FindingKind::AdapterBoundaryBypass, 60.0),
+    (FindingKind::GenericBucketDrift, 35.0),
+    (FindingKind::AdapterBoundaryBypass, 45.0),
     (FindingKind::LargePublicSurface, 60.0),
     (FindingKind::ImportHeavyFile, 60.0),
     (FindingKind::FunctionProliferation, 60.0),
@@ -46,7 +46,7 @@ const IMPACT_SCORES: &[(FindingKind, f64)] = &[
     (FindingKind::DirectoryDrift, 65.0),
     (FindingKind::DataClump, 65.0),
     (FindingKind::DuplicateTypeShape, 65.0),
-    (FindingKind::StaleCompatibilityPath, 65.0),
+    (FindingKind::StaleCompatibilityPath, 45.0),
     (FindingKind::MissingDocumentationSet, 70.0),
     (FindingKind::MissingUserGuide, 70.0),
     (FindingKind::MissingMetricsModelDocs, 70.0),
@@ -55,7 +55,7 @@ const IMPACT_SCORES: &[(FindingKind, f64)] = &[
     (FindingKind::DeepNesting, 70.0),
     (FindingKind::ManyParameters, 70.0),
     (FindingKind::LargeType, 70.0),
-    (FindingKind::ParallelImplementation, 70.0),
+    (FindingKind::ParallelImplementation, 45.0),
     (FindingKind::StaleCliDocumentation, 75.0),
     (FindingKind::SimilarFunctions, 80.0),
     (FindingKind::ComplexFunction, 90.0),
@@ -66,19 +66,19 @@ const IMPACT_SCORES: &[(FindingKind, f64)] = &[
 const ACTIONABILITY_SCORES: &[(FindingKind, f64)] = &[
     (FindingKind::RepeatedLiteral, 40.0),
     (FindingKind::HappyPathOnlyTests, 40.0),
-    (FindingKind::GenericBucketDrift, 50.0),
+    (FindingKind::GenericBucketDrift, 35.0),
     (FindingKind::TestDuplication, 55.0),
     (FindingKind::DebtMarker, 60.0),
     (FindingKind::FileNamingDrift, 60.0),
     (FindingKind::DirectoryDrift, 60.0),
-    (FindingKind::ShadowedAbstraction, 65.0),
+    (FindingKind::ShadowedAbstraction, 45.0),
     (FindingKind::ConfigKeyDrift, 65.0),
     (FindingKind::FixtureFactoryDrift, 65.0),
-    (FindingKind::StaleCompatibilityPath, 65.0),
+    (FindingKind::StaleCompatibilityPath, 45.0),
     (FindingKind::MissingMetricsModelDocs, 70.0),
     (FindingKind::MissingArchitectureDocs, 70.0),
     (FindingKind::RepeatedErrorPattern, 70.0),
-    (FindingKind::AdapterBoundaryBypass, 70.0),
+    (FindingKind::AdapterBoundaryBypass, 45.0),
     (FindingKind::LargeDirectory, 75.0),
     (FindingKind::ImportHeavyFile, 75.0),
     (FindingKind::LargePublicSurface, 75.0),
@@ -97,7 +97,7 @@ const ACTIONABILITY_SCORES: &[(FindingKind, f64)] = &[
     (FindingKind::ManyParameters, 85.0),
     (FindingKind::LargeType, 85.0),
     (FindingKind::SimilarFunctions, 85.0),
-    (FindingKind::ParallelImplementation, 85.0),
+    (FindingKind::ParallelImplementation, 50.0),
     (FindingKind::DuplicateTypeShape, 85.0),
 ];
 
@@ -205,8 +205,9 @@ pub fn default_confidence(kind: FindingKind) -> f64 {
         | FindingKind::ConfigKeyDrift
         | FindingKind::FixtureFactoryDrift => 0.85,
         FindingKind::RepeatedLiteral => 0.75,
-        FindingKind::DuplicateTypeShape | FindingKind::AdapterBoundaryBypass => 0.80,
-        FindingKind::GenericBucketDrift | FindingKind::StaleCompatibilityPath => 0.70,
+        FindingKind::DuplicateTypeShape => 0.80,
+        FindingKind::AdapterBoundaryBypass => 0.65,
+        FindingKind::GenericBucketDrift | FindingKind::StaleCompatibilityPath => 0.60,
         FindingKind::HappyPathOnlyTests => 0.60,
         FindingKind::MissingDocumentationSet
         | FindingKind::MissingUserGuide
@@ -220,7 +221,7 @@ pub fn default_confidence(kind: FindingKind) -> f64 {
         | FindingKind::FunctionProliferation
         | FindingKind::UnusedFunction
         | FindingKind::ParallelImplementation
-        | FindingKind::ShadowedAbstraction => 0.65,
+        | FindingKind::ShadowedAbstraction => 0.60,
         FindingKind::DebtMarker
         | FindingKind::LargeFile
         | FindingKind::LargeDirectory
