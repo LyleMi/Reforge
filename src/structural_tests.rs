@@ -564,6 +564,31 @@ test("rejects invalid user", () => {
 }
 
 #[test]
+fn skips_happy_path_risk_when_test_names_describe_negative_cases() -> Result<()> {
+    let source = r#"
+test("creates user", () => {
+  expect(createUser("Ada").name).toBe("Ada");
+});
+test("does not emit anonymous shorthand without client evidence", () => {
+  expect(extractGraphql("{}")).toEqual([]);
+});
+test("ignores skipped runtime entries", () => {
+  expect(importRuntimeEntries([])).toEqual([]);
+});
+"#;
+
+    let findings = scan_structure(&[source_file("tests/user.test.js", source)], &options())?;
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::HappyPathOnlyTests),
+        "{findings:#?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn skips_rust_cfg_test_modules_for_structure_by_default() -> Result<()> {
     let source = r#"
 pub fn production() -> &'static str {

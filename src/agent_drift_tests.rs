@@ -260,6 +260,27 @@ fn detects_generic_bucket_directories() {
 }
 
 #[test]
+fn skips_small_generic_files_with_only_a_few_concepts() {
+    let files = vec![source_file(
+        "src/shared/utils.ts",
+        r#"
+export function parseAuth() {}
+export function buildAuth() {}
+export function validateAuth() {}
+"#,
+    )];
+
+    let findings = scan_agent_drift(&files, &options());
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::GenericBucketDrift),
+        "{findings:#?}"
+    );
+}
+
+#[test]
 fn skips_generic_bucket_drift_in_tests_by_default() {
     let files = vec![
         source_file(
@@ -325,6 +346,33 @@ fn detects_adapter_boundary_bypasses_when_boundary_exists() {
 }
 
 #[test]
+fn skips_adapter_boundary_bypasses_in_support_scripts() {
+    let files = vec![
+        source_file(
+            "src/shared/file-utils.ts",
+            "export function readFile(path: string) { return path; }",
+        ),
+        source_file(
+            "scripts/import-fixtures.ts",
+            "export function importFixtures() { return fs.readFileSync('fixtures.json', 'utf-8'); }",
+        ),
+        source_file(
+            "scripts/export-fixtures.ts",
+            "export function exportFixtures() { return fs.writeFileSync('fixtures.json', '{}'); }",
+        ),
+    ];
+
+    let findings = scan_agent_drift(&files, &options());
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::AdapterBoundaryBypass),
+        "{findings:#?}"
+    );
+}
+
+#[test]
 fn detects_stale_compatibility_paths_without_exit_boundary() {
     let files = vec![source_file(
         "src/api/user_legacy.ts",
@@ -347,6 +395,31 @@ export function mapLegacyUser(payload: LegacyUser) {
     assert_eq!(finding.path, "src/api/user_legacy.ts");
     assert_eq!(metric_value(finding, "group_size"), Some(2));
     assert_eq!(finding.related_locations.len(), 2);
+}
+
+#[test]
+fn skips_plain_fallback_helpers_as_stale_compatibility_paths() {
+    let files = vec![source_file(
+        "src/api/user_mapper.ts",
+        r#"
+export function fallbackUserMapper(payload: User) {
+  return mapDefaultUser(payload);
+}
+
+export function loadFallbackUser(payload: User) {
+  return fallbackUserMapper(payload);
+}
+"#,
+    )];
+
+    let findings = scan_agent_drift(&files, &options());
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::StaleCompatibilityPath),
+        "{findings:#?}"
+    );
 }
 
 #[test]

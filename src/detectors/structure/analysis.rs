@@ -582,6 +582,17 @@ pub(super) fn has_negative_or_boundary_test_evidence(source: &str) -> bool {
         "denied",
         "boundary",
         "edge",
+        "does not",
+        "doesn't",
+        "without",
+        "ignore",
+        "ignores",
+        "ignored",
+        "skip",
+        "skips",
+        "skipped",
+        "caps",
+        "prevents",
     ]
     .iter()
     .any(|pattern| normalized.contains(pattern))

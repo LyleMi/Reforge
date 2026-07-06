@@ -12,7 +12,8 @@ pub(super) fn collect_compatibility_paths(
     for (index, line) in file.source.lines().enumerate() {
         let code = mask_string_literals(strip_line_comment(line));
         let code_words = split_identifier_words(&code);
-        let Some(occurrence_name) = compatibility_occurrence_name(line, &code_words) else {
+        let Some(occurrence_name) = compatibility_occurrence_name(line, &code_words, path_intent)
+        else {
             continue;
         };
 
@@ -49,6 +50,11 @@ pub(super) fn stale_compatibility_path_findings(
         group.sort_by(|left, right| left.path.cmp(&right.path).then(left.line.cmp(&right.line)));
         group.dedup_by(|left, right| left.path == right.path && left.line == right.line);
 
+        let threshold = 2;
+        if group.len() < threshold {
+            continue;
+        }
+
         let Some(representative) = group.first() else {
             continue;
         };
@@ -65,7 +71,7 @@ pub(super) fn stale_compatibility_path_findings(
                 vec![FindingMetric::threshold(
                     "group_size",
                     group.len(),
-                    1,
+                    threshold,
                     "markers",
                 )],
             )
@@ -107,10 +113,19 @@ fn mask_string_literals(line: &str) -> String {
     masked
 }
 
-fn compatibility_occurrence_name(line: &str, code_words: &[String]) -> Option<String> {
+fn compatibility_occurrence_name(
+    line: &str,
+    code_words: &[String],
+    path_intent: usize,
+) -> Option<String> {
     if let Some(name) = function_or_class_name(line) {
         let words = split_identifier_words(&name);
         if compatibility_intent_score(&words) > 0 {
+            return Some(name);
+        }
+        if words.iter().any(|word| word == COMPATIBILITY_FALLBACK_WORD)
+            && has_fallback_compatibility_context(path_intent, code_words)
+        {
             return Some(name);
         }
     }
@@ -120,6 +135,17 @@ fn compatibility_occurrence_name(line: &str, code_words: &[String]) -> Option<St
         .find(|word| COMPATIBILITY_STRONG_WORDS.contains(&word.as_str()));
     if let Some(word) = strong_intent {
         return Some(format!("{word} compatibility marker"));
+    }
+
+    if code_words
+        .iter()
+        .any(|word| word == COMPATIBILITY_FALLBACK_WORD)
+        && has_fallback_compatibility_context(path_intent, code_words)
+    {
+        return Some(format!(
+            "{} compatibility marker",
+            COMPATIBILITY_FALLBACK_WORD
+        ));
     }
 
     let weak_intent = code_words
@@ -172,6 +198,15 @@ fn compatibility_context_score(line: &str, words: &[String]) -> usize {
     score
 }
 
+fn has_fallback_compatibility_context(path_intent: usize, words: &[String]) -> bool {
+    path_intent > 0
+        || words.iter().any(|word| {
+            is_compatibility_version_word(word)
+                || COMPATIBILITY_STRONG_WORDS.contains(&word.as_str())
+                || COMPATIBILITY_WEAK_WORDS.contains(&word.as_str())
+        })
+}
+
 fn has_compatibility_exit_boundary(source: &str) -> bool {
     let lowered = source.to_ascii_lowercase();
     contains_any(&lowered, COMPATIBILITY_EXIT_PATTERNS)
@@ -184,16 +219,12 @@ fn is_compatibility_version_word(word: &str) -> bool {
     !rest.is_empty() && rest.chars().all(|character| character.is_ascii_digit())
 }
 
-const COMPATIBILITY_STRONG_WORDS: &[&str] = &[
-    "deprecated",
-    "fallback",
-    "legacy",
-    "obsolete",
-    "polyfill",
-    "shim",
-];
+const COMPATIBILITY_STRONG_WORDS: &[&str] =
+    &["deprecated", "legacy", "obsolete", "polyfill", "shim"];
 
 const COMPATIBILITY_WEAK_WORDS: &[&str] = &["compat", "compatibility"];
+
+const COMPATIBILITY_FALLBACK_WORD: &str = "fallback";
 
 const COMPATIBILITY_EXIT_PATTERNS: &[&str] = &[
     "delete after",

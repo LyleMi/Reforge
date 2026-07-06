@@ -153,9 +153,13 @@ fn collect_file_signals(
         collect_compatibility_paths(file, compatibility_path_intent(&file_words), signals);
     }
 
-    if !is_test {
+    if !is_test && !is_support_script_source(&file_words) {
         collect_boundary_bypasses(file, boundaries, signals);
     }
+}
+
+fn is_support_script_source(file_words: &[String]) -> bool {
+    file_words.iter().any(|word| word == "script")
 }
 
 fn collect_function_signals(
@@ -621,8 +625,13 @@ fn generic_bucket_findings(
         ));
     }
 
+    let generic_file_threshold = concept_threshold.max(8);
     for (concepts, occurrence) in generic_files {
         let concept_count = concepts.split(", ").count();
+        if concept_count < generic_file_threshold {
+            continue;
+        }
+
         findings.push(crate::scanner::finding(
             FindingInput::new(
                 FindingKind::GenericBucketDrift,
@@ -632,7 +641,7 @@ fn generic_bucket_findings(
                 vec![FindingMetric::threshold(
                     "group_size",
                     concept_count,
-                    4,
+                    generic_file_threshold,
                     "concepts",
                 )],
             )
