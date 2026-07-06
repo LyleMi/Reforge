@@ -167,6 +167,12 @@ cargo run -- scan . --ignore-path vendor --ignore-path generated/snapshots
 cargo run -- scan . --no-gitignore
 ```
 
+Exclude test files and test directories from the scan:
+
+```powershell
+cargo run -- scan . --exclude-tests
+```
+
 Tune similar-function detection:
 
 ```powershell
@@ -275,6 +281,7 @@ ignore-paths = ["vendor", "generated/snapshots"]
 | `--include-hidden` | `false` | Include hidden files and directories. |
 | `--include-generated` | `false` | Include dependency and generated output directories. |
 | `--no-gitignore` | `false` | Do not apply git ignore rules during scanning. |
+| `--exclude-tests` | `false` | Exclude test files and test directories from scanning. |
 | `--ignore-path` | none | Additional path to skip; can be repeated. |
 | `--min-similar-functions` | `3` | Minimum group size for similar-function findings. |
 | `--min-function-tokens` | `80` | Ignore smaller normalized function bodies. |
@@ -303,7 +310,9 @@ ignore-paths = ["vendor", "generated/snapshots"]
 
 By default, scans skip common generated and dependency directories such as
 `target`, `node_modules`, `dist`, `build`, and `out`, and they also apply git
-ignore rules. Use `--no-gitignore` to scan paths ignored by git.
+ignore rules. Test files are scanned by default, though some test-heavy
+analysis is opt-in. Use `--exclude-tests` to remove test files and directories
+from the scan, and use `--no-gitignore` to scan paths ignored by git.
 
 ## Development
 

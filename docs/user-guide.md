@@ -80,6 +80,10 @@ include generated or dependency directories. Use `--ignore-path <PATH>` to add
 Reforge-specific ignored paths, and use `--no-gitignore` to scan paths ignored
 by git.
 
+Test files and test directories such as `tests`, `__tests__`, `spec`, and
+`*.test.ts` are scanned by default. Use `--exclude-tests` when you want a
+production-source-only scan.
+
 ## Output
 
 Reforge supports `human`, `json`, and `yaml` output.
@@ -151,6 +155,7 @@ reforge scan [OPTIONS] [PATH]
 | `--include-hidden` | `false` | Include hidden files and directories. |
 | `--include-generated` | `false` | Include dependency and generated output directories. |
 | `--no-gitignore` | `false` | Do not apply git ignore rules during scanning. |
+| `--exclude-tests` | `false` | Exclude test files and test directories from scanning. |
 | `--ignore-path` | none | Additional path to skip; can be repeated. |
 | `--min-similar-functions` | `3` | Report similar-function groups at or above this size. |
 | `--min-function-tokens` | `80` | Ignore smaller normalized function bodies. |
@@ -197,6 +202,12 @@ Include tests in duplication or structural analysis:
 ```powershell
 cargo run -- scan . --include-test-similarity
 cargo run -- scan . --include-test-structure
+```
+
+Exclude tests entirely:
+
+```powershell
+cargo run -- scan . --exclude-tests
 ```
 
 Use a specific configuration file:

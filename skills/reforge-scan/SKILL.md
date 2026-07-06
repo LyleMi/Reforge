@@ -52,6 +52,12 @@ For quick human review:
 reforge scan . --output human --progress never
 ```
 
+To remove test files and test directories from the scan entirely:
+
+```bash
+reforge scan . --exclude-tests --progress never
+```
+
 For CI or agent-to-agent handoff, prefer JSON or YAML with progress disabled:
 
 ```bash
@@ -71,11 +77,29 @@ reforge scan . --churn off --hotspot-model static --output json --progress never
 - Use `--config <path>` when the repository has a `reforge.toml`, or rely on default discovery from the scan root upward.
 - Keep generated and dependency directories excluded by default. Add `--include-generated` only when the user explicitly wants generated output scanned.
 - Keep hidden files excluded by default. Add `--include-hidden` only when dotfiles or hidden source trees are in scope.
+- Keep tests scanned by default. Add `--exclude-tests` when the user wants production-source-only results or when test fixture volume would drown out application signals.
 - Keep tests out of similar-function analysis by default. Add `--include-test-similarity` when repeated test setup or test helper extraction is the goal.
 - Keep tests out of general structural analysis by default. Add `--include-test-structure` when structural issues in tests are in scope.
 - Lower `--max-file-lines`, `--max-function-lines`, or `--max-function-complexity` for mature codebases with strict maintainability budgets.
 - Raise similarity strictness with `--function-similarity 0.9` when noisy duplication reports would slow the user down.
 - Tune `--min-repeated-literal-occurrences` and `--min-data-clump-occurrences` when repeated literals, repeated error handling, data clumps, or test setup duplication are too noisy or too sparse.
+
+## Self-Debugging Reforge
+
+When working inside the Reforge source repository, use Reforge against itself after code or documentation changes:
+
+```bash
+cargo test
+cargo run -- scan . --progress never
+```
+
+If the human scan output reports warnings introduced by the current change, address the smallest local cause first. Common self-debug fixes include splitting large option structs with Clap `flatten`, moving broad test fixtures into narrower modules, documenting new CLI flags in `README.md` and `docs/`, and using `--exclude-tests` only when the user explicitly wants to ignore test-maintenance signals.
+
+For a stable self-debug artifact:
+
+```bash
+cargo run -- scan . --output json --output-file reforge-self-report.json --progress never --churn off --hotspot-model static
+```
 
 ## Interpreting Findings
 

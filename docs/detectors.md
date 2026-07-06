@@ -11,7 +11,9 @@ are not automatic proof that code must be changed.
 - `debt_marker`: a comment line contains `TODO` or `FIXME`.
 
 Hidden paths are skipped unless `--include-hidden` is set. Generated and
-dependency directories are skipped unless `--include-generated` is set.
+dependency directories are skipped unless `--include-generated` is set. Test
+files and directories are scanned by default; `--exclude-tests` removes them
+before detector-specific analysis runs.
 
 ## Similar Functions
 

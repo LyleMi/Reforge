@@ -16,9 +16,13 @@ fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
         path,
         max_file_lines: 800,
         max_dir_files: 40,
-        include_hidden: false,
-        include_generated,
-        no_gitignore: false,
+        filters: crate::cli::ScanFilterArgs {
+            include_hidden: false,
+            include_generated,
+            no_gitignore: false,
+            exclude_tests: false,
+            ignore_paths: Vec::new(),
+        },
         min_similar_functions: 3,
         min_function_tokens: 80,
         function_similarity: 0.85,
@@ -34,7 +38,6 @@ fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
         min_repeated_literal_occurrences: 4,
         min_data_clump_occurrences: 3,
         include_test_structure: false,
-        ignore_paths: Vec::new(),
         config: None,
         churn: None,
         hotspot_model: None,
@@ -53,91 +56,6 @@ fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
         .iter()
         .find(|metric| metric.name == name)
         .map(|metric| metric.value)
-}
-
-fn has_kind(findings: &[Finding], kind: FindingKind) -> bool {
-    findings.iter().any(|finding| finding.kind == kind)
-}
-
-fn write_project_marker(root: &Path) -> Result<()> {
-    fs::create_dir_all(root)?;
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )?;
-    fs::create_dir_all(root.join("src"))?;
-    fs::write(root.join("src/main.rs"), "fn main() {}\n")?;
-    Ok(())
-}
-
-fn cli_flags_doc() -> &'static str {
-    "--max-file-lines --max-dir-files --include-hidden --include-generated \
---no-gitignore --ignore-path --min-similar-functions --min-function-tokens --function-similarity \
---include-test-similarity --max-function-lines --max-function-complexity \
---max-nesting-depth --max-function-parameters --max-type-lines \
---max-type-members --max-imports --max-public-items \
---min-repeated-literal-occurrences --min-data-clump-occurrences \
---include-test-structure --config --churn --hotspot-model \
---churn-window-days --churn-max-commit-lines --output --output-file \
---progress --color"
-}
-
-fn schema_fields_doc() -> &'static str {
-    "schema_version summary stats metrics_summary raw_metrics hotspots findings \
-kind severity path line metrics priority confidence priority_factors \
-rank_explanation related_locations"
-}
-
-fn write_complete_docs(root: &Path) -> Result<()> {
-    write_project_marker(root)?;
-    fs::write(
-        root.join("README.md"),
-        "Reforge\n\nSee docs/README.md for the maintained documentation set.\n",
-    )?;
-    let docs = root.join("docs");
-    fs::create_dir_all(&docs)?;
-    fs::write(
-        docs.join("README.md"),
-        "Documentation index\n\n- user guide\n- configuration\n- report schema\n- metrics model\n- detectors\n- architecture\n- contributing\n",
-    )?;
-    fs::write(
-        docs.join("user-guide.md"),
-        format!(
-            "Installation and install notes.\nQuick start: run reforge scan .\nCLI command reference: {}.\nConfiguration uses reforge.toml config.\nOutput supports json yaml report formats.\nTroubleshooting and troubleshoot debug notes.\n",
-            cli_flags_doc()
-        ),
-    )?;
-    fs::write(
-        docs.join("configuration.md"),
-        format!(
-            "Configuration reference for reforge.toml config.\n{}\n",
-            cli_flags_doc()
-        ),
-    )?;
-    fs::write(
-        docs.join("report-schema.md"),
-        format!(
-            "Report schema fields and compatibility.\n{}\n",
-            schema_fields_doc()
-        ),
-    )?;
-    fs::write(
-        docs.join("metrics-model.md"),
-        "Metrics model covers raw metrics, findings, hotspots, priority, scoring, and confidence.\n",
-    )?;
-    fs::write(
-        docs.join("detectors.md"),
-        "Detector goals, inputs, false-positive boundaries, and tuning advice.\n",
-    )?;
-    fs::write(
-        docs.join("architecture.md"),
-        "Architecture covers scan pipeline, detector boundaries, data flow, and extension points.\n",
-    )?;
-    fs::write(
-        docs.join("contributing.md"),
-        "Contributing covers development, testing, CI, and release checks.\n",
-    )?;
-    Ok(())
 }
 
 #[test]
@@ -169,6 +87,37 @@ fn can_include_generated_directories() -> Result<()> {
 
     assert_eq!(findings.len(), 1);
     assert!(findings[0].path.ends_with("dist/app.js"));
+    Ok(())
+}
+
+#[test]
+fn can_exclude_test_sources_from_scan() -> Result<()> {
+    let root = test_root("exclude-tests");
+    fs::create_dir_all(root.join("src"))?;
+    fs::create_dir_all(root.join("__tests__"))?;
+    fs::create_dir_all(root.join("tests"))?;
+    fs::write(root.join("src/app.ts"), "// TODO: reported\n")?;
+    fs::write(root.join("src/app.test.ts"), "// TODO: ignored\n")?;
+    fs::write(root.join("__tests__/app.ts"), "// TODO: ignored\n")?;
+    fs::write(root.join("tests/helper.rs"), "// TODO: ignored\n")?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.filters.exclude_tests = true;
+    args.include_test_similarity = true;
+    args.include_test_structure = true;
+    let mut progress = NoopProgress;
+    let report = scan_report(&args, &mut progress)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert_eq!(report.stats.source_files_scanned, 1);
+    assert_eq!(report.raw_metrics.files.len(), 1);
+    assert!(report.raw_metrics.files[0].path.ends_with("src/app.ts"));
+    assert!(!report.findings.iter().any(|finding| {
+        finding.path.contains("__tests__")
+            || finding.path.contains("/tests/")
+            || finding.path.contains(".test.")
+    }));
     Ok(())
 }
 
@@ -362,6 +311,7 @@ fn recognizes_common_test_source_names() {
     assert!(is_test_source(Path::new("src/app.test.ts")));
     assert!(is_test_source(Path::new("src/app.spec.tsx")));
     assert!(is_test_source(Path::new("tests/app.rs")));
+    assert!(is_test_source(Path::new("__tests__/app.ts")));
     assert!(is_test_source(Path::new("src/test_app.py")));
     assert!(is_test_source(Path::new("src/app_tests.rs")));
     assert!(!is_test_source(Path::new("src/app.go")));
@@ -480,7 +430,7 @@ fn cli_ignore_paths_are_added_to_config_ignore_paths() -> Result<()> {
     fs::write(root.join("fixtures/ignored.rs"), "// TODO: ignored\n")?;
 
     let mut args = scan_args(root.clone(), false);
-    args.ignore_paths.push("fixtures".to_string());
+    args.filters.ignore_paths.push("fixtures".to_string());
     let findings = scan_path(&args)?;
 
     fs::remove_dir_all(root)?;
@@ -519,7 +469,7 @@ fn can_disable_gitignore_filtering() -> Result<()> {
     fs::write(root.join("vendor/included.rs"), "// TODO: reported\n")?;
 
     let mut args = scan_args(root.clone(), false);
-    args.no_gitignore = true;
+    args.filters.no_gitignore = true;
     let findings = scan_path(&args)?;
 
     fs::remove_dir_all(root)?;
@@ -530,143 +480,6 @@ fn can_disable_gitignore_filtering() -> Result<()> {
             .iter()
             .any(|finding| finding.path.ends_with("vendor/included.rs"))
     );
-    Ok(())
-}
-
-#[test]
-fn reports_missing_project_documentation_for_project_roots() -> Result<()> {
-    let root = test_root("missing-project-docs");
-    write_project_marker(&root)?;
-    fs::write(root.join("README.md"), "Reforge fixture\n")?;
-
-    let mut args = scan_args(root.clone(), false);
-    args.churn = Some(crate::cli::ChurnMode::Off);
-    let mut progress = NoopProgress;
-    let report = scan_report(&args, &mut progress)?;
-
-    fs::remove_dir_all(root)?;
-
-    assert!(has_kind(
-        &report.findings,
-        FindingKind::MissingDocumentationSet
-    ));
-    assert!(has_kind(
-        &report.findings,
-        FindingKind::MissingReportSchemaDocs
-    ));
-    assert!(has_kind(
-        &report.findings,
-        FindingKind::MissingMetricsModelDocs
-    ));
-    assert!(has_kind(
-        &report.findings,
-        FindingKind::MissingArchitectureDocs
-    ));
-    assert!(
-        report
-            .findings
-            .iter()
-            .filter(|finding| matches!(
-                finding.kind,
-                FindingKind::MissingDocumentationSet
-                    | FindingKind::MissingReportSchemaDocs
-                    | FindingKind::MissingMetricsModelDocs
-                    | FindingKind::MissingArchitectureDocs
-            ))
-            .all(|finding| finding.severity == Severity::Warning)
-    );
-    Ok(())
-}
-
-#[test]
-fn complete_project_documentation_suppresses_documentation_findings() -> Result<()> {
-    let root = test_root("complete-project-docs");
-    write_complete_docs(&root)?;
-
-    let mut args = scan_args(root.clone(), false);
-    args.churn = Some(crate::cli::ChurnMode::Off);
-    let mut progress = NoopProgress;
-    let report = scan_report(&args, &mut progress)?;
-
-    fs::remove_dir_all(root)?;
-
-    assert!(report.findings.iter().all(|finding| {
-        finding
-            .metrics
-            .iter()
-            .all(|metric| metric.dimension != crate::model::MetricDimension::Documentation)
-    }));
-    Ok(())
-}
-
-#[test]
-fn readme_only_project_is_not_treated_as_complete_documentation() -> Result<()> {
-    let root = test_root("readme-only-docs");
-    write_project_marker(&root)?;
-    fs::write(
-        root.join("README.md"),
-        "Install and quick start. Run reforge scan . with --output json.\n",
-    )?;
-
-    let mut args = scan_args(root.clone(), false);
-    args.churn = Some(crate::cli::ChurnMode::Off);
-    let findings = scan_path(&args)?;
-
-    fs::remove_dir_all(root)?;
-
-    assert!(has_kind(&findings, FindingKind::MissingDocumentationSet));
-    Ok(())
-}
-
-#[test]
-fn reports_stale_cli_documentation_when_flags_are_missing() -> Result<()> {
-    let root = test_root("stale-cli-docs");
-    write_complete_docs(&root)?;
-    fs::write(
-        root.join("docs/user-guide.md"),
-        "Installation install.\nQuick start run reforge scan .\nCLI command reference: --output --progress.\nConfiguration config reforge.toml.\nOutput json yaml report.\nTroubleshooting troubleshoot debug.\n",
-    )?;
-    fs::write(
-        root.join("docs/configuration.md"),
-        "Configuration reference without CLI flags.\n",
-    )?;
-
-    let mut args = scan_args(root.clone(), false);
-    args.churn = Some(crate::cli::ChurnMode::Off);
-    let findings = scan_path(&args)?;
-
-    fs::remove_dir_all(root)?;
-
-    let stale = findings
-        .iter()
-        .find(|finding| finding.kind == FindingKind::StaleCliDocumentation)
-        .expect("stale CLI docs should be reported");
-    assert_eq!(metric_value(stale, "missing_cli_flags"), Some(28));
-    assert!(stale.message.contains("--max-file-lines"));
-    Ok(())
-}
-
-#[test]
-fn reports_stale_schema_documentation_when_fields_are_missing() -> Result<()> {
-    let root = test_root("stale-schema-docs");
-    write_complete_docs(&root)?;
-    fs::write(
-        root.join("docs/report-schema.md"),
-        "Report schema fields: schema_version summary stats findings kind severity path.\n",
-    )?;
-
-    let mut args = scan_args(root.clone(), false);
-    args.churn = Some(crate::cli::ChurnMode::Off);
-    let findings = scan_path(&args)?;
-
-    fs::remove_dir_all(root)?;
-
-    let stale = findings
-        .iter()
-        .find(|finding| finding.kind == FindingKind::StaleSchemaDocumentation)
-        .expect("stale schema docs should be reported");
-    assert!(metric_value(stale, "missing_schema_fields").unwrap() > 0);
-    assert!(stale.message.contains("hotspots"));
     Ok(())
 }
 

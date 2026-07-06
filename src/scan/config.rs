@@ -230,12 +230,12 @@ fn apply_ignore_path_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
     }
 
     let mut ignore_paths = config.ignore_paths.clone();
-    for path in &args.ignore_paths {
+    for path in &args.filters.ignore_paths {
         if !ignore_paths.contains(path) {
             ignore_paths.push(path.clone());
         }
     }
-    args.ignore_paths = ignore_paths;
+    args.filters.ignore_paths = ignore_paths;
 }
 
 fn apply_usize_default(target: &mut usize, default: usize, configured: Option<usize>) {

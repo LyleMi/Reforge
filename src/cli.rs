@@ -31,17 +31,8 @@ pub struct ScanArgs {
     #[arg(long, default_value_t = 40)]
     pub max_dir_files: usize,
 
-    /// Include hidden files and directories.
-    #[arg(long)]
-    pub include_hidden: bool,
-
-    /// Include dependency and generated output directories.
-    #[arg(long)]
-    pub include_generated: bool,
-
-    /// Do not apply .gitignore rules during scanning.
-    #[arg(long)]
-    pub no_gitignore: bool,
+    #[command(flatten)]
+    pub filters: ScanFilterArgs,
 
     /// Report groups with at least this many structurally similar functions.
     #[arg(long, default_value_t = 3)]
@@ -103,10 +94,6 @@ pub struct ScanArgs {
     #[arg(long)]
     pub include_test_structure: bool,
 
-    /// Additional path to skip during scanning. Can be repeated.
-    #[arg(long = "ignore-path", value_name = "PATH")]
-    pub ignore_paths: Vec<String>,
-
     /// Optional configuration file. When omitted, reforge.toml is discovered from the scan root.
     #[arg(long)]
     pub config: Option<PathBuf>,
@@ -142,6 +129,29 @@ pub struct ScanArgs {
     /// Colorize human output. Auto writes colors only when stdout is a TTY.
     #[arg(long, value_enum, default_value_t = ColorMode::Auto)]
     pub color: ColorMode,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ScanFilterArgs {
+    /// Include hidden files and directories.
+    #[arg(long)]
+    pub include_hidden: bool,
+
+    /// Include dependency and generated output directories.
+    #[arg(long)]
+    pub include_generated: bool,
+
+    /// Do not apply .gitignore rules during scanning.
+    #[arg(long)]
+    pub no_gitignore: bool,
+
+    /// Exclude test files and test directories from scanning.
+    #[arg(long)]
+    pub exclude_tests: bool,
+
+    /// Additional path to skip during scanning. Can be repeated.
+    #[arg(long = "ignore-path", value_name = "PATH")]
+    pub ignore_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -338,11 +348,13 @@ mod tests {
             "--ignore-path",
             "generated/snapshots",
             "--no-gitignore",
+            "--exclude-tests",
         ]);
 
         let Command::Scan(args) = cli.command;
-        assert_eq!(args.ignore_paths, ["vendor", "generated/snapshots"]);
-        assert!(args.no_gitignore);
+        assert_eq!(args.filters.ignore_paths, ["vendor", "generated/snapshots"]);
+        assert!(args.filters.no_gitignore);
+        assert!(args.filters.exclude_tests);
     }
 
     #[test]

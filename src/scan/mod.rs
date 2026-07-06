@@ -374,7 +374,7 @@ fn collect_source_scan_plan(root: &Path, args: &ScanArgs) -> Result<SourceScanPl
     let mut plan = SourceScanPlan::default();
 
     if root.is_file() {
-        if is_supported_source(root) {
+        if is_supported_source(root) && should_scan_source_file(root, args) {
             plan.source_files.push(root.to_path_buf());
         }
         return Ok(plan);
@@ -382,10 +382,10 @@ fn collect_source_scan_plan(root: &Path, args: &ScanArgs) -> Result<SourceScanPl
 
     let mut builder = WalkBuilder::new(root);
     builder
-        .hidden(!args.include_hidden)
-        .git_ignore(!args.no_gitignore)
-        .git_global(!args.no_gitignore)
-        .git_exclude(!args.no_gitignore)
+        .hidden(!args.filters.include_hidden)
+        .git_ignore(!args.filters.no_gitignore)
+        .git_global(!args.filters.no_gitignore)
+        .git_exclude(!args.filters.no_gitignore)
         .require_git(false);
 
     let root_for_filter = root.to_path_buf();
@@ -401,7 +401,10 @@ fn collect_source_scan_plan(root: &Path, args: &ScanArgs) -> Result<SourceScanPl
 
         if file_type.is_dir() {
             plan.directories_scanned += 1;
-        } else if file_type.is_file() && is_supported_source(entry.path()) {
+        } else if file_type.is_file()
+            && is_supported_source(entry.path())
+            && should_scan_source_file(entry.path(), args)
+        {
             let path = entry.path().to_path_buf();
             count_source_file_parent(&path, &mut plan.directory_source_files);
             plan.source_files.push(path);
@@ -569,13 +572,14 @@ fn is_default_excluded_dir(entry: &DirEntry) -> bool {
 fn should_visit_entry(entry: &DirEntry, root: &Path, args: &ScanArgs) -> bool {
     let is_root = entry.path() == root;
     is_root
-        || ((args.include_hidden || !is_hidden(entry))
-            && (args.include_generated || !is_default_excluded_dir(entry)))
+        || ((args.filters.include_hidden || !is_hidden(entry))
+            && (args.filters.include_generated || !is_default_excluded_dir(entry)))
             && !is_ignored_path(entry.path(), root, args)
+            && !is_excluded_test_path(entry.path(), args)
 }
 
 fn is_ignored_path(path: &Path, root: &Path, args: &ScanArgs) -> bool {
-    if args.ignore_paths.is_empty() {
+    if args.filters.ignore_paths.is_empty() {
         return false;
     }
 
@@ -584,7 +588,7 @@ fn is_ignored_path(path: &Path, root: &Path, args: &ScanArgs) -> bool {
         .ok()
         .map(display_path)
         .unwrap_or_else(|| display_path(path));
-    args.ignore_paths.iter().any(|ignore| {
+    args.filters.ignore_paths.iter().any(|ignore| {
         let ignore = ignore.replace('\\', "/").trim_matches('/').to_string();
         !ignore.is_empty()
             && (relative == ignore
@@ -592,6 +596,14 @@ fn is_ignored_path(path: &Path, root: &Path, args: &ScanArgs) -> bool {
                     .strip_prefix(&ignore)
                     .is_some_and(|suffix| suffix.starts_with('/')))
     })
+}
+
+fn is_excluded_test_path(path: &Path, args: &ScanArgs) -> bool {
+    args.filters.exclude_tests && is_test_source(path)
+}
+
+fn should_scan_source_file(path: &Path, args: &ScanArgs) -> bool {
+    !is_excluded_test_path(path, args)
 }
 
 fn pluralize(count: usize, noun: &str) -> String {
@@ -636,4 +648,8 @@ fn display_path(path: &Path) -> String {
 
 #[cfg(test)]
 #[path = "../scanner_tests.rs"]
-mod tests;
+mod scanner_tests;
+
+#[cfg(test)]
+#[path = "../scan_documentation_tests.rs"]
+mod scan_documentation_tests;

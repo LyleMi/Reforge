@@ -22,7 +22,7 @@ used only when the CLI value is still the built-in default. Explicit CLI values
 win.
 
 Boolean flags such as `--include-hidden`, `--include-generated`,
-`--no-gitignore`, `--include-test-similarity`, and
+`--no-gitignore`, `--exclude-tests`, `--include-test-similarity`, and
 `--include-test-structure` are CLI-only today. They are not read from
 `reforge.toml`.
 
