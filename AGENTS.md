@@ -19,7 +19,7 @@ Use idiomatic Rust formatted by `cargo fmt`; keep four-space indentation and avo
 
 ## Testing Guidelines
 
-Add focused unit tests next to the code they exercise. Name tests by behavior, such as `parses_output_format` or `groups_similar_functions`. When changing scanner behavior, include tests for default exclusions, thresholds, ordering, or report fields as appropriate. Run `cargo test` before submitting changes; run `cargo run -- scan . --progress never` for a quick end-to-end smoke test.
+Add focused unit tests next to the code they exercise. Name tests by behavior, such as `parses_output_format` or `groups_similar_functions`. When changing scanner behavior, include tests for default exclusions, thresholds, ordering, or report fields as appropriate. Run `cargo test` before submitting changes; after code changes, run `cargo run -- scan . --progress never` and keep the self-scan at `0 findings`.
 
 ## Commit & Pull Request Guidelines
 
