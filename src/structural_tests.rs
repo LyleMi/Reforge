@@ -100,6 +100,60 @@ fn collect_named_functions(
 }
 
 #[test]
+fn counts_typescript_parameters_without_type_annotation_identifiers() -> Result<()> {
+    let source = r#"
+export function transportEndpointsFromExpression(
+  node: t.Expression | t.ObjectMethod,
+  path: NodePath<t.Node>,
+  ctx: FrameworkAdapterContext,
+  depth = 0,
+): FrameworkTransportEndpointInfo[] {
+  return [];
+}
+
+function importBindingFromSpecifier<TParsed extends ParsedModuleFile>(
+  ctx: ModuleCollectionContext<TParsed>,
+  stmt: t.ImportDeclaration,
+  specifier: t.ImportDeclaration['specifiers'][number],
+  sourcePath: string | null,
+): ModuleImport | null {
+  return null;
+}
+"#;
+
+    let parsed = parse_source_files(&[source_file("src/app.ts", source)])?;
+    let metrics = collect_raw_structure_metrics(&parsed);
+    let functions = &metrics[0].functions;
+
+    assert_eq!(
+        functions
+            .iter()
+            .find(|function| function.name == "transportEndpointsFromExpression")
+            .map(|function| function.parameter_count),
+        Some(4)
+    );
+    assert_eq!(
+        functions
+            .iter()
+            .find(|function| function.name == "importBindingFromSpecifier")
+            .map(|function| function.parameter_count),
+        Some(4)
+    );
+
+    let mut opts = options();
+    opts.max_function_parameters = 4;
+    let findings = scan_structure(&[source_file("src/app.ts", source)], &opts)?;
+
+    assert!(
+        !findings
+            .iter()
+            .any(|finding| finding.kind == FindingKind::ManyParameters),
+        "{findings:#?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn ignores_rust_enum_variants_for_large_type_member_count() -> Result<()> {
     let source = r#"
 enum FindingKind {
