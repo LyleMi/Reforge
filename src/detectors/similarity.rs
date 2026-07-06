@@ -10,7 +10,9 @@ use crate::language::{
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
     NAME_FIELD, adapter_for_path,
 };
-use crate::scanner::{Finding, FindingKind, FindingMetric, RelatedLocation, scored_finding};
+use crate::scanner::{
+    Finding, FindingInput, FindingKind, FindingMetric, RelatedLocation, scored_finding,
+};
 
 type TokenId = u32;
 
@@ -784,22 +786,24 @@ fn similar_function_finding(
         .collect::<Vec<_>>();
 
     scored_finding(
-        FindingKind::SimilarFunctions,
-        representative.path.clone(),
-        Some(representative.line),
-        format!(
-            "{} structurally similar functions/methods found at similarity >= {:.2}",
-            group.len(),
-            threshold
-        ),
-        vec![FindingMetric::threshold(
-            "group_size",
-            group.len(),
-            min_group_size,
-            "functions",
-        )],
-        threshold,
-        related_locations,
+        FindingInput::new(
+            FindingKind::SimilarFunctions,
+            representative.path.clone(),
+            Some(representative.line),
+            format!(
+                "{} structurally similar functions/methods found at similarity >= {:.2}",
+                group.len(),
+                threshold
+            ),
+            vec![FindingMetric::threshold(
+                "group_size",
+                group.len(),
+                min_group_size,
+                "functions",
+            )],
+        )
+        .with_confidence(threshold)
+        .with_related_locations(related_locations),
     )
 }
 

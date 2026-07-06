@@ -672,14 +672,13 @@ fn hotspot_models_sort_differently() {
 
 #[test]
 fn file_level_hotspot_only_weakly_influences_line_findings() {
-    let mut findings = vec![finding(
+    let mut findings = vec![finding(FindingInput::new(
         FindingKind::RepeatedLiteral,
         "src/big.rs",
         Some(42),
         "literal is repeated",
         vec![FindingMetric::threshold("group_size", 4, 4, "occurrences")],
-        Vec::new(),
-    )];
+    ))];
     let base_priority = findings[0].priority;
     let hotspots = vec![Hotspot {
         level: HotspotLevel::File,
@@ -702,14 +701,13 @@ fn file_level_hotspot_only_weakly_influences_line_findings() {
 
 #[test]
 fn function_hotspot_takes_precedence_over_file_hotspot_for_same_line_finding() {
-    let mut findings = vec![finding(
+    let mut findings = vec![finding(FindingInput::new(
         FindingKind::LongFunction,
         "src/hot.rs",
         Some(10),
         "function is long",
         vec![FindingMetric::threshold("function_lines", 120, 80, "lines")],
-        Vec::new(),
-    )];
+    ))];
     let hotspots = vec![
         Hotspot {
             level: HotspotLevel::File,

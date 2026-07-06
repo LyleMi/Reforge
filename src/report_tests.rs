@@ -1,7 +1,7 @@
 use super::*;
 use crate::scanner::{
-    ChurnSummary, FindingMetric, MetricsSummary, RawMetrics, RelatedLocation,
-    SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary, finding as make_finding, scored_finding,
+    ChurnSummary, FindingInput, FindingMetric, MetricsSummary, RawMetrics, RelatedLocation,
+    SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary, finding, scored_finding,
     severity_for_priority,
 };
 
@@ -38,6 +38,20 @@ fn report(findings: Vec<Finding>) -> ScanReport {
         hotspots: Vec::new(),
         findings,
     }
+}
+
+fn make_finding(
+    kind: FindingKind,
+    path: impl Into<String>,
+    line: Option<usize>,
+    message: impl Into<String>,
+    metrics: Vec<FindingMetric>,
+    related_locations: Vec<RelatedLocation>,
+) -> Finding {
+    finding(
+        FindingInput::new(kind, path, line, message, metrics)
+            .with_related_locations(related_locations),
+    )
 }
 
 fn large_file(path: &str, lines: usize) -> Finding {
@@ -242,19 +256,23 @@ fn renders_json_report_schema_v6_with_priority_metadata() {
 #[test]
 fn caps_serialized_similar_function_locations() {
     let scan_report = report(vec![scored_finding(
-        FindingKind::SimilarFunctions,
-        "src/a.rs",
-        Some(1),
-        "similar",
-        vec![FindingMetric::threshold("group_size", 75, 3, "functions")],
-        0.85,
-        (0..75)
-            .map(|index| RelatedLocation {
-                path: format!("src/{index}.rs"),
-                line: index + 1,
-                name: Some(format!("func_{index}")),
-            })
-            .collect(),
+        FindingInput::new(
+            FindingKind::SimilarFunctions,
+            "src/a.rs",
+            Some(1),
+            "similar",
+            vec![FindingMetric::threshold("group_size", 75, 3, "functions")],
+        )
+        .with_confidence(0.85)
+        .with_related_locations(
+            (0..75)
+                .map(|index| RelatedLocation {
+                    path: format!("src/{index}.rs"),
+                    line: index + 1,
+                    name: Some(format!("func_{index}")),
+                })
+                .collect(),
+        ),
     )]);
 
     let value: serde_json::Value =

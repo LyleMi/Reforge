@@ -7,7 +7,7 @@ use clap::CommandFactory;
 
 use crate::cli::Cli;
 use crate::model::{Finding, FindingKind, FindingMetric};
-use crate::scoring::finding;
+use crate::scoring::{FindingInput, finding};
 
 const PROJECT_MARKERS: &[&str] = &[
     "README.md",
@@ -211,7 +211,7 @@ impl DocumentationInventory {
             return None;
         }
 
-        Some(finding(
+        Some(finding(FindingInput::new(
             FindingKind::MissingDocumentationSet,
             display_path(&self.root),
             None,
@@ -222,13 +222,12 @@ impl DocumentationInventory {
                 1,
                 "documents",
             )],
-            Vec::new(),
-        ))
+        )))
     }
 
     fn missing_user_guide(&self) -> Option<Finding> {
         let Some(path) = &self.user_guide else {
-            return Some(finding(
+            return Some(finding(FindingInput::new(
                 FindingKind::MissingUserGuide,
                 display_path(&self.root),
                 None,
@@ -239,8 +238,7 @@ impl DocumentationInventory {
                     1,
                     "topics",
                 )],
-                Vec::new(),
-            ));
+            )));
         };
 
         let missing_topics = self.missing_user_guide_topics(path);
@@ -248,7 +246,7 @@ impl DocumentationInventory {
             return None;
         }
 
-        Some(finding(
+        Some(finding(FindingInput::new(
             FindingKind::MissingUserGuide,
             display_path(path),
             Some(1),
@@ -262,8 +260,7 @@ impl DocumentationInventory {
                 1,
                 "topics",
             )],
-            Vec::new(),
-        ))
+        )))
     }
 
     fn missing_user_guide_topics(&self, path: &Path) -> Vec<&'static str> {
@@ -281,7 +278,7 @@ impl DocumentationInventory {
     }
 
     fn missing_doc_finding(&self, kind: FindingKind, message: &str, risk: usize) -> Finding {
-        finding(
+        finding(FindingInput::new(
             kind,
             display_path(&self.root),
             None,
@@ -292,8 +289,7 @@ impl DocumentationInventory {
                 35,
                 "risk",
             )],
-            Vec::new(),
-        )
+        ))
     }
 
     fn stale_cli_documentation(&self) -> Option<Finding> {
@@ -317,7 +313,7 @@ impl DocumentationInventory {
             return None;
         }
 
-        Some(finding(
+        Some(finding(FindingInput::new(
             FindingKind::StaleCliDocumentation,
             self.user_guide
                 .as_ref()
@@ -336,8 +332,7 @@ impl DocumentationInventory {
                 1,
                 "flags",
             )],
-            Vec::new(),
-        ))
+        )))
     }
 
     fn stale_schema_documentation(&self) -> Option<Finding> {
@@ -356,7 +351,7 @@ impl DocumentationInventory {
             return None;
         }
 
-        Some(finding(
+        Some(finding(FindingInput::new(
             FindingKind::StaleSchemaDocumentation,
             display_path(path),
             Some(1),
@@ -370,8 +365,7 @@ impl DocumentationInventory {
                 1,
                 "fields",
             )],
-            Vec::new(),
-        ))
+        )))
     }
 
     fn texts_for<const N: usize>(&self, paths: [Option<&PathBuf>; N]) -> String {

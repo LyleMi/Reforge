@@ -9,7 +9,9 @@ use crate::language::{
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
     NAME_FIELD, PARAMETERS_FIELD, adapter_for_path,
 };
-use crate::scanner::{Finding, FindingKind, FindingMetric, RelatedLocation, is_test_source};
+use crate::scanner::{
+    Finding, FindingInput, FindingKind, FindingMetric, RelatedLocation, is_test_source,
+};
 use crate::similar_functions::{ParsedSourceFile, SourceFile, parse_source_files};
 
 #[derive(Debug, Clone)]
@@ -282,83 +284,122 @@ fn scan_function_metrics(
     signals: &mut FileSignals,
 ) {
     for function in functions {
-        if function.lines > options.max_function_lines {
-            signals.findings.push(crate::scanner::finding(
-                FindingKind::LongFunction,
-                file.display_path.clone(),
-                Some(function.line),
-                format!(
-                    "function `{}` spans {} lines; consider extracting smaller steps",
-                    function.name, function.lines
-                ),
-                vec![FindingMetric::threshold(
-                    "function_lines",
-                    function.lines,
-                    options.max_function_lines,
-                    "lines",
-                )],
-                Vec::new(),
-            ));
+        for signal in FUNCTION_FINDING_SIGNALS {
+            push_function_threshold_finding(file, function, options, signals, signal);
         }
-
-        if function.complexity > options.max_function_complexity {
-            signals.findings.push(crate::scanner::finding(
-                FindingKind::ComplexFunction,
-                file.display_path.clone(),
-                Some(function.line),
-                format!(
-                    "function `{}` has estimated complexity {}; consider reducing branches",
-                    function.name, function.complexity
-                ),
-                vec![FindingMetric::threshold(
-                    "function_complexity",
-                    function.complexity,
-                    options.max_function_complexity,
-                    "complexity",
-                )],
-                Vec::new(),
-            ));
-        }
-
-        if function.nesting_depth > options.max_nesting_depth {
-            signals.findings.push(crate::scanner::finding(
-                FindingKind::DeepNesting,
-                file.display_path.clone(),
-                Some(function.line),
-                format!(
-                    "function `{}` nests control flow {} levels deep",
-                    function.name, function.nesting_depth
-                ),
-                vec![FindingMetric::threshold(
-                    "nesting_depth",
-                    function.nesting_depth,
-                    options.max_nesting_depth,
-                    "levels",
-                )],
-                Vec::new(),
-            ));
-        }
-
-        if function.parameter_count > options.max_function_parameters {
-            signals.findings.push(crate::scanner::finding(
-                FindingKind::ManyParameters,
-                file.display_path.clone(),
-                Some(function.line),
-                format!(
-                    "function `{}` has {} parameters; consider grouping related data",
-                    function.name, function.parameter_count
-                ),
-                vec![FindingMetric::threshold(
-                    "function_parameters",
-                    function.parameter_count,
-                    options.max_function_parameters,
-                    "parameters",
-                )],
-                Vec::new(),
-            ));
-        }
-
         collect_data_clumps(file, function, options, signals);
+    }
+}
+
+const FUNCTION_FINDING_SIGNALS: [FunctionFindingSignal; 4] = [
+    FunctionFindingSignal::LongFunction,
+    FunctionFindingSignal::ComplexFunction,
+    FunctionFindingSignal::DeepNesting,
+    FunctionFindingSignal::ManyParameters,
+];
+
+#[derive(Debug, Clone, Copy)]
+enum FunctionFindingSignal {
+    LongFunction,
+    ComplexFunction,
+    DeepNesting,
+    ManyParameters,
+}
+
+fn push_function_threshold_finding(
+    file: &SourceFile,
+    function: &FunctionMetric,
+    options: &StructureOptions,
+    signals: &mut FileSignals,
+    signal: FunctionFindingSignal,
+) {
+    let value = signal.value(function);
+    let threshold = signal.threshold(options);
+    if value <= threshold {
+        return;
+    }
+
+    signals
+        .findings
+        .push(crate::scanner::finding(FindingInput::new(
+            signal.kind(),
+            file.display_path.clone(),
+            Some(function.line),
+            signal.message(function),
+            vec![FindingMetric::threshold(
+                signal.metric_name(),
+                value,
+                threshold,
+                signal.unit(),
+            )],
+        )));
+}
+
+impl FunctionFindingSignal {
+    fn kind(self) -> FindingKind {
+        match self {
+            Self::LongFunction => FindingKind::LongFunction,
+            Self::ComplexFunction => FindingKind::ComplexFunction,
+            Self::DeepNesting => FindingKind::DeepNesting,
+            Self::ManyParameters => FindingKind::ManyParameters,
+        }
+    }
+
+    fn metric_name(self) -> &'static str {
+        match self {
+            Self::LongFunction => "function_lines",
+            Self::ComplexFunction => "function_complexity",
+            Self::DeepNesting => "nesting_depth",
+            Self::ManyParameters => "function_parameters",
+        }
+    }
+
+    fn unit(self) -> &'static str {
+        match self {
+            Self::LongFunction => "lines",
+            Self::ComplexFunction => "complexity",
+            Self::DeepNesting => "levels",
+            Self::ManyParameters => "parameters",
+        }
+    }
+
+    fn value(self, function: &FunctionMetric) -> usize {
+        match self {
+            Self::LongFunction => function.lines,
+            Self::ComplexFunction => function.complexity,
+            Self::DeepNesting => function.nesting_depth,
+            Self::ManyParameters => function.parameter_count,
+        }
+    }
+
+    fn threshold(self, options: &StructureOptions) -> usize {
+        match self {
+            Self::LongFunction => options.max_function_lines,
+            Self::ComplexFunction => options.max_function_complexity,
+            Self::DeepNesting => options.max_nesting_depth,
+            Self::ManyParameters => options.max_function_parameters,
+        }
+    }
+
+    fn message(self, function: &FunctionMetric) -> String {
+        match self {
+            Self::LongFunction => format!(
+                "function `{}` spans {} lines; consider extracting smaller steps",
+                function.name, function.lines
+            ),
+            Self::ComplexFunction => format!(
+                "function `{}` has estimated complexity {}; consider reducing branches",
+                function.name, function.complexity
+            ),
+            Self::DeepNesting => format!(
+                "function `{}` nests control flow {} levels deep",
+                function.name, function.nesting_depth
+            ),
+            Self::ManyParameters => format!(
+                "function `{}` has {} parameters; consider grouping related data",
+                function.name, function.parameter_count
+            ),
+        }
     }
 }
 
@@ -372,7 +413,9 @@ fn scan_type_metrics(
         if type_metric.lines > options.max_type_lines
             || type_metric.members > options.max_type_members
         {
-            signals.findings.push(crate::scanner::finding(
+            signals
+                .findings
+                .push(crate::scanner::finding(FindingInput::new(
                 FindingKind::LargeType,
                 file.display_path.clone(),
                 Some(type_metric.line),
@@ -394,8 +437,7 @@ fn scan_type_metrics(
                         "members",
                     ),
                 ],
-                Vec::new(),
-            ));
+                )));
         }
     }
 }
@@ -409,36 +451,38 @@ fn scan_file_metrics(
 ) {
     let imports = count_imports(root, traversal.family);
     if imports > options.max_imports {
-        signals.findings.push(crate::scanner::finding(
-            FindingKind::ImportHeavyFile,
-            file.display_path.clone(),
-            Some(1),
-            format!("file has {imports} imports; consider reducing module coupling"),
-            vec![FindingMetric::threshold(
-                "imports",
-                imports,
-                options.max_imports,
-                "imports",
-            )],
-            Vec::new(),
-        ));
+        signals
+            .findings
+            .push(crate::scanner::finding(FindingInput::new(
+                FindingKind::ImportHeavyFile,
+                file.display_path.clone(),
+                Some(1),
+                format!("file has {imports} imports; consider reducing module coupling"),
+                vec![FindingMetric::threshold(
+                    "imports",
+                    imports,
+                    options.max_imports,
+                    "imports",
+                )],
+            )));
     }
 
     let public_items = count_public_items(root, traversal);
     if public_items > options.max_public_items {
-        signals.findings.push(crate::scanner::finding(
-            FindingKind::LargePublicSurface,
-            file.display_path.clone(),
-            Some(1),
-            format!("file exposes {public_items} public/exported items"),
-            vec![FindingMetric::threshold(
-                "public_items",
-                public_items,
-                options.max_public_items,
-                "items",
-            )],
-            Vec::new(),
-        ));
+        signals
+            .findings
+            .push(crate::scanner::finding(FindingInput::new(
+                FindingKind::LargePublicSurface,
+                file.display_path.clone(),
+                Some(1),
+                format!("file exposes {public_items} public/exported items"),
+                vec![FindingMetric::threshold(
+                    "public_items",
+                    public_items,
+                    options.max_public_items,
+                    "items",
+                )],
+            )));
     }
 }
 

@@ -18,46 +18,77 @@ const DEFAULT_MAX_TYPE_MEMBERS: usize = 30;
 const DEFAULT_MAX_IMPORTS: usize = 35;
 const DEFAULT_MAX_PUBLIC_ITEMS: usize = 30;
 
-pub fn finding(
+#[derive(Debug, Clone)]
+pub struct FindingInput {
     kind: FindingKind,
-    path: impl Into<String>,
+    path: String,
     line: Option<usize>,
-    message: impl Into<String>,
+    message: String,
     metrics: Vec<FindingMetric>,
+    confidence: Option<f64>,
     related_locations: Vec<RelatedLocation>,
-) -> Finding {
-    scored_finding(
-        kind,
-        path,
-        line,
-        message,
-        metrics,
-        default_confidence(kind),
-        related_locations,
-    )
 }
 
-pub fn scored_finding(
-    kind: FindingKind,
-    path: impl Into<String>,
-    line: Option<usize>,
-    message: impl Into<String>,
-    metrics: Vec<FindingMetric>,
-    confidence: f64,
-    related_locations: Vec<RelatedLocation>,
-) -> Finding {
+impl FindingInput {
+    pub fn new(
+        kind: FindingKind,
+        path: impl Into<String>,
+        line: Option<usize>,
+        message: impl Into<String>,
+        metrics: Vec<FindingMetric>,
+    ) -> Self {
+        Self {
+            kind,
+            path: path.into(),
+            line,
+            message: message.into(),
+            metrics,
+            confidence: None,
+            related_locations: Vec::new(),
+        }
+    }
+
+    pub fn with_confidence(mut self, confidence: f64) -> Self {
+        self.confidence = Some(confidence);
+        self
+    }
+
+    pub fn with_related_locations(mut self, related_locations: Vec<RelatedLocation>) -> Self {
+        self.related_locations = related_locations;
+        self
+    }
+}
+
+pub fn finding(input: FindingInput) -> Finding {
+    build_finding(input)
+}
+
+pub fn scored_finding(input: FindingInput) -> Finding {
+    build_finding(input)
+}
+
+fn build_finding(input: FindingInput) -> Finding {
+    let confidence = input
+        .confidence
+        .unwrap_or_else(|| default_confidence(input.kind));
     let mut finding = Finding {
-        kind,
+        kind: input.kind,
         severity: Severity::Info,
-        path: path.into(),
-        line,
-        metrics,
+        path: input.path,
+        line: input.line,
+        metrics: input.metrics,
         priority: 0,
         confidence,
-        priority_factors: priority_factors(kind, &[], confidence, &related_locations, 0.0),
+        priority_factors: priority_factors(
+            input.kind,
+            &[],
+            confidence,
+            &input.related_locations,
+            0.0,
+        ),
         rank_explanation: String::new(),
-        message: message.into(),
-        related_locations,
+        message: input.message,
+        related_locations: input.related_locations,
     };
     refresh_finding_priority(&mut finding, 0.0);
     finding
@@ -512,127 +543,143 @@ fn normalized_metric_value(metric: &FindingMetric, threshold_normalized: f64) ->
 
 pub(crate) fn summarize_raw_metrics(raw_metrics: &RawMetrics) -> MetricsSummary {
     MetricsSummary {
-        files: percentile_map([
-            (
-                "loc",
-                raw_metrics.files.iter().map(|metric| metric.loc).collect(),
-            ),
-            (
-                "imports",
-                raw_metrics
-                    .files
-                    .iter()
-                    .map(|metric| metric.imports)
-                    .collect(),
-            ),
-            (
-                "public_items",
-                raw_metrics
-                    .files
-                    .iter()
-                    .map(|metric| metric.public_items)
-                    .collect(),
-            ),
-            (
-                "directory_source_files",
-                raw_metrics
-                    .files
-                    .iter()
-                    .map(|metric| metric.directory_source_files)
-                    .collect(),
-            ),
-        ]),
-        functions: percentile_map([
-            (
-                "loc",
-                raw_metrics
-                    .functions
-                    .iter()
-                    .map(|metric| metric.loc)
-                    .collect(),
-            ),
-            (
-                "complexity",
-                raw_metrics
-                    .functions
-                    .iter()
-                    .map(|metric| metric.complexity)
-                    .collect(),
-            ),
-            (
-                "nesting_depth",
-                raw_metrics
-                    .functions
-                    .iter()
-                    .map(|metric| metric.nesting_depth)
-                    .collect(),
-            ),
-            (
-                "parameter_count",
-                raw_metrics
-                    .functions
-                    .iter()
-                    .map(|metric| metric.parameter_count)
-                    .collect(),
-            ),
-        ]),
-        types: percentile_map([
-            (
-                "loc",
-                raw_metrics.types.iter().map(|metric| metric.loc).collect(),
-            ),
-            (
-                "member_count",
-                raw_metrics
-                    .types
-                    .iter()
-                    .map(|metric| metric.member_count)
-                    .collect(),
-            ),
-        ]),
-        churn: percentile_map([
-            (
-                "commits_touched",
-                raw_metrics
-                    .files
-                    .iter()
-                    .map(|metric| metric.churn.commits_touched)
-                    .collect(),
-            ),
-            (
-                "lines_added",
-                raw_metrics
-                    .files
-                    .iter()
-                    .map(|metric| metric.churn.lines_added)
-                    .collect(),
-            ),
-            (
-                "lines_deleted",
-                raw_metrics
-                    .files
-                    .iter()
-                    .map(|metric| metric.churn.lines_deleted)
-                    .collect(),
-            ),
-            (
-                "authors_count",
-                raw_metrics
-                    .files
-                    .iter()
-                    .map(|metric| metric.churn.authors_count)
-                    .collect(),
-            ),
-            (
-                "recent_weighted_churn",
-                raw_metrics
-                    .files
-                    .iter()
-                    .map(|metric| metric.churn.recent_weighted_churn)
-                    .collect(),
-            ),
-        ]),
+        files: file_percentiles(raw_metrics),
+        functions: function_percentiles(raw_metrics),
+        types: type_percentiles(raw_metrics),
+        churn: churn_percentiles(raw_metrics),
     }
+}
+
+fn file_percentiles(raw_metrics: &RawMetrics) -> BTreeMap<String, MetricPercentiles> {
+    percentile_map([
+        (
+            "loc",
+            raw_metrics.files.iter().map(|metric| metric.loc).collect(),
+        ),
+        (
+            "imports",
+            raw_metrics
+                .files
+                .iter()
+                .map(|metric| metric.imports)
+                .collect(),
+        ),
+        (
+            "public_items",
+            raw_metrics
+                .files
+                .iter()
+                .map(|metric| metric.public_items)
+                .collect(),
+        ),
+        (
+            "directory_source_files",
+            raw_metrics
+                .files
+                .iter()
+                .map(|metric| metric.directory_source_files)
+                .collect(),
+        ),
+    ])
+}
+
+fn function_percentiles(raw_metrics: &RawMetrics) -> BTreeMap<String, MetricPercentiles> {
+    percentile_map([
+        (
+            "loc",
+            raw_metrics
+                .functions
+                .iter()
+                .map(|metric| metric.loc)
+                .collect(),
+        ),
+        (
+            "complexity",
+            raw_metrics
+                .functions
+                .iter()
+                .map(|metric| metric.complexity)
+                .collect(),
+        ),
+        (
+            "nesting_depth",
+            raw_metrics
+                .functions
+                .iter()
+                .map(|metric| metric.nesting_depth)
+                .collect(),
+        ),
+        (
+            "parameter_count",
+            raw_metrics
+                .functions
+                .iter()
+                .map(|metric| metric.parameter_count)
+                .collect(),
+        ),
+    ])
+}
+
+fn type_percentiles(raw_metrics: &RawMetrics) -> BTreeMap<String, MetricPercentiles> {
+    percentile_map([
+        (
+            "loc",
+            raw_metrics.types.iter().map(|metric| metric.loc).collect(),
+        ),
+        (
+            "member_count",
+            raw_metrics
+                .types
+                .iter()
+                .map(|metric| metric.member_count)
+                .collect(),
+        ),
+    ])
+}
+
+fn churn_percentiles(raw_metrics: &RawMetrics) -> BTreeMap<String, MetricPercentiles> {
+    percentile_map([
+        (
+            "commits_touched",
+            raw_metrics
+                .files
+                .iter()
+                .map(|metric| metric.churn.commits_touched)
+                .collect(),
+        ),
+        (
+            "lines_added",
+            raw_metrics
+                .files
+                .iter()
+                .map(|metric| metric.churn.lines_added)
+                .collect(),
+        ),
+        (
+            "lines_deleted",
+            raw_metrics
+                .files
+                .iter()
+                .map(|metric| metric.churn.lines_deleted)
+                .collect(),
+        ),
+        (
+            "authors_count",
+            raw_metrics
+                .files
+                .iter()
+                .map(|metric| metric.churn.authors_count)
+                .collect(),
+        ),
+        (
+            "recent_weighted_churn",
+            raw_metrics
+                .files
+                .iter()
+                .map(|metric| metric.churn.recent_weighted_churn)
+                .collect(),
+        ),
+    ])
 }
 
 fn percentile_map<const N: usize>(
@@ -671,87 +718,100 @@ pub(crate) fn rank_hotspots(
     metrics_summary: &MetricsSummary,
     model: HotspotModel,
 ) -> Vec<Hotspot> {
-    let mut hotspots = Vec::new();
+    HotspotRanking::new(raw_metrics, metrics_summary, model).rank()
+}
 
-    for file in &raw_metrics.files {
-        let static_risk = strongest_risk([
-            threshold_risk(file.loc, DEFAULT_MAX_FILE_LINES),
-            threshold_risk(file.imports, DEFAULT_MAX_IMPORTS) * 0.80,
-            threshold_risk(file.public_items, DEFAULT_MAX_PUBLIC_ITEMS) * 0.80,
-            threshold_risk(file.directory_source_files, DEFAULT_MAX_DIR_FILES) * 0.65,
-            percentile_risk(file.loc, &metrics_summary.files, "loc") * 0.35,
-        ]);
-        let churn_risk = file_churn_risk(file, metrics_summary);
-        hotspots.push(hotspot(
-            HotspotLevel::File,
-            file.path.clone(),
-            None,
-            None,
-            static_risk,
-            churn_risk,
+struct HotspotRanking<'a> {
+    raw_metrics: &'a RawMetrics,
+    metrics_summary: &'a MetricsSummary,
+    model: HotspotModel,
+}
+
+impl<'a> HotspotRanking<'a> {
+    fn new(
+        raw_metrics: &'a RawMetrics,
+        metrics_summary: &'a MetricsSummary,
+        model: HotspotModel,
+    ) -> Self {
+        Self {
+            raw_metrics,
+            metrics_summary,
             model,
-        ));
+        }
     }
 
-    for function in &raw_metrics.functions {
-        let static_risk = strongest_risk([
-            threshold_risk(function.loc, DEFAULT_MAX_FUNCTION_LINES),
-            threshold_risk(function.complexity, DEFAULT_MAX_FUNCTION_COMPLEXITY),
-            threshold_risk(function.nesting_depth, DEFAULT_MAX_NESTING_DEPTH) * 0.85,
-            threshold_risk(function.parameter_count, DEFAULT_MAX_FUNCTION_PARAMETERS) * 0.75,
-            percentile_risk(function.loc, &metrics_summary.functions, "loc") * 0.35,
-        ]);
-        let file_churn_risk = raw_metrics
+    fn rank(self) -> Vec<Hotspot> {
+        let mut hotspots = Vec::new();
+
+        self.append_file_hotspots(&mut hotspots);
+        self.append_function_hotspots(&mut hotspots);
+        self.append_type_hotspots(&mut hotspots);
+
+        hotspots.retain(|hotspot| hotspot.priority >= 35);
+        sort_hotspots(&mut hotspots);
+        hotspots
+    }
+
+    fn append_file_hotspots(&self, hotspots: &mut Vec<Hotspot>) {
+        for file in &self.raw_metrics.files {
+            let static_risk = file_static_risk(file, self.metrics_summary);
+            hotspots.push(hotspot(HotspotInput {
+                level: HotspotLevel::File,
+                path: file.path.clone(),
+                line: None,
+                name: None,
+                static_risk,
+                churn_risk: file_churn_risk(file, self.metrics_summary),
+                model: self.model,
+            }));
+        }
+    }
+
+    fn append_function_hotspots(&self, hotspots: &mut Vec<Hotspot>) {
+        for function in &self.raw_metrics.functions {
+            let static_risk = function_static_risk(function, self.metrics_summary);
+            hotspots.push(hotspot(HotspotInput {
+                level: HotspotLevel::Function,
+                path: function.path.clone(),
+                line: Some(function.line),
+                name: Some(function.name.clone()),
+                static_risk,
+                churn_risk: self.scoped_churn_risk(&function.path, static_risk),
+                model: self.model,
+            }));
+        }
+    }
+
+    fn append_type_hotspots(&self, hotspots: &mut Vec<Hotspot>) {
+        for type_metric in &self.raw_metrics.types {
+            let static_risk = type_static_risk(type_metric, self.metrics_summary);
+            hotspots.push(hotspot(HotspotInput {
+                level: HotspotLevel::Type,
+                path: type_metric.path.clone(),
+                line: Some(type_metric.line),
+                name: Some(type_metric.name.clone()),
+                static_risk,
+                churn_risk: self.scoped_churn_risk(&type_metric.path, static_risk),
+                model: self.model,
+            }));
+        }
+    }
+
+    fn scoped_churn_risk(&self, path: &str, static_risk: f64) -> f64 {
+        if static_risk < 35.0 {
+            return 0.0;
+        }
+
+        self.raw_metrics
             .files
             .iter()
-            .find(|file| file.path == function.path)
-            .map(|file| file_churn_risk(file, metrics_summary))
-            .unwrap_or(0.0);
-        let churn_risk = if static_risk >= 35.0 {
-            file_churn_risk
-        } else {
-            0.0
-        };
-        hotspots.push(hotspot(
-            HotspotLevel::Function,
-            function.path.clone(),
-            Some(function.line),
-            Some(function.name.clone()),
-            static_risk,
-            churn_risk,
-            model,
-        ));
+            .find(|file| file.path == path)
+            .map(|file| file_churn_risk(file, self.metrics_summary))
+            .unwrap_or(0.0)
     }
+}
 
-    for type_metric in &raw_metrics.types {
-        let static_risk = strongest_risk([
-            threshold_risk(type_metric.loc, DEFAULT_MAX_TYPE_LINES),
-            threshold_risk(type_metric.member_count, DEFAULT_MAX_TYPE_MEMBERS),
-            percentile_risk(type_metric.loc, &metrics_summary.types, "loc") * 0.35,
-        ]);
-        let file_churn_risk = raw_metrics
-            .files
-            .iter()
-            .find(|file| file.path == type_metric.path)
-            .map(|file| file_churn_risk(file, metrics_summary))
-            .unwrap_or(0.0);
-        let churn_risk = if static_risk >= 35.0 {
-            file_churn_risk
-        } else {
-            0.0
-        };
-        hotspots.push(hotspot(
-            HotspotLevel::Type,
-            type_metric.path.clone(),
-            Some(type_metric.line),
-            Some(type_metric.name.clone()),
-            static_risk,
-            churn_risk,
-            model,
-        ));
-    }
-
-    hotspots.retain(|hotspot| hotspot.priority >= 35);
+fn sort_hotspots(hotspots: &mut [Hotspot]) {
     hotspots.sort_by(|left, right| {
         right
             .priority
@@ -760,7 +820,40 @@ pub(crate) fn rank_hotspots(
             .then_with(|| left.line.cmp(&right.line))
             .then_with(|| left.name.cmp(&right.name))
     });
-    hotspots
+}
+
+fn file_static_risk(file: &FileRawMetric, metrics_summary: &MetricsSummary) -> f64 {
+    strongest_risk([
+        threshold_risk(file.loc, DEFAULT_MAX_FILE_LINES),
+        threshold_risk(file.imports, DEFAULT_MAX_IMPORTS) * 0.80,
+        threshold_risk(file.public_items, DEFAULT_MAX_PUBLIC_ITEMS) * 0.80,
+        threshold_risk(file.directory_source_files, DEFAULT_MAX_DIR_FILES) * 0.65,
+        percentile_risk(file.loc, &metrics_summary.files, "loc") * 0.35,
+    ])
+}
+
+fn function_static_risk(
+    function: &crate::model::FunctionRawMetric,
+    metrics_summary: &MetricsSummary,
+) -> f64 {
+    strongest_risk([
+        threshold_risk(function.loc, DEFAULT_MAX_FUNCTION_LINES),
+        threshold_risk(function.complexity, DEFAULT_MAX_FUNCTION_COMPLEXITY),
+        threshold_risk(function.nesting_depth, DEFAULT_MAX_NESTING_DEPTH) * 0.85,
+        threshold_risk(function.parameter_count, DEFAULT_MAX_FUNCTION_PARAMETERS) * 0.75,
+        percentile_risk(function.loc, &metrics_summary.functions, "loc") * 0.35,
+    ])
+}
+
+fn type_static_risk(
+    type_metric: &crate::model::TypeRawMetric,
+    metrics_summary: &MetricsSummary,
+) -> f64 {
+    strongest_risk([
+        threshold_risk(type_metric.loc, DEFAULT_MAX_TYPE_LINES),
+        threshold_risk(type_metric.member_count, DEFAULT_MAX_TYPE_MEMBERS),
+        percentile_risk(type_metric.loc, &metrics_summary.types, "loc") * 0.35,
+    ])
 }
 
 fn strongest_risk<const N: usize>(risks: [f64; N]) -> f64 {
@@ -821,33 +914,35 @@ fn file_churn_risk(file: &FileRawMetric, metrics_summary: &MetricsSummary) -> f6
     ])
 }
 
-fn hotspot(
+struct HotspotInput {
     level: HotspotLevel,
+    static_risk: f64,
+    churn_risk: f64,
     path: String,
     line: Option<usize>,
     name: Option<String>,
-    static_risk: f64,
-    churn_risk: f64,
     model: HotspotModel,
-) -> Hotspot {
-    let priority = match model {
-        HotspotModel::Static => static_risk,
-        HotspotModel::Churn => churn_risk,
-        HotspotModel::Hybrid => (static_risk * 0.65) + (churn_risk * 0.35),
+}
+
+fn hotspot(input: HotspotInput) -> Hotspot {
+    let priority = match input.model {
+        HotspotModel::Static => input.static_risk,
+        HotspotModel::Churn => input.churn_risk,
+        HotspotModel::Hybrid => (input.static_risk * 0.65) + (input.churn_risk * 0.35),
     }
     .round()
     .clamp(0.0, 100.0) as u8;
-    let reason = hotspot_reason(static_risk, churn_risk, model);
+    let reason = hotspot_reason(input.static_risk, input.churn_risk, input.model);
 
     Hotspot {
-        level,
-        path,
-        line,
-        name,
+        level: input.level,
+        path: input.path,
+        line: input.line,
+        name: input.name,
         priority,
         severity: severity_for_priority(priority),
-        static_risk,
-        churn_risk,
+        static_risk: input.static_risk,
+        churn_risk: input.churn_risk,
         reason,
     }
 }

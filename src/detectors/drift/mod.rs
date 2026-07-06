@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::scanner::{Finding, FindingKind, FindingMetric, RelatedLocation, is_test_source};
+use crate::scanner::{
+    Finding, FindingInput, FindingKind, FindingMetric, RelatedLocation, is_test_source,
+};
 use crate::similar_functions::SourceFile;
 
 #[derive(Debug, Clone)]
@@ -542,24 +544,28 @@ fn duplicate_type_shape_findings(
         let fields = shared_fields(&group);
         let representative = &group[0].occurrence;
         findings.push(crate::scanner::finding(
-            FindingKind::DuplicateTypeShape,
-            representative.path.clone(),
-            Some(representative.line),
-            format!(
-                "{} type shapes share fields: {}",
-                group.len(),
-                fields.into_iter().take(6).collect::<Vec<_>>().join(", ")
+            FindingInput::new(
+                FindingKind::DuplicateTypeShape,
+                representative.path.clone(),
+                Some(representative.line),
+                format!(
+                    "{} type shapes share fields: {}",
+                    group.len(),
+                    fields.into_iter().take(6).collect::<Vec<_>>().join(", ")
+                ),
+                vec![FindingMetric::threshold(
+                    "group_size",
+                    group.len(),
+                    threshold,
+                    "type shapes",
+                )],
+            )
+            .with_related_locations(
+                group
+                    .iter()
+                    .map(|shape| related_location(&shape.occurrence))
+                    .collect(),
             ),
-            vec![FindingMetric::threshold(
-                "group_size",
-                group.len(),
-                threshold,
-                "type shapes",
-            )],
-            group
-                .iter()
-                .map(|shape| related_location(&shape.occurrence))
-                .collect(),
         ));
     }
 
@@ -580,46 +586,52 @@ fn generic_bucket_findings(
         }
 
         findings.push(crate::scanner::finding(
-            FindingKind::GenericBucketDrift,
-            directory.display_path.clone(),
-            None,
-            format!(
-                "generic bucket mixes {} source concepts across {} files",
-                directory.concepts.len(),
-                directory.files.len()
+            FindingInput::new(
+                FindingKind::GenericBucketDrift,
+                directory.display_path.clone(),
+                None,
+                format!(
+                    "generic bucket mixes {} source concepts across {} files",
+                    directory.concepts.len(),
+                    directory.files.len()
+                ),
+                vec![FindingMetric::threshold(
+                    "group_size",
+                    directory.concepts.len(),
+                    concept_threshold,
+                    "concepts",
+                )],
+            )
+            .with_related_locations(
+                directory
+                    .files
+                    .iter()
+                    .map(|path| RelatedLocation {
+                        path: path.clone(),
+                        line: 1,
+                        name: None,
+                    })
+                    .collect(),
             ),
-            vec![FindingMetric::threshold(
-                "group_size",
-                directory.concepts.len(),
-                concept_threshold,
-                "concepts",
-            )],
-            directory
-                .files
-                .iter()
-                .map(|path| RelatedLocation {
-                    path: path.clone(),
-                    line: 1,
-                    name: None,
-                })
-                .collect(),
         ));
     }
 
     for (concepts, occurrence) in generic_files {
         let concept_count = concepts.split(", ").count();
         findings.push(crate::scanner::finding(
-            FindingKind::GenericBucketDrift,
-            occurrence.path.clone(),
-            Some(occurrence.line),
-            format!("generic file accumulates unrelated concepts: {concepts}"),
-            vec![FindingMetric::threshold(
-                "group_size",
-                concept_count,
-                4,
-                "concepts",
-            )],
-            vec![related_location(occurrence)],
+            FindingInput::new(
+                FindingKind::GenericBucketDrift,
+                occurrence.path.clone(),
+                Some(occurrence.line),
+                format!("generic file accumulates unrelated concepts: {concepts}"),
+                vec![FindingMetric::threshold(
+                    "group_size",
+                    concept_count,
+                    4,
+                    "concepts",
+                )],
+            )
+            .with_related_locations(vec![related_location(occurrence)]),
         ));
     }
 
@@ -647,21 +659,23 @@ fn adapter_boundary_bypass_findings(
 
         let representative = &group[0];
         findings.push(crate::scanner::finding(
-            FindingKind::AdapterBoundaryBypass,
-            representative.path.clone(),
-            Some(representative.line),
-            format!(
-                "{} direct {} calls bypass existing boundary files",
-                group.len(),
-                kind.label()
-            ),
-            vec![FindingMetric::threshold(
-                "group_size",
-                group.len(),
-                2,
-                "bypasses",
-            )],
-            group.iter().map(related_location).collect(),
+            FindingInput::new(
+                FindingKind::AdapterBoundaryBypass,
+                representative.path.clone(),
+                Some(representative.line),
+                format!(
+                    "{} direct {} calls bypass existing boundary files",
+                    group.len(),
+                    kind.label()
+                ),
+                vec![FindingMetric::threshold(
+                    "group_size",
+                    group.len(),
+                    2,
+                    "bypasses",
+                )],
+            )
+            .with_related_locations(group.iter().map(related_location).collect()),
         ));
     }
 
@@ -703,17 +717,19 @@ fn groups_to_findings(
 
         let representative = &group[0];
         findings.push(crate::scanner::finding(
-            spec.kind,
-            representative.path.clone(),
-            Some(representative.line),
-            (spec.message)(&key, group.len()),
-            vec![FindingMetric::threshold(
-                "group_size",
-                group.len(),
-                spec.threshold,
-                "occurrences",
-            )],
-            group.iter().map(related_location).collect(),
+            FindingInput::new(
+                spec.kind,
+                representative.path.clone(),
+                Some(representative.line),
+                (spec.message)(&key, group.len()),
+                vec![FindingMetric::threshold(
+                    "group_size",
+                    group.len(),
+                    spec.threshold,
+                    "occurrences",
+                )],
+            )
+            .with_related_locations(group.iter().map(related_location).collect()),
         ));
     }
 

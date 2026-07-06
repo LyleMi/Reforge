@@ -18,7 +18,9 @@ use crate::model::{
     FunctionRawMetric, RawMetrics, SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary,
     TypeRawMetric,
 };
-use crate::scoring::{finalize_scoring, finding, rank_hotspots, summarize_raw_metrics};
+use crate::scoring::{
+    FindingInput, finalize_scoring, finding, rank_hotspots, summarize_raw_metrics,
+};
 use crate::similar_functions::{
     ParsedSourceFile, SimilarFunctionOptions, SimilarFunctionProgress, SourceFile,
     parse_source_file, scan_parsed_similar_functions_report_with_progress,
@@ -428,6 +430,15 @@ fn discover_config_path(root: &Path) -> Option<PathBuf> {
 }
 
 fn apply_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
+    apply_file_config_defaults(args, config);
+    apply_similarity_config_defaults(args, config);
+    apply_structure_config_defaults(args, config);
+    apply_repetition_config_defaults(args, config);
+    apply_churn_config_defaults(args, config);
+    apply_ignore_path_defaults(args, config);
+}
+
+fn apply_file_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
     apply_usize_default(
         &mut args.max_file_lines,
         DEFAULT_MAX_FILE_LINES,
@@ -438,6 +449,9 @@ fn apply_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
         DEFAULT_MAX_DIR_FILES,
         config.max_dir_files,
     );
+}
+
+fn apply_similarity_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
     apply_usize_default(
         &mut args.min_similar_functions,
         DEFAULT_MIN_SIMILAR_FUNCTIONS,
@@ -453,6 +467,9 @@ fn apply_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
     {
         args.function_similarity = value;
     }
+}
+
+fn apply_structure_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
     apply_usize_default(
         &mut args.max_function_lines,
         DEFAULT_MAX_FUNCTION_LINES,
@@ -493,6 +510,9 @@ fn apply_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
         DEFAULT_MAX_PUBLIC_ITEMS,
         config.max_public_items,
     );
+}
+
+fn apply_repetition_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
     apply_usize_default(
         &mut args.min_repeated_literal_occurrences,
         DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES,
@@ -503,13 +523,18 @@ fn apply_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
         DEFAULT_MIN_DATA_CLUMP_OCCURRENCES,
         config.min_data_clump_occurrences,
     );
+}
 
+fn apply_churn_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
     args.churn = args.churn.or(config.churn);
     args.hotspot_model = args.hotspot_model.or(config.hotspot_model);
     args.churn_window_days = args.churn_window_days.or(config.churn_window_days);
     args.churn_max_commit_lines = args
         .churn_max_commit_lines
         .or(config.churn_max_commit_lines);
+}
+
+fn apply_ignore_path_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
     if args.ignore_paths.is_empty() {
         args.ignore_paths = config.ignore_paths.clone();
     }
@@ -580,14 +605,14 @@ fn collect_churn_metrics(
         .expect("effective args should set churn max commit lines");
 
     if mode == ChurnMode::Off {
-        return Ok(churn_summary(
+        return Ok(churn_summary(ChurnSummaryInput {
             mode,
-            false,
-            "disabled",
-            Some("churn collection disabled by configuration".to_string()),
+            enabled: false,
+            status: "disabled",
+            reason: Some("churn collection disabled by configuration".to_string()),
             window_days,
             max_commit_lines,
-        ));
+        }));
     }
 
     match collect_git_churn(root, window_days, max_commit_lines) {
@@ -598,42 +623,44 @@ fn collect_churn_metrics(
                 }
             }
 
-            Ok(churn_summary(
+            Ok(churn_summary(ChurnSummaryInput {
                 mode,
-                true,
-                "enabled",
-                None,
+                enabled: true,
+                status: "enabled",
+                reason: None,
                 window_days,
                 max_commit_lines,
-            ))
+            }))
         }
-        Err(error) if mode == ChurnMode::Auto => Ok(churn_summary(
+        Err(error) if mode == ChurnMode::Auto => Ok(churn_summary(ChurnSummaryInput {
             mode,
-            false,
-            "unavailable",
-            Some(error.to_string()),
+            enabled: false,
+            status: "unavailable",
+            reason: Some(error.to_string()),
             window_days,
             max_commit_lines,
-        )),
+        })),
         Err(error) => Err(error),
     }
 }
 
-fn churn_summary(
+struct ChurnSummaryInput {
     mode: ChurnMode,
     enabled: bool,
-    status: &str,
+    status: &'static str,
     reason: Option<String>,
     window_days: usize,
     max_commit_lines: usize,
-) -> ChurnSummary {
+}
+
+fn churn_summary(input: ChurnSummaryInput) -> ChurnSummary {
     ChurnSummary {
-        mode,
-        enabled,
-        status: status.to_string(),
-        reason,
-        window_days,
-        max_commit_lines,
+        mode: input.mode,
+        enabled: input.enabled,
+        status: input.status.to_string(),
+        reason: input.reason,
+        window_days: input.window_days,
+        max_commit_lines: input.max_commit_lines,
     }
 }
 
@@ -1041,7 +1068,7 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
     });
 
     if line_count > options.max_file_lines {
-        scan.findings.push(finding(
+        scan.findings.push(finding(FindingInput::new(
             FindingKind::LargeFile,
             display_path.clone(),
             Some(1),
@@ -1052,20 +1079,18 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
                 options.max_file_lines,
                 "lines",
             )],
-            Vec::new(),
-        ));
+        )));
     }
 
     for (index, line) in source.lines().enumerate() {
         if has_debt_marker(line) {
-            scan.findings.push(finding(
+            scan.findings.push(finding(FindingInput::new(
                 FindingKind::DebtMarker,
                 display_path.clone(),
                 Some(index + 1),
                 "technical-debt marker found",
                 Vec::new(),
-                Vec::new(),
-            ));
+            )));
         }
     }
 
@@ -1101,7 +1126,7 @@ fn scan_directories(
 ) {
     for (directory, file_count) in directory_source_files {
         if *file_count > max_dir_files {
-            findings.push(finding(
+            findings.push(finding(FindingInput::new(
                 FindingKind::LargeDirectory,
                 display_path(directory),
                 None,
@@ -1114,8 +1139,7 @@ fn scan_directories(
                     max_dir_files,
                     "source files",
                 )],
-                Vec::new(),
-            ));
+            )));
         }
     }
 }

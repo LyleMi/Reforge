@@ -450,14 +450,16 @@ pub(super) fn happy_path_test_findings(test_files: Vec<(usize, Vec<Occurrence>)>
         .filter_map(|(test_count, locations)| {
             let representative = locations.first()?;
             Some(crate::scanner::finding(
-                FindingKind::HappyPathOnlyTests,
-                representative.path.clone(),
-                Some(representative.line),
-                format!(
-                    "test file has {test_count} cases but no negative, error, or boundary assertions were detected"
-                ),
-                vec![FindingMetric::threshold("group_size", test_count, 3, "test cases")],
-                locations,
+                FindingInput::new(
+                    FindingKind::HappyPathOnlyTests,
+                    representative.path.clone(),
+                    Some(representative.line),
+                    format!(
+                        "test file has {test_count} cases but no negative, error, or boundary assertions were detected"
+                    ),
+                    vec![FindingMetric::threshold("group_size", test_count, 3, "test cases")],
+                )
+                .with_related_locations(locations),
             ))
         })
         .collect()
@@ -625,22 +627,24 @@ pub(super) fn file_naming_drift_findings(
         }
 
         findings.push(crate::scanner::finding(
-            FindingKind::FileNamingDrift,
-            directory.display_path.clone(),
-            None,
-            format!(
-                "directory uses {} file naming styles across {total_files} files; dominant style is {} with {} files",
-                styles.len(),
-                dominant_style.label(),
-                dominant_locations.len()
-            ),
-            vec![FindingMetric::threshold(
-                "group_size",
-                styles.len(),
-                2,
-                "naming styles",
-            )],
-            related_locations,
+            FindingInput::new(
+                FindingKind::FileNamingDrift,
+                directory.display_path.clone(),
+                None,
+                format!(
+                    "directory uses {} file naming styles across {total_files} files; dominant style is {} with {} files",
+                    styles.len(),
+                    dominant_style.label(),
+                    dominant_locations.len()
+                ),
+                vec![FindingMetric::threshold(
+                    "group_size",
+                    styles.len(),
+                    2,
+                    "naming styles",
+                )],
+            )
+            .with_related_locations(related_locations),
         ));
     }
 
@@ -834,7 +838,7 @@ pub(super) fn directory_drift_findings(
     for (directory, concepts) in directories {
         let threshold = options.max_dir_files.max(4);
         if concepts.len() > threshold {
-            findings.push(crate::scanner::finding(
+            findings.push(crate::scanner::finding(FindingInput::new(
                 FindingKind::DirectoryDrift,
                 directory.to_string_lossy().replace('\\', "/"),
                 None,
@@ -848,8 +852,7 @@ pub(super) fn directory_drift_findings(
                     threshold,
                     "concepts",
                 )],
-                Vec::new(),
-            ));
+            )));
         }
     }
     findings
@@ -894,22 +897,26 @@ pub(super) fn group_occurrences(
         )];
         let finding = if kind == FindingKind::RepeatedLiteral {
             crate::scanner::scored_finding(
-                kind,
-                representative.path.clone(),
-                Some(representative.line),
-                message(&key, group.len()),
-                metrics,
-                repeated_literal_confidence(&key, &group),
-                related_locations,
+                FindingInput::new(
+                    kind,
+                    representative.path.clone(),
+                    Some(representative.line),
+                    message(&key, group.len()),
+                    metrics,
+                )
+                .with_confidence(repeated_literal_confidence(&key, &group))
+                .with_related_locations(related_locations),
             )
         } else {
             crate::scanner::finding(
-                kind,
-                representative.path.clone(),
-                Some(representative.line),
-                message(&key, group.len()),
-                metrics,
-                related_locations,
+                FindingInput::new(
+                    kind,
+                    representative.path.clone(),
+                    Some(representative.line),
+                    message(&key, group.len()),
+                    metrics,
+                )
+                .with_related_locations(related_locations),
             )
         };
         findings.push(finding);
