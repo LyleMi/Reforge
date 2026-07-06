@@ -100,6 +100,32 @@ fn collect_named_functions(
 }
 
 #[test]
+fn ignores_rust_enum_variants_for_large_type_member_count() -> Result<()> {
+    let source = r#"
+enum FindingKind {
+    LargeFile,
+    LargeDirectory,
+    DebtMarker,
+    SimilarFunctions,
+    LongFunction,
+}
+"#;
+    let mut opts = options();
+    opts.max_type_lines = 20;
+    opts.max_type_members = 3;
+
+    let findings = scan_structure(&[source_file("src/model.rs", source)], &opts)?;
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::LargeType),
+        "{findings:#?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn reports_typescript_module_level_signals() -> Result<()> {
     let source = r#"
 import a from "a";

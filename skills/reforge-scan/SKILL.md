@@ -1,6 +1,6 @@
 ---
 name: reforge-scan
-description: Run the Reforge Rust CLI against source repositories to detect refactoring signals, code drift, similar functions, large files, structural complexity, TODO/FIXME clusters, mixed naming styles, and agent-written-code drift. Use when Codex is asked to audit a repository for maintainability issues, identify cleanup priorities, produce a JSON/YAML/human Reforge report, compare refactoring risk across modules, or recommend concrete refactors from Reforge findings.
+description: Run the Reforge Rust CLI against source repositories to detect refactoring signals, code drift, similar functions, large files, structural complexity, TODO/FIXME clusters, mixed naming styles, documentation drift, churn-backed hotspots, and agent-written-code drift. Use when Codex is asked to audit a repository for maintainability issues, identify cleanup priorities, produce a JSON/YAML/human Reforge report, compare refactoring risk across modules, tune a reforge.toml scan configuration, or recommend concrete refactors from Reforge findings.
 ---
 
 # Reforge Scan
@@ -28,6 +28,12 @@ cargo run --manifest-path <reforge-repo>/Cargo.toml -- scan <target-repo> --outp
 
 ## Running Reforge
 
+When `--output` is omitted, `--output-file` extensions `.json`, `.yaml`, and `.yml` select machine-readable output automatically:
+
+```bash
+reforge scan . --output-file reforge-report.json --progress never
+```
+
 Pass additional scan flags directly after the target path:
 
 ```bash
@@ -52,9 +58,19 @@ For CI or agent-to-agent handoff, prefer JSON or YAML with progress disabled:
 reforge scan . --output yaml --output-file reforge-report.yaml --progress never
 ```
 
+For deterministic static-only output, disable git churn and use the static hotspot model:
+
+```bash
+reforge scan . --churn off --hotspot-model static --output json --progress never
+```
+
 ## Option Guidance
 
+- Keep `--churn auto` and `--hotspot-model hybrid` for normal repository audits; use `--churn on` only when missing git history should fail the scan.
+- Use `--churn off --hotspot-model static` for reproducible CI snapshots or when comparing output across machines.
+- Use `--config <path>` when the repository has a `reforge.toml`, or rely on default discovery from the scan root upward.
 - Keep generated and dependency directories excluded by default. Add `--include-generated` only when the user explicitly wants generated output scanned.
+- Keep hidden files excluded by default. Add `--include-hidden` only when dotfiles or hidden source trees are in scope.
 - Keep tests out of similar-function analysis by default. Add `--include-test-similarity` when repeated test setup or test helper extraction is the goal.
 - Keep tests out of general structural analysis by default. Add `--include-test-structure` when structural issues in tests are in scope.
 - Lower `--max-file-lines`, `--max-function-lines`, or `--max-function-complexity` for mature codebases with strict maintainability budgets.
@@ -63,14 +79,19 @@ reforge scan . --output yaml --output-file reforge-report.yaml --progress never
 
 ## Interpreting Findings
 
+Reports contain `raw_metrics`, `metrics_summary`, `hotspots`, and `findings`. Human output sorts findings by descending `priority`; JSON and YAML expose `priority`, `confidence`, `priority_factors`, and `rank_explanation` for downstream ranking.
+
 Prioritize findings in this order:
 
 1. Critical findings that exceed thresholds by a wide margin.
-2. Structural hotspots such as long functions, high complexity, deep nesting, many parameters, large types, import-heavy files, and large public surfaces.
-3. Repeated drift patterns that cross files or modules, especially shadowed abstractions, duplicate data shapes, adapter boundary bypasses, and parallel implementations.
-4. Similar functions with enough body tokens to indicate real duplication.
-5. Repeated literals, repeated error patterns, data clumps, and test setup duplication when they cluster around the same subsystem.
-6. Large directories, directory drift, mixed naming styles, and TODO/FIXME clusters as navigation and ownership signals.
-7. Info-level findings as backlog candidates unless they cluster around the same subsystem.
+2. High-priority hotspots, especially when static risk and churn risk point to the same file, function, or type.
+3. Structural hotspots such as long functions, high complexity, deep nesting, many parameters, large types, import-heavy files, and large public surfaces.
+4. Repeated drift patterns that cross files or modules, especially shadowed abstractions, duplicate data shapes, adapter boundary bypasses, and parallel implementations.
+5. Similar functions with enough body tokens to indicate real duplication.
+6. Repeated literals, repeated error patterns, data clumps, and test setup duplication when they cluster around the same subsystem.
+7. Large directories, directory drift, mixed naming styles, and TODO/FIXME clusters as navigation and ownership signals.
+8. Info-level findings as backlog candidates unless they cluster around the same subsystem.
 
-When reporting results, include the command used, output file path if any, top findings, and suggested next actions. Avoid claiming Reforge found bugs; describe findings as maintainability or refactoring signals.
+Use `priority`, `confidence`, `priority_factors`, `rank_explanation`, and related locations when explaining why a finding matters. Avoid claiming Reforge found bugs; describe findings as maintainability or refactoring signals.
+
+When reporting results, include the command used, output file path if any, churn status, hotspot model, top findings, and suggested next actions.
