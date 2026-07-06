@@ -7,7 +7,7 @@ use tree_sitter::Node;
 use crate::language::{
     ARROW_FUNCTION, BODY_FIELD, FUNCTION_DECLARATION, FUNCTION_DEFINITION, FUNCTION_ITEM,
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
-    NAME_FIELD, PARAMETERS_FIELD, adapter_for_path,
+    NAME_FIELD, PARAMETERS_FIELD, adapter_for_path, has_rust_cfg_test_attribute,
 };
 use crate::model::{METRIC_NESTING_DEPTH, METRIC_PUBLIC_ITEMS};
 use crate::scanner::{

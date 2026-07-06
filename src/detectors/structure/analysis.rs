@@ -135,53 +135,7 @@ pub(super) fn should_skip_rust_test_module(
     traversal.family == LanguageFamily::Rust
         && !traversal.include_test_structure
         && node.kind() == "mod_item"
-        && has_cfg_test_attribute(node, traversal.source)
-}
-
-pub(super) fn has_cfg_test_attribute(node: Node<'_>, source: &str) -> bool {
-    let mut end = node.start_byte().min(source.len());
-    let bytes = source.as_bytes();
-
-    loop {
-        while end > 0 && bytes[end - 1].is_ascii_whitespace() {
-            end -= 1;
-        }
-
-        if end == 0 || bytes[end - 1] != b']' {
-            return false;
-        }
-
-        let Some(start) = source[..end].rfind("#[") else {
-            return false;
-        };
-        let attribute = &source[start..end];
-        if is_cfg_test_attribute(attribute) {
-            return true;
-        }
-
-        end = start;
-    }
-}
-
-pub(super) fn is_cfg_test_attribute(attribute: &str) -> bool {
-    let compact = attribute
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .collect::<String>();
-    let Some(inner) = compact
-        .strip_prefix("#[cfg(")
-        .and_then(|value| value.strip_suffix(")]"))
-    else {
-        return false;
-    };
-
-    inner == "test"
-        || inner.starts_with("any(test")
-        || inner.starts_with("all(test")
-        || inner.contains("(test,")
-        || inner.contains(",test,")
-        || inner.ends_with(",test")
-        || inner.ends_with(",test)")
+        && has_rust_cfg_test_attribute(node, traversal.source)
 }
 
 pub(super) fn python_public_item(node: Node<'_>, source: &str) -> bool {
@@ -295,6 +249,8 @@ pub(super) fn is_ignored_repeated_literal(literal: &str) -> bool {
             | "lines"
             | "occurrence"
             | "occurrences"
+            | "reference"
+            | "references"
             | "group"
             | "group_size"
             | "score"
@@ -303,6 +259,7 @@ pub(super) fn is_ignored_repeated_literal(literal: &str) -> bool {
             | "threshold"
             | "metrics"
             | "metric"
+            | "mod_item"
             | "imports"
             | "concept"
             | "concepts"

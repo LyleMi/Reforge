@@ -1,4 +1,5 @@
 use super::*;
+use crate::model::{Hotspot, HotspotLevel};
 use crate::scanner::{
     ChurnSummary, FindingInput, FindingMetric, MetricsSummary, RawMetrics, RelatedLocation,
     SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary, finding, scored_finding,
@@ -38,6 +39,13 @@ fn report(findings: Vec<Finding>) -> ScanReport {
         hotspots: Vec::new(),
         findings,
     }
+}
+
+fn report_with_hotspots(findings: Vec<Finding>, hotspots: Vec<Hotspot>) -> ScanReport {
+    let mut report = report(findings);
+    report.summary.hotspot_count = hotspots.len();
+    report.hotspots = hotspots;
+    report
 }
 
 fn make_finding(
@@ -161,6 +169,7 @@ fn renders_empty_human_report_clearly() {
     assert!(output.contains("Scanned 2 files"));
     assert!(output.contains("Summary"));
     assert!(output.contains("Signals"));
+    assert!(output.contains("Kinds     none"));
     assert!(output.contains("No refactoring signals found."));
 }
 
@@ -196,10 +205,12 @@ fn human_report_sorts_by_priority_and_renders_priority_confidence_and_metrics() 
     let info_index = output.find("src/info.rs:3").unwrap();
     assert!(critical_index < warning_index);
     assert!(warning_index < info_index);
-    assert!(output.contains("[warning priority=58 confidence=1.00]"));
-    assert!(output.contains("[warning priority=48 confidence=1.00]"));
-    assert!(output.contains("file_lines=1200/800 lines"));
-    assert!(output.contains("high complexity, high confidence"));
+    assert!(output.contains("warning  p=58 c=1.00"));
+    assert!(output.contains("warning  p=48 c=1.00"));
+    assert!(output.contains("Kinds"));
+    assert!(output.contains("large file"));
+    assert!(output.contains("metrics: file_lines=1200/800 lines"));
+    assert!(output.contains("rank: high complexity, high confidence"));
 }
 
 #[test]
@@ -207,7 +218,30 @@ fn renders_colored_human_report_when_enabled() {
     let output = render_human_report_colored(&report(vec![large_file("src/a.rs", 900)]), true);
 
     assert!(output.contains("\u{1b}[1;36mReforge scan report\u{1b}[0m"));
-    assert!(output.contains("\u{1b}[33m[warning priority=47 confidence=1.00]\u{1b}[0m"));
+    assert!(output.contains("\u{1b}[1;33mwarning \u{1b}[0m p=47 c=1.00"));
+}
+
+#[test]
+fn renders_hotspots_even_when_no_findings() {
+    let output = render_human_report(&report_with_hotspots(
+        Vec::new(),
+        vec![Hotspot {
+            level: HotspotLevel::File,
+            path: "src/hot.rs".to_string(),
+            line: Some(12),
+            name: None,
+            priority: 61,
+            severity: Severity::Warning,
+            static_risk: 0.4,
+            churn_risk: 0.9,
+            reason: "hybrid model: churn dominates".to_string(),
+        }],
+    ));
+
+    assert!(output.contains("Hotspots 1"));
+    assert!(output.contains("Hotspots\n"));
+    assert!(output.contains("warning  p=61  src/hot.rs:12"));
+    assert!(output.contains("No refactoring signals found."));
 }
 
 #[test]

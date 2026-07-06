@@ -24,6 +24,7 @@ use crate::similar_functions::{
 use crate::structural::{
     StructureOptions, collect_raw_structure_metrics, is_supported_structure_source,
 };
+use crate::unused_functions::{UnusedFunctionOptions, scan_parsed_unused_functions};
 
 mod churn;
 mod config;
@@ -105,6 +106,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
             scan: &mut scan,
         };
         signals.scan_structural_signals()?;
+        signals.scan_unused_function_signals();
         signals.scan_agent_drift_signals();
         signals.scan_similarity_signals()?
     };
@@ -248,6 +250,20 @@ impl ScanSignalContext<'_> {
                 &structure_options,
             )?);
         Ok(())
+    }
+
+    fn scan_unused_function_signals(&mut self) {
+        self.progress.report(&format!(
+            "Analyzing unused functions in {} files",
+            self.scan.parsed_sources.len()
+        ));
+        let options = UnusedFunctionOptions {
+            include_tests: self.args.include_test_structure,
+        };
+        self.scan.findings.extend(scan_parsed_unused_functions(
+            &self.scan.parsed_sources,
+            &options,
+        ));
     }
 
     fn scan_similarity_signals(&mut self) -> Result<usize> {

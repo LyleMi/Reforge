@@ -36,6 +36,10 @@ mod structural {
     pub(crate) use crate::detectors::structure::*;
 }
 
+mod unused_functions {
+    pub(crate) use crate::detectors::unused_functions::*;
+}
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::fs::File;

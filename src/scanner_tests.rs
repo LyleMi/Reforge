@@ -131,9 +131,9 @@ fn reports_directories_with_many_source_files() -> Result<()> {
     let root = test_root("large-directory");
     let source_dir = root.join("src");
     fs::create_dir_all(&source_dir)?;
-    fs::write(source_dir.join("one.rs"), "fn one() {}\n")?;
-    fs::write(source_dir.join("two.rs"), "fn two() {}\n")?;
-    fs::write(source_dir.join("three.rs"), "fn three() {}\n")?;
+    fs::write(source_dir.join("one.rs"), "pub fn one() {}\n")?;
+    fs::write(source_dir.join("two.rs"), "pub fn two() {}\n")?;
+    fs::write(source_dir.join("three.rs"), "pub fn three() {}\n")?;
     fs::write(source_dir.join("notes.md"), "not source\n")?;
 
     let mut args = scan_args(root.clone(), false);
@@ -501,7 +501,7 @@ fn metrics_summary_uses_all_raw_metrics_not_only_findings() -> Result<()> {
     for index in 0..6 {
         fs::write(
             root.join("src").join(format!("file_{index}.rs")),
-            format!("fn f_{index}() {{}}\n"),
+            format!("pub fn f_{index}() {{}}\n"),
         )?;
     }
 

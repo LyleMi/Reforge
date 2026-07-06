@@ -24,6 +24,7 @@ pub enum FindingKind {
     LargePublicSurface,
     ImportHeavyFile,
     FunctionProliferation,
+    UnusedFunction,
     RepeatedLiteral,
     RepeatedErrorPattern,
     TestDuplication,

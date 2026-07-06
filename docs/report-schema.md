@@ -200,6 +200,7 @@ Current `kind` values:
 - `large_public_surface`
 - `import_heavy_file`
 - `function_proliferation`
+- `unused_function`
 - `repeated_literal`
 - `repeated_error_pattern`
 - `test_duplication`

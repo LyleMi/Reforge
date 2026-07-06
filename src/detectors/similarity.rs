@@ -8,7 +8,7 @@ use tree_sitter::{Node, Parser, Tree};
 use crate::language::{
     BODY_FIELD, FUNCTION_DECLARATION, FUNCTION_DEFINITION, FUNCTION_ITEM,
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
-    NAME_FIELD, adapter_for_path, is_identifier_like_kind,
+    NAME_FIELD, adapter_for_path, has_rust_cfg_test_attribute, is_identifier_like_kind,
 };
 use crate::scanner::{
     Finding, FindingInput, FindingKind, FindingMetric, RelatedLocation, scored_finding,
@@ -330,53 +330,7 @@ fn should_skip_rust_test_module(node: Node<'_>, extraction: CandidateExtraction<
     extraction.family == LanguageFamily::Rust
         && !extraction.include_test_similarity
         && node.kind() == "mod_item"
-        && has_cfg_test_attribute(node, extraction.source)
-}
-
-fn has_cfg_test_attribute(node: Node<'_>, source: &str) -> bool {
-    let mut end = node.start_byte().min(source.len());
-    let bytes = source.as_bytes();
-
-    loop {
-        while end > 0 && bytes[end - 1].is_ascii_whitespace() {
-            end -= 1;
-        }
-
-        if end == 0 || bytes[end - 1] != b']' {
-            return false;
-        }
-
-        let Some(start) = source[..end].rfind("#[") else {
-            return false;
-        };
-        let attribute = &source[start..end];
-        if is_cfg_test_attribute(attribute) {
-            return true;
-        }
-
-        end = start;
-    }
-}
-
-fn is_cfg_test_attribute(attribute: &str) -> bool {
-    let compact = attribute
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .collect::<String>();
-    let Some(inner) = compact
-        .strip_prefix("#[cfg(")
-        .and_then(|value| value.strip_suffix(")]"))
-    else {
-        return false;
-    };
-
-    inner == "test"
-        || inner.starts_with("any(test")
-        || inner.starts_with("all(test")
-        || inner.contains("(test,")
-        || inner.contains(",test,")
-        || inner.ends_with(",test")
-        || inner.ends_with(",test)")
+        && has_rust_cfg_test_attribute(node, extraction.source)
 }
 
 fn normalize_tokens(node: Node<'_>, source: &[u8], interner: &mut TokenInterner) -> Vec<TokenId> {

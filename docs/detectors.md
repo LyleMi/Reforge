@@ -57,6 +57,18 @@ Structural detectors use Tree-sitter for supported languages.
 Tests are excluded from general structural findings unless
 `--include-test-structure` is passed.
 
+## Unused Functions
+
+`unused_function` builds a conservative project-wide identifier index for
+Rust, JavaScript, TypeScript/TSX, Python, and Go. It reports private named
+free functions that have no same-name references outside their own function
+body.
+
+The detector skips public or exported functions, methods, common entry-point
+names such as `main` and `init`, and test helper definitions by default.
+References from scanned test files still count, so production helpers called
+only by tests are not reported unless tests are excluded from the scan.
+
 ## Duplication and Test-Risk Signals
 
 - `repeated_literal`: string or numeric literals occur at least

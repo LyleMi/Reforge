@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use tree_sitter::Language;
+use tree_sitter::{Language, Node};
 
 pub(crate) const BODY_FIELD: &str = "body";
 pub(crate) const NAME_FIELD: &str = "name";
@@ -90,4 +90,53 @@ pub(crate) fn is_identifier_like_kind(kind: &str) -> bool {
             kind,
             TYPE_IDENTIFIER_KIND | SCOPED_IDENTIFIER_KIND | SELF_KIND
         )
+}
+
+pub(crate) fn has_rust_cfg_test_attribute(node: Node<'_>, source: &str) -> bool {
+    rust_attributes_before(node, source)
+        .into_iter()
+        .any(|attribute| is_rust_cfg_test_attribute(&attribute))
+}
+
+pub(crate) fn rust_attributes_before(node: Node<'_>, source: &str) -> Vec<String> {
+    let mut attributes = Vec::new();
+    let mut end = node.start_byte().min(source.len());
+    let bytes = source.as_bytes();
+
+    loop {
+        while end > 0 && bytes[end - 1].is_ascii_whitespace() {
+            end -= 1;
+        }
+
+        if end == 0 || bytes[end - 1] != b']' {
+            return attributes;
+        }
+
+        let Some(start) = source[..end].rfind("#[") else {
+            return attributes;
+        };
+        attributes.push(source[start..end].to_string());
+        end = start;
+    }
+}
+
+fn is_rust_cfg_test_attribute(attribute: &str) -> bool {
+    let compact = attribute
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>();
+    let Some(inner) = compact
+        .strip_prefix("#[cfg(")
+        .and_then(|value| value.strip_suffix(")]"))
+    else {
+        return false;
+    };
+
+    inner == "test"
+        || inner.starts_with("any(test")
+        || inner.starts_with("all(test")
+        || inner.contains("(test,")
+        || inner.contains(",test,")
+        || inner.ends_with(",test")
+        || inner.ends_with(",test)")
 }

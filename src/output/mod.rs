@@ -6,6 +6,7 @@ use anyhow::Result;
 use crate::model::{Finding, FindingKind, ScanReport, Severity};
 
 const RELATED_LOCATION_LIMIT: usize = 3;
+const HOTSPOT_LIMIT: usize = 10;
 
 pub fn print_human_report(report: &ScanReport) -> io::Result<()> {
     write_human_report_colored(std::io::stdout().lock(), report, false)
@@ -63,9 +64,10 @@ pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
         color,
     };
 
-    context.render_report_header();
+    context.render_report_header(&breakdown);
     context.render_report_summary();
     render_signal_breakdown(&mut *context.output, &breakdown, color);
+    context.render_hotspots();
 
     if report.findings.is_empty() {
         context.output.push('\n');
@@ -84,30 +86,23 @@ struct ReportRenderContext<'a> {
 }
 
 impl ReportRenderContext<'_> {
-    fn render_report_header(&mut self) {
+    fn render_report_header(&mut self, breakdown: &FindingBreakdown) {
         self.output
             .push_str(&paint(self.color, "Reforge scan report", AnsiStyle::Header));
         self.output.push('\n');
         self.output.push_str(&format!(
-            "Scanned {} files in {} ms; {} findings; {} hotspots; {} similar function groups.\n",
+            "Scanned {} files in {}; {} findings ({} critical, {} warnings, {} info).\n",
             self.report.summary.scanned_files,
-            self.report.summary.duration_ms,
+            format_duration(self.report.summary.duration_ms),
             self.report.summary.finding_count,
-            self.report.summary.hotspot_count,
-            self.report.summary.similar_function_group_count
+            breakdown.critical,
+            breakdown.warnings,
+            breakdown.info
         ));
-    }
-
-    fn render_report_summary(&mut self) {
-        self.output.push('\n');
-        self.output
-            .push_str(&paint(self.color, "Summary", AnsiStyle::Section));
-        self.output.push('\n');
         self.output.push_str(&format!(
-            "  Source files: {}\n  Directories: {}\n  Function candidates: {}\n  Hotspot model: {}\n  Churn: {}{}\n",
-            self.report.stats.source_files_scanned,
-            self.report.stats.directories_scanned,
-            self.report.stats.function_candidates,
+            "Hotspots {}; similar function groups {}; model {}; churn {}{}.\n",
+            self.report.summary.hotspot_count,
+            self.report.summary.similar_function_group_count,
             hotspot_model_label(self.report.summary.hotspot_model),
             self.report.summary.churn.status,
             self.report
@@ -120,18 +115,42 @@ impl ReportRenderContext<'_> {
         ));
     }
 
+    fn render_report_summary(&mut self) {
+        self.output.push('\n');
+        self.output
+            .push_str(&paint(self.color, "Summary", AnsiStyle::Section));
+        self.output.push('\n');
+        self.render_summary_row("Source files", self.report.stats.source_files_scanned);
+        self.render_summary_row("Directories", self.report.stats.directories_scanned);
+        self.render_summary_row("Function candidates", self.report.stats.function_candidates);
+        self.render_summary_row(
+            "Hotspot model",
+            hotspot_model_label(self.report.summary.hotspot_model),
+        );
+        self.render_summary_row(
+            "Churn",
+            format!(
+                "{}{}",
+                self.report.summary.churn.status,
+                self.report
+                    .summary
+                    .churn
+                    .reason
+                    .as_ref()
+                    .map(|reason| format!(" ({reason})"))
+                    .unwrap_or_default()
+            ),
+        );
+    }
+
     fn render_findings(&mut self) {
-        self.render_hotspots();
         self.output.push('\n');
         self.output
             .push_str(&paint(self.color, "Findings", AnsiStyle::Section));
         self.output.push('\n');
 
         for finding in sorted_findings(&self.report.findings) {
-            self.output.push_str("  ");
-            self.output
-                .push_str(&render_finding_line(finding, self.color));
-            self.output.push('\n');
+            self.output.push_str(&render_finding(finding, self.color));
 
             if has_related_location_details(finding) {
                 self.output
@@ -149,19 +168,38 @@ impl ReportRenderContext<'_> {
         self.output
             .push_str(&paint(self.color, "Hotspots", AnsiStyle::Section));
         self.output.push('\n');
-        for hotspot in self.report.hotspots.iter().take(10) {
+        for hotspot in self.report.hotspots.iter().take(HOTSPOT_LIMIT) {
             self.output.push_str(&format!(
-                "  [{} priority={}] {}{} - {}\n",
-                hotspot.severity,
+                "  {} p={:>2}  {}{}{} - {}\n",
+                render_severity_cell(hotspot.severity, self.color),
                 hotspot.priority,
-                hotspot.path,
+                paint(self.color, &hotspot.path, AnsiStyle::Path),
                 hotspot
                     .line
                     .map(|line| format!(":{line}"))
                     .unwrap_or_default(),
+                hotspot
+                    .name
+                    .as_ref()
+                    .map(|name| format!(" {name}"))
+                    .unwrap_or_default(),
                 hotspot.reason
             ));
         }
+        if self.report.hotspots.len() > HOTSPOT_LIMIT {
+            self.output.push_str(&format!(
+                "  +{} more hotspots\n",
+                self.report.hotspots.len() - HOTSPOT_LIMIT
+            ));
+        }
+    }
+
+    fn render_summary_row(&mut self, label: &str, value: impl std::fmt::Display) {
+        self.output.push_str(&format!(
+            "  {} {}\n",
+            paint(self.color, &format!("{label:<20}"), AnsiStyle::Muted),
+            value
+        ));
     }
 }
 
@@ -178,45 +216,32 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
     output.push_str(&paint(color, "Signals", AnsiStyle::Section));
     output.push('\n');
     output.push_str(&format!(
-        "  Critical: {}\n  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Function proliferation: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Happy-path-only tests: {}\n  File naming drift: {}\n  Directory drift: {}\n  Data clumps: {}\n  Parallel implementations: {}\n  Shadowed abstractions: {}\n  Duplicate type shapes: {}\n  Config key drift: {}\n  Fixture factory drift: {}\n  Generic bucket drift: {}\n  Adapter boundary bypasses: {}\n  Stale compatibility paths: {}\n  Missing documentation sets: {}\n  Missing user guides: {}\n  Missing report schema docs: {}\n  Missing metrics model docs: {}\n  Missing architecture docs: {}\n  Stale CLI docs: {}\n  Stale schema docs: {}\n",
-        breakdown.critical,
-        breakdown.warnings,
-        breakdown.info,
-        breakdown.count(FindingKind::LargeFile),
-        breakdown.count(FindingKind::LargeDirectory),
-        breakdown.count(FindingKind::DebtMarker),
-        breakdown.count(FindingKind::SimilarFunctions),
-        breakdown.count(FindingKind::LongFunction),
-        breakdown.count(FindingKind::ComplexFunction),
-        breakdown.count(FindingKind::DeepNesting),
-        breakdown.count(FindingKind::ManyParameters),
-        breakdown.count(FindingKind::LargeType),
-        breakdown.count(FindingKind::LargePublicSurface),
-        breakdown.count(FindingKind::ImportHeavyFile),
-        breakdown.count(FindingKind::FunctionProliferation),
-        breakdown.count(FindingKind::RepeatedLiteral),
-        breakdown.count(FindingKind::RepeatedErrorPattern),
-        breakdown.count(FindingKind::TestDuplication),
-        breakdown.count(FindingKind::HappyPathOnlyTests),
-        breakdown.count(FindingKind::FileNamingDrift),
-        breakdown.count(FindingKind::DirectoryDrift),
-        breakdown.count(FindingKind::DataClump),
-        breakdown.count(FindingKind::ParallelImplementation),
-        breakdown.count(FindingKind::ShadowedAbstraction),
-        breakdown.count(FindingKind::DuplicateTypeShape),
-        breakdown.count(FindingKind::ConfigKeyDrift),
-        breakdown.count(FindingKind::FixtureFactoryDrift),
-        breakdown.count(FindingKind::GenericBucketDrift),
-        breakdown.count(FindingKind::AdapterBoundaryBypass),
-        breakdown.count(FindingKind::StaleCompatibilityPath),
-        breakdown.count(FindingKind::MissingDocumentationSet),
-        breakdown.count(FindingKind::MissingUserGuide),
-        breakdown.count(FindingKind::MissingReportSchemaDocs),
-        breakdown.count(FindingKind::MissingMetricsModelDocs),
-        breakdown.count(FindingKind::MissingArchitectureDocs),
-        breakdown.count(FindingKind::StaleCliDocumentation),
-        breakdown.count(FindingKind::StaleSchemaDocumentation)
+        "  Severity  critical {} | warnings {} | info {}\n",
+        breakdown.critical, breakdown.warnings, breakdown.info
     ));
+
+    let mut rendered_any_kind = false;
+    for display in FINDING_KIND_DISPLAYS {
+        let count = breakdown.count(display.kind);
+        if count == 0 {
+            continue;
+        }
+
+        if !rendered_any_kind {
+            output.push_str("  Kinds\n");
+            rendered_any_kind = true;
+        }
+
+        output.push_str(&format!(
+            "    {} {}\n",
+            paint(color, &format!("{:<28}", display.label), AnsiStyle::Muted),
+            count
+        ));
+    }
+
+    if !rendered_any_kind {
+        output.push_str("  Kinds     none\n");
+    }
 }
 
 fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
@@ -231,29 +256,30 @@ fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
     sorted
 }
 
-fn render_finding_line(finding: &Finding, color: bool) -> String {
+fn render_finding(finding: &Finding, color: bool) -> String {
     let location = finding
         .line
         .map(|line| format!("{}:{line}", finding.path))
         .unwrap_or_else(|| finding.path.clone());
     let metrics = render_metric_summary(finding);
-    format!(
-        "{} {location} {}{}{}",
-        render_severity(finding, color),
-        concise_finding_message(finding),
-        metrics
-            .map(|metrics| format!(" ({metrics})"))
-            .unwrap_or_default(),
-        render_rank_explanation(finding)
-    )
-}
 
-fn render_rank_explanation(finding: &Finding) -> String {
-    if finding.rank_explanation.is_empty() {
-        String::new()
-    } else {
-        format!(" - {}", finding.rank_explanation)
+    let mut output = format!(
+        "  {} p={:>2} c={:.2}  {}\n    {}\n",
+        render_severity_cell(finding.severity, color),
+        finding.priority,
+        finding.confidence,
+        paint(color, &location, AnsiStyle::Path),
+        concise_finding_message(finding)
+    );
+
+    if let Some(metrics) = metrics {
+        output.push_str(&format!("    metrics: {metrics}\n"));
     }
+    if !finding.rank_explanation.is_empty() {
+        output.push_str(&format!("    rank: {}\n", finding.rank_explanation));
+    }
+
+    output
 }
 
 fn render_metric_summary(finding: &Finding) -> Option<String> {
@@ -341,13 +367,14 @@ fn has_related_location_details(finding: &Finding) -> bool {
 
 fn render_related_locations(finding: &Finding, color: bool) -> String {
     let mut output = String::new();
+    output.push_str("    related:\n");
 
     for location in finding
         .related_locations
         .iter()
         .take(RELATED_LOCATION_LIMIT)
     {
-        output.push_str("    - ");
+        output.push_str("      - ");
         output.push_str(&paint(color, &location.path, AnsiStyle::Path));
         output.push_str(&paint(
             color,
@@ -363,7 +390,7 @@ fn render_related_locations(finding: &Finding, color: bool) -> String {
 
     if finding.related_locations.len() > RELATED_LOCATION_LIMIT {
         output.push_str(&format!(
-            "    +{} more\n",
+            "      +{} more\n",
             finding.related_locations.len() - RELATED_LOCATION_LIMIT
         ));
     }
@@ -522,6 +549,12 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
         "function proliferation",
         DisplayMetric::Named("function_count"),
         MetricFormat::PluralCount("function"),
+    ),
+    display(
+        FindingKind::UnusedFunction,
+        "unused function",
+        DisplayMetric::Named("references"),
+        MetricFormat::Count("references"),
     ),
     display(
         FindingKind::RepeatedLiteral,
@@ -692,22 +725,22 @@ enum AnsiStyle {
     Section,
     Path,
     Location,
+    Muted,
     Warning,
     Critical,
     Info,
 }
 
-fn render_severity(finding: &Finding, color: bool) -> String {
-    let label = format!(
-        "[{} priority={} confidence={:.2}]",
-        finding.severity, finding.priority, finding.confidence
-    );
-    let style = match finding.severity {
-        Severity::Critical => AnsiStyle::Critical,
-        Severity::Warning => AnsiStyle::Warning,
-        Severity::Info => AnsiStyle::Info,
-    };
-    paint(color, &label, style)
+fn render_severity_cell(severity: Severity, color: bool) -> String {
+    paint(
+        color,
+        &format!("{:<8}", severity.to_string()),
+        match severity {
+            Severity::Critical => AnsiStyle::Critical,
+            Severity::Warning => AnsiStyle::Warning,
+            Severity::Info => AnsiStyle::Info,
+        },
+    )
 }
 
 fn paint(color: bool, text: &str, style: AnsiStyle) -> String {
@@ -720,12 +753,21 @@ fn paint(color: bool, text: &str, style: AnsiStyle) -> String {
         AnsiStyle::Section => "1",
         AnsiStyle::Path => "36",
         AnsiStyle::Location => "2",
-        AnsiStyle::Critical => "31",
-        AnsiStyle::Warning => "33",
-        AnsiStyle::Info => "34",
+        AnsiStyle::Muted => "2",
+        AnsiStyle::Critical => "1;31",
+        AnsiStyle::Warning => "1;33",
+        AnsiStyle::Info => "1;34",
     };
 
     format!("\x1b[{code}m{text}\x1b[0m")
+}
+
+fn format_duration(duration_ms: u128) -> String {
+    if duration_ms < 1_000 {
+        format!("{duration_ms} ms")
+    } else {
+        format!("{:.2} s", duration_ms as f64 / 1_000.0)
+    }
 }
 
 impl std::fmt::Display for Severity {

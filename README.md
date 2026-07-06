@@ -30,6 +30,7 @@ or fast-moving codebases before refactoring work starts.
   git history.
 - Skips common generated, dependency, and git-ignored paths by default.
 - Groups noisy findings such as TODO/FIXME markers and similar functions.
+- Flags conservative unused private functions with no project references.
 - Includes drift checks for duplicate abstractions, data shapes, config keys,
   fixture factories, generic buckets, adapter boundary bypasses, and stale
   compatibility paths.
@@ -120,6 +121,7 @@ Core scan signals:
 - Long, complex, deeply nested, or parameter-heavy functions.
 - Large types and large public/exported surfaces.
 - Import-heavy files.
+- Private functions with no references outside their own body.
 - Repeated literals and repeated error-handling patterns.
 - Data clumps and directory concept drift.
 - Mixed file naming styles such as `snake_case`, `kebab-case`, `PascalCase`,
@@ -228,7 +230,7 @@ Signals
 ```
 
 Human output includes a summary, signal counts, grouped findings, and a short
-reason for each ranking. JSON and YAML use schema version 7 and include
+reason for each ranking. JSON and YAML use schema version 8 and include
 `summary`, `metrics_summary`, `raw_metrics`, `hotspots`, and `findings`.
 Findings expose `priority`, `confidence`, `priority_factors`,
 `rank_explanation`, `metrics`, and `related_locations`; legacy v4 fields

@@ -86,7 +86,7 @@ Severity bands:
 
 Metrics are assigned one of these dimensions:
 
-- `size`: file, directory, function, and type size signals.
+- `size`: file, directory, function, type, and unused-function signals.
 - `complexity`: complexity, nesting, and parameter signals.
 - `coupling`: imports, public surfaces, and adapter bypass signals.
 - `duplication`: similar functions, repeated literals, repeated error

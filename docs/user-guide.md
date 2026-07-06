@@ -120,6 +120,11 @@ Severity comes from `priority`: `info` is below 35, `warning` is 35 through
 69, and `critical` is 70 or above. Priority is a refactoring priority signal,
 not a claim that the code is defective.
 
+`unused_function` findings are conservative dead-code prompts. Reforge reports
+private named free functions only when no same-name reference appears outside
+the function body. Public/exported functions, methods, and common entry-point
+names are skipped.
+
 ## Churn and Hotspots
 
 The default `--churn auto` mode collects git churn when the scan root is inside
