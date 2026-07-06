@@ -1,9 +1,9 @@
 use super::*;
 use crate::model::{Hotspot, HotspotLevel};
 use crate::scanner::{
-    ChurnSummary, FindingInput, FindingMetric, MetricsSummary, RawMetrics, RelatedLocation,
-    SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary, finding, scored_finding,
-    severity_for_priority,
+    ChurnFileMetric, ChurnSummary, FileRawMetric, FindingInput, FindingMetric, MetricsSummary,
+    RawMetrics, RelatedLocation, SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary, finding,
+    scored_finding, severity_for_priority,
 };
 
 fn report(findings: Vec<Finding>) -> ScanReport {
@@ -347,4 +347,51 @@ fn writes_yaml_report_to_writer() {
         serde_yaml::from_str::<serde_yaml::Value>(&output).unwrap()["schema_version"],
         8
     );
+}
+
+#[test]
+fn renders_html_report_with_visual_sections() {
+    let mut scan_report = report(vec![make_finding(
+        FindingKind::SimilarFunctions,
+        "src/a.rs",
+        Some(10),
+        "similar functions",
+        vec![FindingMetric::threshold("group_size", 3, 3, "functions")],
+        vec![
+            RelatedLocation {
+                path: "src/a.rs".to_string(),
+                line: 10,
+                name: Some("alpha".to_string()),
+            },
+            RelatedLocation {
+                path: "src/b.rs".to_string(),
+                line: 20,
+                name: Some("beta".to_string()),
+            },
+        ],
+    )]);
+    scan_report.raw_metrics.files.push(FileRawMetric {
+        path: "src/a.rs".to_string(),
+        loc: 120,
+        imports: 8,
+        public_items: 4,
+        directory_source_files: 2,
+        is_test: false,
+        churn: ChurnFileMetric {
+            commits_touched: 2,
+            lines_added: 20,
+            lines_deleted: 5,
+            authors_count: 1,
+            recent_weighted_churn: 8,
+        },
+    });
+
+    let output = render_html_report(&scan_report);
+
+    assert!(output.starts_with("<!doctype html>"));
+    assert!(output.contains("Codebase refactoring map"));
+    assert!(output.contains("File Heatmap"));
+    assert!(output.contains("Similar Function Groups"));
+    assert!(output.contains("src/a.rs:10 alpha"));
+    assert!(output.contains("similar functions"));
 }

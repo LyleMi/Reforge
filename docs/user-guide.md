@@ -55,9 +55,9 @@ Write a report to disk:
 cargo run -- scan . --output-file reforge-report.json --progress never
 ```
 
-When `--output` is omitted, `--output-file` extensions `.json`, `.yaml`, and
-`.yml` select JSON or YAML automatically. Other extensions default to human
-output.
+When `--output` is omitted, `--output-file` extensions `.html`, `.htm`,
+`.json`, `.yaml`, and `.yml` select HTML, JSON, or YAML automatically. Other
+extensions default to human output.
 
 ## What Gets Scanned
 
@@ -86,7 +86,7 @@ production-source-only scan.
 
 ## Output
 
-Reforge supports `human`, `json`, and `yaml` output.
+Reforge supports `human`, `html`, `json`, and `yaml` output.
 
 Human output is intended for terminal review:
 
@@ -99,6 +99,12 @@ JSON and YAML are intended for CI, automation, and agent-to-agent handoff:
 ```powershell
 cargo run -- scan . --output json --progress never
 cargo run -- scan . --output yaml --output-file reforge-report.yaml --progress never
+```
+
+HTML output is a static visual report for local review:
+
+```powershell
+cargo run -- scan . --output html --output-file reforge-report.html --progress never
 ```
 
 Use `--progress never` for stable stdout. Progress is written to stderr when
@@ -115,6 +121,10 @@ Human output is organized for quick terminal triage:
 - `Signal mix`: finding counts by detector kind, shown when findings exist.
 - `Findings`: actionable threshold signals sorted by priority.
 - `Watchlist`: hotspot locations ranked by static risk, churn risk, or both.
+
+HTML output renders the same report as summary cards, a severity distribution
+bar, problem-dimension counts, a file heatmap, hotspot watchlist,
+similar-function groups, and prioritized findings.
 
 Reports contain four main layers:
 
@@ -194,7 +204,7 @@ reforge scan [OPTIONS] [PATH]
 | `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
-| `--output` | inferred | Use `human`, `json`, or `yaml`. |
+| `--output` | inferred | Use `human`, `html`, `json`, or `yaml`. |
 | `--output-file` | stdout | Write the report to a file. |
 | `--progress` | `auto` | Use `auto`, `always`, or `never` for progress output. |
 | `--color` | `auto` | Use `auto`, `always`, or `never` for human-output color. |

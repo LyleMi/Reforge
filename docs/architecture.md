@@ -21,7 +21,7 @@ scores findings, and renders reports.
   implementations.
 - `src/scoring/mod.rs`: metric summaries, priority scoring, severity mapping,
   and hotspot ranking.
-- `src/output/mod.rs`: human, JSON, and YAML rendering.
+- `src/output/mod.rs`: human, HTML, JSON, and YAML rendering.
 
 `src/main.rs` re-exports internal modules under compatibility names such as
 `scanner`, `report`, `similar_functions`, and `structural` so existing inline
@@ -44,12 +44,12 @@ into clearer directories.
 9. Rank hotspots with the chosen model.
 10. Finalize finding metrics, priority, confidence, severity, and ranking
     explanations.
-11. Render human, JSON, or YAML output to stdout or `--output-file`.
+11. Render human, HTML, JSON, or YAML output to stdout or `--output-file`.
 
 ## Data Flow
 
 `ScanArgs` is the input configuration. `scan_report` produces a `ScanReport`
-with schema version `7`. Detectors emit `Finding` values with metrics and
+with schema version `8`. Detectors emit `Finding` values with metrics and
 related locations. Scoring later enriches those findings with dimensions,
 normalized values, percentiles, `priority_factors`, `priority`, `severity`, and
 `rank_explanation`.
@@ -74,10 +74,11 @@ Progress is abstracted behind `ProgressSink`. `NoopProgress` is used when
 progress is disabled. `StderrProgress` writes either dynamic terminal progress
 or coarser line-oriented progress, depending on whether stderr is a TTY.
 
-Human output is rendered from the same `ScanReport` as JSON and YAML. The
-terminal-oriented renderer lives in `src/output/human.rs`; `src/output/mod.rs`
-keeps the format entry points and JSON/YAML writers. Color is applied only to
-human output.
+Human and HTML output are rendered from the same `ScanReport` as JSON and
+YAML. The terminal-oriented renderer lives in `src/output/human.rs`, the
+static visual report renderer lives in `src/output/html.rs`, and
+`src/output/mod.rs` keeps the format entry points and JSON/YAML writers. Color
+is applied only to human output.
 
 ## Extension Points
 

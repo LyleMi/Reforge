@@ -8,8 +8,8 @@
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
   <img alt="MSRV" src="https://img.shields.io/badge/MSRV-1.85-2f855a">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-105%20passing-brightgreen">
-  <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20json%20%7C%20yaml-6b46c1">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-125%20passing-brightgreen">
+  <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20html%20%7C%20json%20%7C%20yaml-6b46c1">
 </p>
 
 Reforge is a Rust CLI for reporting source-tree quality signals. It collects
@@ -23,8 +23,8 @@ or fast-moving codebases before refactoring work starts.
 
 - Scans Rust, JavaScript, TypeScript/TSX, Python, and Go source files.
 - Uses Tree-sitter for structural analysis and similar-function detection.
-- Reports human-readable, JSON, or YAML output with raw metrics, percentile
-  summaries, hotspots, and findings.
+- Reports human-readable, HTML, JSON, or YAML output with raw metrics,
+  percentile summaries, hotspots, and findings.
 - Ranks hotspots with `static`, `churn`, or `hybrid` models.
 - Collects git churn in repositories by default with graceful fallback outside
   git history.
@@ -59,8 +59,14 @@ To write a report to disk:
 cargo run -- scan . --output-file reforge-report.json --progress never
 ```
 
-The output file extension selects JSON or YAML automatically unless `--output`
-is set explicitly.
+The output file extension selects HTML, JSON, or YAML automatically unless
+`--output` is set explicitly.
+
+Generate a static visual report:
+
+```powershell
+cargo run -- scan . --output-file reforge-report.html --progress never
+```
 
 ## Installation
 
@@ -209,6 +215,12 @@ Write YAML:
 cargo run -- scan . --output yaml --output-file reforge-report.yaml --progress never
 ```
 
+Write a static HTML report:
+
+```powershell
+cargo run -- scan . --output html --output-file reforge-report.html --progress never
+```
+
 ## Sample Output
 
 ```text
@@ -241,9 +253,11 @@ Watchlist
 
 Human output is organized for terminal triage: `Result` separates threshold
 signals from the hotspot `Watchlist`, `Signal mix` summarizes finding kinds,
-and each finding includes the ranking reason. JSON and YAML use schema version
-8 and include `summary`, `metrics_summary`, `raw_metrics`, `hotspots`, and
-`findings`.
+and each finding includes the ranking reason. HTML output renders the same
+scan as a static visual report with summary cards, risk distribution, file
+heatmap, hotspots, similar-function groups, and prioritized findings. JSON and
+YAML use schema version 8 and include `summary`, `metrics_summary`,
+`raw_metrics`, `hotspots`, and `findings`.
 Findings expose `priority`, `confidence`, `priority_factors`,
 `rank_explanation`, `metrics`, and `related_locations`; legacy v4 fields
 `score`, `score_breakdown`, and `rank_reason` are not emitted. Very large
@@ -325,7 +339,7 @@ ignore-paths = ["vendor", "generated/snapshots"]
 | `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
-| `--output` | inferred | Use `human`, `json`, or `yaml`. |
+| `--output` | inferred | Use `human`, `html`, `json`, or `yaml`. |
 | `--output-file` | stdout | Write the report to a file. |
 | `--progress` | `auto` | Use `auto`, `always`, or `never`. |
 | `--color` | `auto` | Use `auto`, `always`, or `never`. |

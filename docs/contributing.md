@@ -44,8 +44,8 @@ Run Clippy before larger changes:
 cargo clippy --all-targets --all-features
 ```
 
-When report formatting or schema behavior changes, include sample human or
-JSON output in the pull request description.
+When report formatting or schema behavior changes, include sample human, HTML,
+or JSON output in the pull request description.
 
 ## Tests
 
@@ -59,7 +59,7 @@ Add tests for:
 - Config precedence and discovery when configuration changes.
 - Scanner exclusions, thresholds, ordering, and report fields.
 - Detector behavior, including false-positive guards.
-- Output stability for human, JSON, and YAML report changes.
+- Output stability for human, HTML, JSON, and YAML report changes.
 
 Name tests by behavior, such as `parses_output_format` or
 `groups_similar_functions`.
@@ -107,7 +107,7 @@ Pull requests should describe:
 - User-visible effect.
 - Validation commands run.
 - Related issues.
-- Sample human or JSON output when report formatting changes.
+- Sample human, HTML, or JSON output when report formatting changes.
 
 Do not commit generated outputs, dependency directories, build artifacts, or
 local scan artifacts.

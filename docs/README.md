@@ -10,7 +10,7 @@ references.
   output, and troubleshoot common failures.
 - [Configuration](configuration.md): `reforge.toml` discovery, supported keys,
   and CLI precedence.
-- [Report Schema](report-schema.md): JSON/YAML schema version `7`, field
+- [Report Schema](report-schema.md): JSON/YAML schema version `8`, field
   meanings, and compatibility notes.
 
 ## Maintainer Docs

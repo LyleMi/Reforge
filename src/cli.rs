@@ -175,6 +175,7 @@ pub struct ScanFilterArgs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
     Human,
+    Html,
     Json,
     Yaml,
 }
@@ -213,6 +214,8 @@ impl ScanArgs {
     pub fn output_format(&self) -> OutputFormat {
         self.output
             .unwrap_or_else(|| match self.output_file_extension() {
+                Some(extension) if extension.eq_ignore_ascii_case("html") => OutputFormat::Html,
+                Some(extension) if extension.eq_ignore_ascii_case("htm") => OutputFormat::Html,
                 Some(extension) if extension.eq_ignore_ascii_case("json") => OutputFormat::Json,
                 Some(extension)
                     if extension.eq_ignore_ascii_case("yaml")
@@ -406,6 +409,15 @@ mod tests {
     }
 
     #[test]
+    fn parses_html_output_format() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output", "html"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output, Some(OutputFormat::Html));
+        assert_eq!(args.output_format(), OutputFormat::Html);
+    }
+
+    #[test]
     fn parses_output_file() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.json"]);
 
@@ -443,6 +455,22 @@ mod tests {
 
         let Command::Scan(args) = cli.command;
         assert_eq!(args.output_format(), OutputFormat::Yaml);
+    }
+
+    #[test]
+    fn infers_html_output_format_from_output_file_extension() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.html"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output_format(), OutputFormat::Html);
+    }
+
+    #[test]
+    fn infers_html_output_format_from_htm_output_file_extension() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "REPORT.HTM"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output_format(), OutputFormat::Html);
     }
 
     #[test]

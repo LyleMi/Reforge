@@ -114,6 +114,7 @@ fn write_report(writer: impl Write, report: &ScanReport, settings: OutputSetting
             report::write_human_report_colored(writer, report, true)?;
         }
         OutputFormat::Human => report::write_human_report(writer, report)?,
+        OutputFormat::Html => report::write_html_report(writer, report)?,
         OutputFormat::Json => report::write_json_report(writer, report)?,
         OutputFormat::Yaml => report::write_yaml_report(writer, report)?,
     }
@@ -127,6 +128,7 @@ fn print_report(report: &ScanReport, settings: OutputSettings) -> Result<()> {
             handle_output_result(report::print_human_report_colored(report, true))
         }
         OutputFormat::Human => handle_output_result(report::print_human_report(report)),
+        OutputFormat::Html => handle_output_result(report::print_html_report(report)),
         OutputFormat::Json => handle_output_result(report::print_json_report(report)),
         OutputFormat::Yaml => handle_output_result(report::print_yaml_report(report)),
     }

@@ -1,13 +1,17 @@
+mod html;
 mod human;
 
 use std::io::Write;
 
 use anyhow::Result;
 
+pub use html::{print_html_report, write_html_report};
 pub use human::{
     print_human_report, print_human_report_colored, write_human_report, write_human_report_colored,
 };
 
+#[cfg(test)]
+pub use html::render_html_report;
 #[cfg(test)]
 pub use human::{render_human_report, render_human_report_colored};
 
