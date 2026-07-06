@@ -6,6 +6,8 @@ use crate::cli::{ChurnMode, HotspotModel};
 
 pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 6;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
+pub(crate) const METRIC_NESTING_DEPTH: &str = "nesting_depth";
+pub(crate) const METRIC_PUBLIC_ITEMS: &str = "public_items";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]

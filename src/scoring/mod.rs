@@ -2,8 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cli::HotspotModel;
 use crate::model::{
-    FileRawMetric, Finding, FindingKind, FindingMetric, Hotspot, HotspotLevel, MetricDimension,
-    MetricPercentiles, MetricsSummary, PriorityFactors, RawMetrics, RelatedLocation, Severity,
+    FileRawMetric, Finding, FindingKind, FindingMetric, Hotspot, HotspotLevel,
+    METRIC_NESTING_DEPTH, METRIC_PUBLIC_ITEMS, MetricDimension, MetricPercentiles, MetricsSummary,
+    PriorityFactors, RawMetrics, RelatedLocation, Severity,
 };
 
 const PERCENTILE_MIN_SAMPLE: usize = 5;
@@ -17,6 +18,8 @@ const DEFAULT_MAX_TYPE_LINES: usize = 250;
 const DEFAULT_MAX_TYPE_MEMBERS: usize = 30;
 const DEFAULT_MAX_IMPORTS: usize = 35;
 const DEFAULT_MAX_PUBLIC_ITEMS: usize = 30;
+const MIN_SCORE: f64 = 0.0;
+const MAX_SCORE: f64 = 100.0;
 
 #[derive(Debug, Clone)]
 pub struct FindingInput {
@@ -216,7 +219,9 @@ fn priority_from_factors(factors: &PriorityFactors) -> u8 {
         + (factors.spread * 0.15)
         + (factors.change_pressure * 0.15)
         + (factors.actionability * 0.10);
-    (weighted * factors.confidence).round().clamp(0.0, 100.0) as u8
+    (weighted * factors.confidence)
+        .round()
+        .clamp(MIN_SCORE, MAX_SCORE) as u8
 }
 
 fn intensity_score(metrics: &[FindingMetric]) -> f64 {
@@ -225,7 +230,7 @@ fn intensity_score(metrics: &[FindingMetric]) -> f64 {
         .filter_map(|metric| metric.normalized)
         .max_by(f64::total_cmp)
         .unwrap_or(0.20);
-    (strongest * 100.0).clamp(0.0, 100.0)
+    (strongest * MAX_SCORE).clamp(MIN_SCORE, MAX_SCORE)
 }
 
 fn spread_score(related_locations: &[RelatedLocation]) -> f64 {
@@ -245,19 +250,19 @@ fn change_pressure_score(finding: &Finding, hotspots: &[Hotspot]) -> f64 {
 
     if finding.line.is_some() {
         if let Some(scoped) = best_scoped_hotspot_for_finding(finding, hotspots) {
-            return scoped.churn_risk.clamp(0.0, 100.0);
+            return scoped.churn_risk.clamp(MIN_SCORE, MAX_SCORE);
         }
 
         return best_file_hotspot_for_finding(finding, hotspots)
             .map(|hotspot| hotspot.churn_risk * 0.50)
             .unwrap_or(0.0)
-            .clamp(0.0, 100.0);
+            .clamp(MIN_SCORE, MAX_SCORE);
     }
 
     best_file_hotspot_for_finding(finding, hotspots)
         .map(|hotspot| hotspot.churn_risk)
         .unwrap_or(0.0)
-        .clamp(0.0, 100.0)
+        .clamp(MIN_SCORE, MAX_SCORE)
 }
 
 fn best_scoped_hotspot_for_finding<'a>(
@@ -382,8 +387,8 @@ pub(crate) fn metric_dimension(kind: FindingKind, metric_name: &str) -> MetricDi
         | FindingKind::FixtureFactoryDrift
         | FindingKind::GenericBucketDrift => MetricDimension::Drift,
         FindingKind::DebtMarker => match metric_name {
-            "imports" | "public_items" => MetricDimension::Coupling,
-            "function_complexity" | "nesting_depth" | "function_parameters" => {
+            "imports" | METRIC_PUBLIC_ITEMS => MetricDimension::Coupling,
+            "function_complexity" | METRIC_NESTING_DEPTH | "function_parameters" => {
                 MetricDimension::Complexity
             }
             _ => MetricDimension::Size,
@@ -467,7 +472,7 @@ fn percentile_metric_values(raw_metrics: &RawMetrics) -> BTreeMap<String, Vec<us
             .or_default()
             .push(file.imports);
         values
-            .entry("public_items".to_string())
+            .entry(METRIC_PUBLIC_ITEMS.to_string())
             .or_default()
             .push(file.public_items);
         values
@@ -486,7 +491,7 @@ fn percentile_metric_values(raw_metrics: &RawMetrics) -> BTreeMap<String, Vec<us
             .or_default()
             .push(function.complexity);
         values
-            .entry("nesting_depth".to_string())
+            .entry(METRIC_NESTING_DEPTH.to_string())
             .or_default()
             .push(function.nesting_depth);
         values
@@ -565,7 +570,7 @@ fn file_percentiles(raw_metrics: &RawMetrics) -> BTreeMap<String, MetricPercenti
                 .collect(),
         ),
         (
-            "public_items",
+            METRIC_PUBLIC_ITEMS,
             raw_metrics
                 .files
                 .iter()
@@ -602,7 +607,7 @@ fn function_percentiles(raw_metrics: &RawMetrics) -> BTreeMap<String, MetricPerc
                 .collect(),
         ),
         (
-            "nesting_depth",
+            METRIC_NESTING_DEPTH,
             raw_metrics
                 .functions
                 .iter()
@@ -857,7 +862,10 @@ fn type_static_risk(
 }
 
 fn strongest_risk<const N: usize>(risks: [f64; N]) -> f64 {
-    risks.into_iter().fold(0.0, f64::max).clamp(0.0, 100.0)
+    risks
+        .into_iter()
+        .fold(MIN_SCORE, f64::max)
+        .clamp(MIN_SCORE, MAX_SCORE)
 }
 
 fn percentile_risk(
@@ -891,7 +899,7 @@ fn threshold_risk(value: usize, threshold: usize) -> f64 {
         return 0.0;
     }
 
-    normalized_threshold_excess(value as f64 / threshold as f64) * 100.0
+    normalized_threshold_excess(value as f64 / threshold as f64) * MAX_SCORE
 }
 
 fn file_churn_risk(file: &FileRawMetric, metrics_summary: &MetricsSummary) -> f64 {
@@ -931,7 +939,7 @@ fn hotspot(input: HotspotInput) -> Hotspot {
         HotspotModel::Hybrid => (input.static_risk * 0.65) + (input.churn_risk * 0.35),
     }
     .round()
-    .clamp(0.0, 100.0) as u8;
+    .clamp(MIN_SCORE, MAX_SCORE) as u8;
     let reason = hotspot_reason(input.static_risk, input.churn_risk, input.model);
 
     Hotspot {

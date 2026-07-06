@@ -9,6 +9,7 @@ use crate::language::{
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
     NAME_FIELD, PARAMETERS_FIELD, adapter_for_path,
 };
+use crate::model::{METRIC_NESTING_DEPTH, METRIC_PUBLIC_ITEMS};
 use crate::scanner::{
     Finding, FindingInput, FindingKind, FindingMetric, RelatedLocation, is_test_source,
 };
@@ -349,7 +350,7 @@ impl FunctionFindingSignal {
         match self {
             Self::LongFunction => "function_lines",
             Self::ComplexFunction => "function_complexity",
-            Self::DeepNesting => "nesting_depth",
+            Self::DeepNesting => METRIC_NESTING_DEPTH,
             Self::ManyParameters => "function_parameters",
         }
     }
@@ -477,7 +478,7 @@ fn scan_file_metrics(
                 Some(1),
                 format!("file exposes {public_items} public/exported items"),
                 vec![FindingMetric::threshold(
-                    "public_items",
+                    METRIC_PUBLIC_ITEMS,
                     public_items,
                     options.max_public_items,
                     "items",

@@ -189,6 +189,36 @@ def three():
 }
 
 #[test]
+fn skips_code_convention_repeated_literals() -> Result<()> {
+    let source = r#"
+#[serde(rename_all = "snake_case")]
+enum One {
+    Value,
+}
+
+#[serde(rename_all = "snake_case")]
+enum Two {
+    Value,
+}
+
+#[serde(rename_all = "snake_case")]
+enum Three {
+    Value,
+}
+"#;
+
+    let findings = scan_structure(&[source_file("src/lib.rs", source)], &options())?;
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::RepeatedLiteral),
+        "{findings:#?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn keeps_cross_file_domain_repeated_literals() -> Result<()> {
     let files = [
         source_file(

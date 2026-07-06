@@ -308,6 +308,7 @@ pub(super) fn is_ignored_repeated_literal(literal: &str) -> bool {
             | "parameters"
             | "schema_version"
             | "related_locations"
+            | "snake_case"
             | "source files"
             | "source file"
             | "findings"
