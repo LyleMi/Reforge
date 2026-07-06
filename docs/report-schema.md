@@ -1,13 +1,13 @@
 # Report Schema
 
-JSON and YAML reports use schema version `6`. The same Rust data model is
+JSON and YAML reports use schema version `7`. The same Rust data model is
 serialized for both formats.
 
 ## Top-Level Shape
 
 ```json
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
@@ -19,7 +19,7 @@ serialized for both formats.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `6`.
+- `schema_version`: report schema version. Current value is `7`.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
@@ -213,6 +213,7 @@ Current `kind` values:
 - `fixture_factory_drift`
 - `generic_bucket_drift`
 - `adapter_boundary_bypass`
+- `stale_compatibility_path`
 - `missing_documentation_set`
 - `missing_user_guide`
 - `missing_report_schema_docs`
@@ -224,7 +225,7 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `6` does not emit the legacy v4 fields `score`, `score_breakdown`, or
+version `7` does not emit the legacy v4 fields `score`, `score_breakdown`, or
 `rank_reason`; use `priority`, `priority_factors`, and `rank_explanation`
 instead.
 

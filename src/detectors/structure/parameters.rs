@@ -1,4 +1,8 @@
 use super::*;
+use crate::language::{
+    FIELD_IDENTIFIER_KIND, IDENTIFIER_KIND, PROPERTY_IDENTIFIER_KIND,
+    SHORTHAND_PROPERTY_IDENTIFIER_KIND, is_binding_identifier_kind,
+};
 
 pub(super) fn parameter_names(
     parameters: Option<Node<'_>>,
@@ -70,10 +74,10 @@ fn javascript_typescript_parameter_name(parameter: Node<'_>, source: &str) -> Op
 fn is_javascript_typescript_parameter_node(kind: &str) -> bool {
     matches!(
         kind,
-        "identifier"
-            | "field_identifier"
-            | "property_identifier"
-            | "shorthand_property_identifier"
+        IDENTIFIER_KIND
+            | FIELD_IDENTIFIER_KIND
+            | PROPERTY_IDENTIFIER_KIND
+            | SHORTHAND_PROPERTY_IDENTIFIER_KIND
             | "required_parameter"
             | "optional_parameter"
             | "assignment_pattern"
@@ -88,55 +92,61 @@ fn collect_javascript_typescript_parameter_binding(
     source: &str,
     names: &mut Vec<String>,
 ) {
-    match node.kind() {
-        "type_annotation" | "return_type" => {}
-        "required_parameter" | "optional_parameter" => {
-            if let Some(pattern) = node
-                .child_by_field_name("pattern")
-                .or_else(|| node.child_by_field_name("name"))
-            {
-                collect_javascript_typescript_parameter_binding(pattern, source, names);
-            } else {
-                collect_javascript_typescript_parameter_children(node, source, names);
-            }
-        }
-        "assignment_pattern" => {
-            if let Some(left) = node.child_by_field_name("left") {
-                collect_javascript_typescript_parameter_binding(left, source, names);
-            } else {
-                collect_javascript_typescript_parameter_children(node, source, names);
-            }
-        }
-        "rest_pattern" => {
-            if let Some(argument) = node.child_by_field_name("argument") {
-                collect_javascript_typescript_parameter_binding(argument, source, names);
-            } else {
-                collect_javascript_typescript_parameter_children(node, source, names);
-            }
-        }
-        "identifier"
-        | "field_identifier"
-        | "property_identifier"
-        | "shorthand_property_identifier" => {
-            if let Ok(text) = node.utf8_text(source.as_bytes()) {
-                let name = normalize_identifier(text);
-                if !name.is_empty() {
-                    names.push(name);
-                }
-            }
-        }
-        _ => collect_javascript_typescript_parameter_children(node, source, names),
-    }
+    ParameterBindingCollector { source, names }.collect_javascript_typescript(node);
 }
 
-fn collect_javascript_typescript_parameter_children(
-    node: Node<'_>,
-    source: &str,
-    names: &mut Vec<String>,
-) {
-    let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) {
-        collect_javascript_typescript_parameter_binding(child, source, names);
+struct ParameterBindingCollector<'source, 'names> {
+    source: &'source str,
+    names: &'names mut Vec<String>,
+}
+
+impl ParameterBindingCollector<'_, '_> {
+    fn collect_javascript_typescript(&mut self, node: Node<'_>) {
+        match node.kind() {
+            "type_annotation" | "return_type" => {}
+            "required_parameter" | "optional_parameter" => {
+                if let Some(pattern) = node
+                    .child_by_field_name("pattern")
+                    .or_else(|| node.child_by_field_name("name"))
+                {
+                    self.collect_javascript_typescript(pattern);
+                } else {
+                    self.collect_javascript_typescript_children(node);
+                }
+            }
+            "assignment_pattern" => {
+                if let Some(left) = node.child_by_field_name("left") {
+                    self.collect_javascript_typescript(left);
+                } else {
+                    self.collect_javascript_typescript_children(node);
+                }
+            }
+            "rest_pattern" => {
+                if let Some(argument) = node.child_by_field_name("argument") {
+                    self.collect_javascript_typescript(argument);
+                } else {
+                    self.collect_javascript_typescript_children(node);
+                }
+            }
+            kind if is_binding_identifier_kind(kind) => self.push_identifier(node, false),
+            _ => self.collect_javascript_typescript_children(node),
+        }
+    }
+
+    fn collect_javascript_typescript_children(&mut self, node: Node<'_>) {
+        let mut cursor = node.walk();
+        for child in node.named_children(&mut cursor) {
+            self.collect_javascript_typescript(child);
+        }
+    }
+
+    fn push_identifier(&mut self, node: Node<'_>, skip_self: bool) {
+        if let Ok(text) = node.utf8_text(self.source.as_bytes()) {
+            let name = normalize_identifier(text);
+            if !name.is_empty() && (!skip_self || name != "self") {
+                self.names.push(name);
+            }
+        }
     }
 }
 
@@ -166,7 +176,7 @@ fn go_parameter_names(parameters: Node<'_>, source: &str) -> Vec<String> {
 
 fn collect_parameter_name(node: Node<'_>, source: &str, names: &mut Vec<String>) {
     match node.kind() {
-        "identifier" | "field_identifier" | "shorthand_property_identifier" => {
+        IDENTIFIER_KIND | FIELD_IDENTIFIER_KIND | SHORTHAND_PROPERTY_IDENTIFIER_KIND => {
             if let Ok(text) = node.utf8_text(source.as_bytes()) {
                 let name = normalize_identifier(text);
                 if !name.is_empty() && name != "self" {

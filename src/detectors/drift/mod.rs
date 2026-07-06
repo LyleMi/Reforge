@@ -47,6 +47,7 @@ struct DriftSignals {
     generic_directories: BTreeMap<PathBuf, GenericDirectory>,
     generic_files: Vec<(String, Occurrence)>,
     bypasses: BTreeMap<BypassKind, Vec<Occurrence>>,
+    compatibility_paths: BTreeMap<String, Vec<Occurrence>>,
 }
 
 #[derive(Debug, Default)]
@@ -117,6 +118,9 @@ pub fn scan_agent_drift(files: &[SourceFile], options: &AgentDriftOptions) -> Ve
         options,
     ));
     findings.extend(adapter_boundary_bypass_findings(&signals.bypasses));
+    findings.extend(stale_compatibility_path_findings(
+        &signals.compatibility_paths,
+    ));
 
     findings.sort_by(|left, right| {
         left.kind
@@ -146,6 +150,7 @@ fn collect_file_signals(
         collect_function_signals(file, &file_words, is_test, signals);
         collect_type_shapes(file, signals);
         collect_config_keys(file, signals);
+        collect_compatibility_paths(file, compatibility_path_intent(&file_words), signals);
     }
 
     if !is_test {
@@ -737,8 +742,10 @@ fn groups_to_findings(
 }
 
 mod analysis;
+mod compatibility;
 
 use analysis::*;
+use compatibility::*;
 
 #[cfg(test)]
 #[path = "../../agent_drift_tests.rs"]

@@ -90,6 +90,9 @@ looks like report/fixture text.
   `shared`, or `utils` accumulate unrelated concepts.
 - `adapter_boundary_bypass`: a boundary module exists, but other files make
   direct HTTP, config, filesystem, or logging calls.
+- `stale_compatibility_path`: legacy, deprecated, fallback, shim, polyfill,
+  or versioned compatibility paths appear without a clear sunset, owner, or
+  migration boundary.
 
 Drift detectors use path and identifier heuristics, so grouped cross-file
 findings deserve more weight than isolated info-level findings.

@@ -178,7 +178,7 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
     output.push_str(&paint(color, "Signals", AnsiStyle::Section));
     output.push('\n');
     output.push_str(&format!(
-        "  Critical: {}\n  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Happy-path-only tests: {}\n  File naming drift: {}\n  Directory drift: {}\n  Data clumps: {}\n  Parallel implementations: {}\n  Shadowed abstractions: {}\n  Duplicate type shapes: {}\n  Config key drift: {}\n  Fixture factory drift: {}\n  Generic bucket drift: {}\n  Adapter boundary bypasses: {}\n  Missing documentation sets: {}\n  Missing user guides: {}\n  Missing report schema docs: {}\n  Missing metrics model docs: {}\n  Missing architecture docs: {}\n  Stale CLI docs: {}\n  Stale schema docs: {}\n",
+        "  Critical: {}\n  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Happy-path-only tests: {}\n  File naming drift: {}\n  Directory drift: {}\n  Data clumps: {}\n  Parallel implementations: {}\n  Shadowed abstractions: {}\n  Duplicate type shapes: {}\n  Config key drift: {}\n  Fixture factory drift: {}\n  Generic bucket drift: {}\n  Adapter boundary bypasses: {}\n  Stale compatibility paths: {}\n  Missing documentation sets: {}\n  Missing user guides: {}\n  Missing report schema docs: {}\n  Missing metrics model docs: {}\n  Missing architecture docs: {}\n  Stale CLI docs: {}\n  Stale schema docs: {}\n",
         breakdown.critical,
         breakdown.warnings,
         breakdown.info,
@@ -207,6 +207,7 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
         breakdown.count(FindingKind::FixtureFactoryDrift),
         breakdown.count(FindingKind::GenericBucketDrift),
         breakdown.count(FindingKind::AdapterBoundaryBypass),
+        breakdown.count(FindingKind::StaleCompatibilityPath),
         breakdown.count(FindingKind::MissingDocumentationSet),
         breakdown.count(FindingKind::MissingUserGuide),
         breakdown.count(FindingKind::MissingReportSchemaDocs),
@@ -333,6 +334,7 @@ fn has_related_location_details(finding: &Finding) -> bool {
             | FindingKind::FixtureFactoryDrift
             | FindingKind::GenericBucketDrift
             | FindingKind::AdapterBoundaryBypass
+            | FindingKind::StaleCompatibilityPath
     )
 }
 
@@ -606,6 +608,12 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
         "adapter boundary bypass",
         DisplayMetric::GroupSize,
         MetricFormat::PluralCount("bypass"),
+    ),
+    display(
+        FindingKind::StaleCompatibilityPath,
+        "stale compatibility path",
+        DisplayMetric::GroupSize,
+        MetricFormat::PluralCount("marker"),
     ),
     display(
         FindingKind::MissingDocumentationSet,

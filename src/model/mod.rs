@@ -4,7 +4,7 @@ use serde::{Serialize, Serializer, ser::SerializeStruct};
 
 use crate::cli::{ChurnMode, HotspotModel};
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 6;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 7;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 pub(crate) const METRIC_NESTING_DEPTH: &str = "nesting_depth";
 pub(crate) const METRIC_PUBLIC_ITEMS: &str = "public_items";
@@ -37,6 +37,7 @@ pub enum FindingKind {
     FixtureFactoryDrift,
     GenericBucketDrift,
     AdapterBoundaryBypass,
+    StaleCompatibilityPath,
     MissingDocumentationSet,
     MissingUserGuide,
     MissingReportSchemaDocs,

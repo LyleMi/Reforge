@@ -8,7 +8,7 @@ use tree_sitter::{Node, Parser, Tree};
 use crate::language::{
     BODY_FIELD, FUNCTION_DECLARATION, FUNCTION_DEFINITION, FUNCTION_ITEM,
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
-    NAME_FIELD, adapter_for_path,
+    NAME_FIELD, adapter_for_path, is_identifier_like_kind,
 };
 use crate::scanner::{
     Finding, FindingInput, FindingKind, FindingMetric, RelatedLocation, scored_finding,
@@ -397,7 +397,7 @@ fn normalize_node(
         return;
     }
 
-    if is_identifier_kind(kind) {
+    if is_identifier_like_kind(kind) {
         tokens.push(interner.intern("ID"));
         return;
     }
@@ -439,19 +439,6 @@ fn token_counts(tokens: &[TokenId]) -> Vec<(TokenId, usize)> {
 
 fn is_comment_kind(kind: &str) -> bool {
     kind.contains("comment")
-}
-
-fn is_identifier_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "identifier"
-            | "field_identifier"
-            | "property_identifier"
-            | "shorthand_property_identifier"
-            | "type_identifier"
-            | "scoped_identifier"
-            | "self"
-    )
 }
 
 fn is_string_kind(kind: &str) -> bool {

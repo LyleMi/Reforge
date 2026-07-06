@@ -92,7 +92,7 @@ Metrics are assigned one of these dimensions:
 - `duplication`: similar functions, repeated literals, repeated error
   patterns, data clumps, and duplicate type shapes.
 - `drift`: naming, directory, parallel implementation, abstraction, config,
-  fixture, and generic bucket drift.
+  fixture, generic bucket, adapter boundary, and compatibility-path drift.
 - `test_risk`: repeated setup and happy-path-only test risk.
 - `documentation`: missing or stale documentation.
 

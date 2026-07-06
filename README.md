@@ -8,7 +8,7 @@
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
   <img alt="MSRV" src="https://img.shields.io/badge/MSRV-1.85-2f855a">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-86%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-105%20passing-brightgreen">
   <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20json%20%7C%20yaml-6b46c1">
 </p>
 
@@ -31,7 +31,8 @@ or fast-moving codebases before refactoring work starts.
 - Skips common generated, dependency, and git-ignored paths by default.
 - Groups noisy findings such as TODO/FIXME markers and similar functions.
 - Includes drift checks for duplicate abstractions, data shapes, config keys,
-  fixture factories, generic buckets, and adapter boundary bypasses.
+  fixture factories, generic buckets, adapter boundary bypasses, and stale
+  compatibility paths.
 
 ## Quick Start
 
@@ -133,6 +134,7 @@ Agent-drift signals:
 - Fixture factory drift.
 - Generic bucket drift.
 - Adapter boundary bypasses.
+- Stale compatibility paths without sunset or migration boundaries.
 
 Test-specific signals:
 
@@ -226,7 +228,7 @@ Signals
 ```
 
 Human output includes a summary, signal counts, grouped findings, and a short
-reason for each ranking. JSON and YAML use schema version 6 and include
+reason for each ranking. JSON and YAML use schema version 7 and include
 `summary`, `metrics_summary`, `raw_metrics`, `hotspots`, and `findings`.
 Findings expose `priority`, `confidence`, `priority_factors`,
 `rank_explanation`, `metrics`, and `related_locations`; legacy v4 fields

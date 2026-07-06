@@ -49,7 +49,7 @@ into clearer directories.
 ## Data Flow
 
 `ScanArgs` is the input configuration. `scan_report` produces a `ScanReport`
-with schema version `6`. Detectors emit `Finding` values with metrics and
+with schema version `7`. Detectors emit `Finding` values with metrics and
 related locations. Scoring later enriches those findings with dimensions,
 normalized values, percentiles, `priority_factors`, `priority`, `severity`, and
 `rank_explanation`.

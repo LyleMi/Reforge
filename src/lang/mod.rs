@@ -14,6 +14,14 @@ pub(crate) const GENERATOR_FUNCTION_DECLARATION: &str = "generator_function_decl
 pub(crate) const METHOD_DECLARATION: &str = "method_declaration";
 pub(crate) const METHOD_DEFINITION: &str = "method_definition";
 
+pub(crate) const IDENTIFIER_KIND: &str = "identifier";
+pub(crate) const FIELD_IDENTIFIER_KIND: &str = "field_identifier";
+pub(crate) const PROPERTY_IDENTIFIER_KIND: &str = "property_identifier";
+pub(crate) const SHORTHAND_PROPERTY_IDENTIFIER_KIND: &str = "shorthand_property_identifier";
+pub(crate) const TYPE_IDENTIFIER_KIND: &str = "type_identifier";
+pub(crate) const SCOPED_IDENTIFIER_KIND: &str = "scoped_identifier";
+pub(crate) const SELF_KIND: &str = "self";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum LanguageFamily {
     Rust,
@@ -64,4 +72,22 @@ pub(crate) fn adapter_for_path(path: &Path) -> Option<LanguageAdapter> {
         }),
         _ => None,
     }
+}
+
+pub(crate) fn is_binding_identifier_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        IDENTIFIER_KIND
+            | FIELD_IDENTIFIER_KIND
+            | PROPERTY_IDENTIFIER_KIND
+            | SHORTHAND_PROPERTY_IDENTIFIER_KIND
+    )
+}
+
+pub(crate) fn is_identifier_like_kind(kind: &str) -> bool {
+    is_binding_identifier_kind(kind)
+        || matches!(
+            kind,
+            TYPE_IDENTIFIER_KIND | SCOPED_IDENTIFIER_KIND | SELF_KIND
+        )
 }

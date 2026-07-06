@@ -323,3 +323,71 @@ fn detects_adapter_boundary_bypasses_when_boundary_exists() {
     assert_eq!(metric_value(finding, "group_size"), Some(2));
     assert_eq!(finding.related_locations.len(), 2);
 }
+
+#[test]
+fn detects_stale_compatibility_paths_without_exit_boundary() {
+    let files = vec![source_file(
+        "src/api/user_legacy.ts",
+        r#"
+export function mapLegacyUser(payload: LegacyUser) {
+  if (payload.v1) {
+    return fallbackUserMapper(payload);
+  }
+  return mapCurrentUser(payload);
+}
+"#,
+    )];
+
+    let findings = scan_agent_drift(&files, &options());
+
+    let finding = findings
+        .iter()
+        .find(|finding| finding.kind == FindingKind::StaleCompatibilityPath)
+        .expect("stale compatibility path finding");
+    assert_eq!(finding.path, "src/api/user_legacy.ts");
+    assert_eq!(metric_value(finding, "group_size"), Some(2));
+    assert_eq!(finding.related_locations.len(), 2);
+}
+
+#[test]
+fn skips_compatibility_paths_with_exit_boundary() {
+    let files = vec![source_file(
+        "src/api/user_legacy.ts",
+        r#"
+// remove after mobile clients migrate to v3
+export function mapLegacyUser(payload: LegacyUser) {
+  return fallbackUserMapper(payload);
+}
+"#,
+    )];
+
+    let findings = scan_agent_drift(&files, &options());
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::StaleCompatibilityPath),
+        "{findings:#?}"
+    );
+}
+
+#[test]
+fn skips_stale_compatibility_paths_in_tests_by_default() {
+    let files = vec![source_file(
+        "tests/api/user_legacy.test.ts",
+        r#"
+export function mapLegacyUserFixture(payload: LegacyUser) {
+  return fallbackUserMapper(payload);
+}
+"#,
+    )];
+
+    let findings = scan_agent_drift(&files, &options());
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::StaleCompatibilityPath),
+        "{findings:#?}"
+    );
+}

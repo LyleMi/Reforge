@@ -130,7 +130,7 @@ pub fn default_confidence(kind: FindingKind) -> f64 {
         | FindingKind::FixtureFactoryDrift => 0.85,
         FindingKind::RepeatedLiteral => 0.75,
         FindingKind::DuplicateTypeShape | FindingKind::AdapterBoundaryBypass => 0.80,
-        FindingKind::GenericBucketDrift => 0.70,
+        FindingKind::GenericBucketDrift | FindingKind::StaleCompatibilityPath => 0.70,
         FindingKind::HappyPathOnlyTests => 0.60,
         FindingKind::MissingDocumentationSet
         | FindingKind::MissingUserGuide
@@ -316,7 +316,8 @@ fn impact_score(kind: FindingKind) -> f64 {
         | FindingKind::DirectoryDrift
         | FindingKind::DataClump
         | FindingKind::DuplicateTypeShape
-        | FindingKind::GenericBucketDrift => 65.0,
+        | FindingKind::GenericBucketDrift
+        | FindingKind::StaleCompatibilityPath => 65.0,
         FindingKind::ComplexFunction => 90.0,
         FindingKind::SimilarFunctions
         | FindingKind::ParallelImplementation
@@ -339,7 +340,8 @@ fn actionability_score(kind: FindingKind) -> f64 {
         FindingKind::ShadowedAbstraction
         | FindingKind::ConfigKeyDrift
         | FindingKind::FixtureFactoryDrift
-        | FindingKind::GenericBucketDrift => 65.0,
+        | FindingKind::GenericBucketDrift
+        | FindingKind::StaleCompatibilityPath => 65.0,
         FindingKind::RepeatedErrorPattern | FindingKind::TestDuplication => 70.0,
         FindingKind::LargeDirectory
         | FindingKind::ImportHeavyFile
@@ -389,7 +391,8 @@ pub(crate) fn metric_dimension(kind: FindingKind, metric_name: &str) -> MetricDi
         | FindingKind::ShadowedAbstraction
         | FindingKind::ConfigKeyDrift
         | FindingKind::FixtureFactoryDrift
-        | FindingKind::GenericBucketDrift => MetricDimension::Drift,
+        | FindingKind::GenericBucketDrift
+        | FindingKind::StaleCompatibilityPath => MetricDimension::Drift,
         FindingKind::DebtMarker => match metric_name {
             "imports" | METRIC_PUBLIC_ITEMS => MetricDimension::Coupling,
             "function_complexity" | METRIC_NESTING_DEPTH | "function_parameters" => {
