@@ -86,6 +86,35 @@ fn should_scan_documentation(root: &Path) -> bool {
         && PROJECT_MARKERS
             .iter()
             .any(|marker| root.join(marker).exists())
+        && is_reforge_project(root)
+}
+
+fn is_reforge_project(root: &Path) -> bool {
+    manifest_project_name(&root.join("Cargo.toml"), "package")
+        .or_else(|| manifest_project_name(&root.join("package.json"), ""))
+        .is_some_and(|name| name == "reforge")
+}
+
+fn manifest_project_name(path: &Path, table: &str) -> Option<String> {
+    let contents = fs::read_to_string(path).ok()?;
+    if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
+        return serde_json::from_str::<serde_json::Value>(&contents)
+            .ok()?
+            .get("name")?
+            .as_str()
+            .map(ToString::to_string);
+    }
+
+    let value = toml::from_str::<toml::Value>(&contents).ok()?;
+    if table.is_empty() {
+        value.get("name")?.as_str().map(ToString::to_string)
+    } else {
+        value
+            .get(table)?
+            .get("name")?
+            .as_str()
+            .map(ToString::to_string)
+    }
 }
 
 impl DocumentationInventory {

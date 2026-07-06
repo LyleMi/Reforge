@@ -561,6 +561,71 @@ fn hotspot_models_sort_differently() {
 }
 
 #[test]
+fn test_metrics_do_not_enter_hotspot_leaderboard() {
+    let raw_metrics = RawMetrics {
+        files: vec![
+            FileRawMetric {
+                path: "tests/large_test.rs".to_string(),
+                loc: 2_000,
+                imports: 1,
+                public_items: 1,
+                directory_source_files: 1,
+                is_test: true,
+                churn: ChurnFileMetric {
+                    commits_touched: 20,
+                    lines_added: 2_000,
+                    lines_deleted: 1_000,
+                    authors_count: 2,
+                    recent_weighted_churn: 3_000,
+                },
+            },
+            FileRawMetric {
+                path: "src/large.rs".to_string(),
+                loc: 900,
+                imports: 1,
+                public_items: 1,
+                directory_source_files: 1,
+                is_test: false,
+                churn: ChurnFileMetric::default(),
+            },
+        ],
+        functions: vec![
+            FunctionRawMetric {
+                path: "tests/large_test.rs".to_string(),
+                name: "large_test".to_string(),
+                line: 1,
+                loc: 1_500,
+                complexity: 30,
+                nesting_depth: 6,
+                parameter_count: 0,
+                is_test: true,
+            },
+            FunctionRawMetric {
+                path: "src/large.rs".to_string(),
+                name: "large".to_string(),
+                line: 1,
+                loc: 100,
+                complexity: 1,
+                nesting_depth: 0,
+                parameter_count: 0,
+                is_test: false,
+            },
+        ],
+        types: Vec::new(),
+    };
+    let summary = summarize_raw_metrics(&raw_metrics);
+
+    let hotspots = rank_hotspots(&raw_metrics, &summary, crate::cli::HotspotModel::Static);
+
+    assert!(!hotspots.is_empty());
+    assert!(
+        hotspots
+            .iter()
+            .all(|hotspot| !hotspot.path.contains("tests/"))
+    );
+}
+
+#[test]
 fn file_level_hotspot_only_weakly_influences_line_findings() {
     let mut findings = vec![finding(FindingInput::new(
         FindingKind::RepeatedLiteral,

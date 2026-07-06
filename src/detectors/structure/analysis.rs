@@ -177,6 +177,7 @@ impl StructureSignalCollector<'_, '_> {
     pub(super) fn collect_literal_occurrence(&mut self, node: Node<'_>) {
         if is_literal_node(node)
             && !has_literal_ancestor(node)
+            && !has_repeated_literal_noise_ancestor(node)
             && let Ok(text) = node.utf8_text(self.traversal.source.as_bytes())
             && let Some(literal) = normalize_literal(text)
         {
@@ -217,6 +218,24 @@ pub(super) fn has_literal_ancestor(mut node: Node<'_>) -> bool {
     false
 }
 
+pub(super) fn has_repeated_literal_noise_ancestor(mut node: Node<'_>) -> bool {
+    while let Some(parent) = node.parent() {
+        if is_import_or_export_node(parent) {
+            return true;
+        }
+        node = parent;
+    }
+
+    false
+}
+
+fn is_import_or_export_node(node: Node<'_>) -> bool {
+    matches!(
+        node.kind(),
+        "import_statement" | "import_declaration" | "export_statement" | "export_declaration"
+    )
+}
+
 pub(super) fn normalize_literal(text: &str) -> Option<String> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -234,7 +253,10 @@ pub(super) fn normalize_literal(text: &str) -> Option<String> {
     let unquoted = trimmed
         .trim_start_matches(['r', 'b', 'f', 'u'])
         .trim_matches(['"', '\'', '`']);
-    if unquoted.len() < 5 || is_ignored_repeated_literal(unquoted) {
+    if unquoted.len() < 5
+        || is_ignored_repeated_literal(unquoted)
+        || is_module_specifier_literal(unquoted)
+    {
         None
     } else {
         Some(unquoted.to_string())
@@ -253,6 +275,14 @@ pub(super) fn is_ignored_repeated_literal(literal: &str) -> bool {
             | "references"
             | "group"
             | "group_size"
+            | "boolean"
+            | "number"
+            | "object"
+            | "string"
+            | "symbol"
+            | "unknown"
+            | "undefined"
+            | "bigint"
             | "score"
             | "confidence"
             | "severity"
@@ -275,6 +305,24 @@ pub(super) fn is_ignored_repeated_literal(literal: &str) -> bool {
             | "findings"
             | "finding"
     )
+}
+
+fn is_module_specifier_literal(literal: &str) -> bool {
+    let trimmed = literal.trim();
+    if trimmed.contains(char::is_whitespace) {
+        return false;
+    }
+
+    let looks_relative = trimmed.starts_with("./") || trimmed.starts_with("../");
+    let looks_scoped_package = trimmed.starts_with('@') && trimmed.contains('/');
+    let has_source_extension = [
+        ".c", ".cc", ".cpp", ".cs", ".go", ".java", ".js", ".jsx", ".kt", ".py", ".rb", ".rs",
+        ".ts", ".tsx",
+    ]
+    .iter()
+    .any(|extension| trimmed.ends_with(extension));
+
+    looks_relative || looks_scoped_package || has_source_extension
 }
 
 pub(super) fn repeated_literal_confidence(literal: &str, locations: &[Occurrence]) -> f64 {

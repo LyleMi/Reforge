@@ -41,6 +41,10 @@ impl<'a> HotspotRanking<'a> {
 
     fn append_file_hotspots(&self, hotspots: &mut Vec<Hotspot>) {
         for file in &self.raw_metrics.files {
+            if file.is_test {
+                continue;
+            }
+
             let static_risk = file_static_risk(file, self.metrics_summary);
             hotspots.push(hotspot(HotspotInput {
                 level: HotspotLevel::File,
@@ -56,6 +60,10 @@ impl<'a> HotspotRanking<'a> {
 
     fn append_function_hotspots(&self, hotspots: &mut Vec<Hotspot>) {
         for function in &self.raw_metrics.functions {
+            if function.is_test {
+                continue;
+            }
+
             let static_risk = function_static_risk(function, self.metrics_summary);
             hotspots.push(hotspot(HotspotInput {
                 level: HotspotLevel::Function,
@@ -71,6 +79,10 @@ impl<'a> HotspotRanking<'a> {
 
     fn append_type_hotspots(&self, hotspots: &mut Vec<Hotspot>) {
         for type_metric in &self.raw_metrics.types {
+            if type_metric.is_test {
+                continue;
+            }
+
             let static_risk = type_static_risk(type_metric, self.metrics_summary);
             hotspots.push(hotspot(HotspotInput {
                 level: HotspotLevel::Type,

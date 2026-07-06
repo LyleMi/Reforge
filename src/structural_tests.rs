@@ -362,6 +362,44 @@ enum Three {
 }
 
 #[test]
+fn skips_import_and_type_metadata_repeated_literals() -> Result<()> {
+    let source = r#"
+import type { NodePath } from "@babel/traverse";
+import * as t from "@babel/types";
+
+export function one(value: unknown) {
+    if (typeof value === "string") return "string";
+    return "object";
+}
+
+export function two(value: unknown) {
+    if (typeof value === "string") return "string";
+    return "object";
+}
+
+export function three(value: unknown) {
+    if (typeof value === "string") return "string";
+    return "object";
+}
+
+export function four(value: unknown) {
+    if (typeof value === "string") return "string";
+    return "object";
+}
+"#;
+
+    let findings = scan_structure(&[source_file("src/app.ts", source)], &options())?;
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::RepeatedLiteral),
+        "{findings:#?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn keeps_cross_file_domain_repeated_literals() -> Result<()> {
     let files = [
         source_file(

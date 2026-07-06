@@ -71,7 +71,7 @@ fn write_project_marker(root: &Path) -> Result<()> {
     fs::create_dir_all(root)?;
     fs::write(
         root.join("Cargo.toml"),
-        "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        "[package]\nname = \"reforge\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
     )?;
     fs::create_dir_all(root.join("src"))?;
     fs::write(root.join("src/main.rs"), "fn main() {}\n")?;
@@ -190,6 +190,32 @@ fn reports_missing_project_documentation_for_project_roots() -> Result<()> {
             ))
             .all(|finding| finding.severity == Severity::Warning)
     );
+    Ok(())
+}
+
+#[test]
+fn skips_reforge_documentation_contract_for_other_projects() -> Result<()> {
+    let root = test_root("other-project-docs");
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"formatter\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )?;
+    fs::write(root.join("README.md"), "Formatter fixture\n")?;
+    fs::write(root.join("src/main.rs"), "fn main() {}\n")?;
+
+    let args = scan_args(root.clone());
+    let mut progress = NoopProgress;
+    let report = scan_report(&args, &mut progress)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert!(report.findings.iter().all(|finding| {
+        finding
+            .metrics
+            .iter()
+            .all(|metric| metric.dimension != crate::model::MetricDimension::Documentation)
+    }));
     Ok(())
 }
 
