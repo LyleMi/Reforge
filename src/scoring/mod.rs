@@ -141,6 +141,7 @@ pub fn default_confidence(kind: FindingKind) -> f64 {
         | FindingKind::StaleSchemaDocumentation => 0.95,
         FindingKind::FileNamingDrift
         | FindingKind::DirectoryDrift
+        | FindingKind::FunctionProliferation
         | FindingKind::ParallelImplementation
         | FindingKind::ShadowedAbstraction => 0.65,
         FindingKind::DebtMarker
@@ -310,7 +311,9 @@ fn impact_score(kind: FindingKind) -> f64 {
         | FindingKind::DeepNesting
         | FindingKind::ManyParameters
         | FindingKind::LargeType => 70.0,
-        FindingKind::LargePublicSurface | FindingKind::ImportHeavyFile => 60.0,
+        FindingKind::LargePublicSurface
+        | FindingKind::ImportHeavyFile
+        | FindingKind::FunctionProliferation => 60.0,
         FindingKind::RepeatedErrorPattern
         | FindingKind::TestDuplication
         | FindingKind::DirectoryDrift
@@ -346,6 +349,7 @@ fn actionability_score(kind: FindingKind) -> f64 {
         FindingKind::LargeDirectory
         | FindingKind::ImportHeavyFile
         | FindingKind::LargePublicSurface
+        | FindingKind::FunctionProliferation
         | FindingKind::DataClump => 75.0,
         FindingKind::LargeFile
         | FindingKind::LongFunction
@@ -366,9 +370,10 @@ pub(crate) fn metric_dimension(kind: FindingKind, metric_name: &str) -> MetricDi
         | FindingKind::LargeDirectory
         | FindingKind::LongFunction
         | FindingKind::LargeType => MetricDimension::Size,
-        FindingKind::ComplexFunction | FindingKind::DeepNesting | FindingKind::ManyParameters => {
-            MetricDimension::Complexity
-        }
+        FindingKind::ComplexFunction
+        | FindingKind::DeepNesting
+        | FindingKind::ManyParameters
+        | FindingKind::FunctionProliferation => MetricDimension::Complexity,
         FindingKind::LargePublicSurface
         | FindingKind::ImportHeavyFile
         | FindingKind::AdapterBoundaryBypass => MetricDimension::Coupling,

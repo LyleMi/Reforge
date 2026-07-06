@@ -39,6 +39,9 @@ max-type-lines = 200
 max-type-members = 25
 max-imports = 25
 max-public-items = 20
+max-functions-per-file = 40
+max-functions-per-100-lines = 12
+max-small-function-ratio = 70
 
 min-similar-functions = 3
 min-function-tokens = 70
@@ -74,6 +77,9 @@ ignore-paths = [
 | `max-type-members` | `30` | `--max-type-members` |
 | `max-imports` | `35` | `--max-imports` |
 | `max-public-items` | `30` | `--max-public-items` |
+| `max-functions-per-file` | `40` | `--max-functions-per-file` |
+| `max-functions-per-100-lines` | `12` | `--max-functions-per-100-lines` |
+| `max-small-function-ratio` | `70` | `--max-small-function-ratio` |
 | `min-repeated-literal-occurrences` | `4` | `--min-repeated-literal-occurrences` |
 | `min-data-clump-occurrences` | `3` | `--min-data-clump-occurrences` |
 | `churn` | `auto` | `--churn` |

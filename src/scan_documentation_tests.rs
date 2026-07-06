@@ -35,6 +35,11 @@ fn scan_args(path: std::path::PathBuf) -> ScanArgs {
         max_type_members: 30,
         max_imports: 35,
         max_public_items: 30,
+        function_proliferation: crate::cli::FunctionProliferationArgs {
+            max_functions_per_file: 40,
+            max_functions_per_100_lines: 12,
+            max_small_function_ratio: 70,
+        },
         min_repeated_literal_occurrences: 4,
         min_data_clump_occurrences: 3,
         include_test_structure: false,
@@ -79,6 +84,7 @@ fn cli_flags_doc() -> &'static str {
 --include-test-similarity --max-function-lines --max-function-complexity \
 --max-nesting-depth --max-function-parameters --max-type-lines \
 --max-type-members --max-imports --max-public-items \
+--max-functions-per-file --max-functions-per-100-lines --max-small-function-ratio \
 --min-repeated-literal-occurrences --min-data-clump-occurrences \
 --include-test-structure --config --churn --hotspot-model \
 --churn-window-days --churn-max-commit-lines --output --output-file \

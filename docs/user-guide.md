@@ -169,6 +169,9 @@ reforge scan [OPTIONS] [PATH]
 | `--max-type-members` | `30` | Report types above this member count. |
 | `--max-imports` | `35` | Report files with more imports than this threshold. |
 | `--max-public-items` | `30` | Report files with more public/exported items than this threshold. |
+| `--max-functions-per-file` | `40` | Report over-splitting risk only when this function count and density signals are exceeded. |
+| `--max-functions-per-100-lines` | `12` | Report over-splitting risk only when function density also exceeds this threshold. |
+| `--max-small-function-ratio` | `70` | Report over-splitting risk only when this percentage of functions are small and simple. |
 | `--min-repeated-literal-occurrences` | `4` | Report repeated literals seen at least this many times. |
 | `--min-data-clump-occurrences` | `3` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |

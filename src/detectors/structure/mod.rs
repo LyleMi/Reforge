@@ -25,6 +25,9 @@ pub struct StructureOptions {
     pub max_type_members: usize,
     pub max_imports: usize,
     pub max_public_items: usize,
+    pub max_functions_per_file: usize,
+    pub max_functions_per_100_lines: usize,
+    pub max_small_function_ratio: usize,
     pub min_repeated_literal_occurrences: usize,
     pub min_data_clump_occurrences: usize,
     pub max_dir_files: usize,
@@ -83,6 +86,8 @@ pub(crate) struct RawStructureTypeMetric {
 }
 
 type Occurrence = RelatedLocation;
+
+const FUNCTION_DENSITY_LINE_UNIT: usize = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum FileNamingStyle {
@@ -275,6 +280,7 @@ fn scan_production_file(
     scan_function_metrics(file, &ast_signals.functions, options, signals);
     scan_type_metrics(file, &ast_signals.types, options, signals);
     scan_file_metrics(file, root, traversal, options, signals);
+    scan_function_proliferation(file, root, &ast_signals.functions, options, signals);
     collect_cross_file_patterns(file, root, traversal, signals);
 }
 
@@ -485,6 +491,72 @@ fn scan_file_metrics(
                 )],
             )));
     }
+}
+
+fn scan_function_proliferation(
+    file: &SourceFile,
+    root: Node<'_>,
+    functions: &[FunctionMetric],
+    options: &StructureOptions,
+    signals: &mut FileSignals,
+) {
+    let function_count = functions.len();
+    if function_count <= options.max_functions_per_file {
+        return;
+    }
+
+    let file_lines = node_line_span(root).max(1);
+    let functions_per_100_lines = function_count
+        .saturating_mul(FUNCTION_DENSITY_LINE_UNIT)
+        .div_ceil(file_lines);
+    if functions_per_100_lines <= options.max_functions_per_100_lines {
+        return;
+    }
+
+    let small_function_count = functions
+        .iter()
+        .filter(|function| is_small_simple_function(function))
+        .count();
+    let small_function_ratio =
+        small_function_count.saturating_mul(FUNCTION_DENSITY_LINE_UNIT) / function_count;
+    if small_function_ratio <= options.max_small_function_ratio {
+        return;
+    }
+
+    signals
+        .findings
+        .push(crate::scanner::finding(FindingInput::new(
+            FindingKind::FunctionProliferation,
+            file.display_path.clone(),
+            Some(1),
+            format!(
+                "file defines {function_count} functions with {functions_per_100_lines} functions per 100 lines and {small_function_ratio}% small simple functions"
+            ),
+            vec![
+                FindingMetric::threshold(
+                    "function_count",
+                    function_count,
+                    options.max_functions_per_file,
+                    "functions",
+                ),
+                FindingMetric::threshold(
+                    "functions_per_100_lines",
+                    functions_per_100_lines,
+                    options.max_functions_per_100_lines,
+                    "functions",
+                ),
+                FindingMetric::threshold(
+                    "small_function_ratio",
+                    small_function_ratio,
+                    options.max_small_function_ratio,
+                    "percent",
+                ),
+            ],
+        )));
+}
+
+fn is_small_simple_function(function: &FunctionMetric) -> bool {
+    function.lines <= 5 && function.complexity <= 1 && function.parameter_count <= 3
 }
 
 fn collect_cross_file_patterns(

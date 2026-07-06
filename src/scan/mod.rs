@@ -230,6 +230,12 @@ impl ScanSignalContext<'_> {
             max_type_members: self.args.max_type_members,
             max_imports: self.args.max_imports,
             max_public_items: self.args.max_public_items,
+            max_functions_per_file: self.args.function_proliferation.max_functions_per_file,
+            max_functions_per_100_lines: self
+                .args
+                .function_proliferation
+                .max_functions_per_100_lines,
+            max_small_function_ratio: self.args.function_proliferation.max_small_function_ratio,
             min_repeated_literal_occurrences: self.args.min_repeated_literal_occurrences,
             min_data_clump_occurrences: self.args.min_data_clump_occurrences,
             max_dir_files: self.args.max_dir_files,

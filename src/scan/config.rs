@@ -19,6 +19,9 @@ const DEFAULT_MAX_TYPE_LINES: usize = 250;
 const DEFAULT_MAX_TYPE_MEMBERS: usize = 30;
 const DEFAULT_MAX_IMPORTS: usize = 35;
 const DEFAULT_MAX_PUBLIC_ITEMS: usize = 30;
+const DEFAULT_MAX_FUNCTIONS_PER_FILE: usize = 40;
+const DEFAULT_MAX_FUNCTIONS_PER_100_LINES: usize = 12;
+const DEFAULT_MAX_SMALL_FUNCTION_RATIO: usize = 70;
 const DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES: usize = 4;
 const DEFAULT_MIN_DATA_CLUMP_OCCURRENCES: usize = 3;
 const DEFAULT_CHURN_WINDOW_DAYS: usize = 180;
@@ -40,6 +43,9 @@ struct ReforgeConfig {
     max_type_members: Option<usize>,
     max_imports: Option<usize>,
     max_public_items: Option<usize>,
+    max_functions_per_file: Option<usize>,
+    max_functions_per_100_lines: Option<usize>,
+    max_small_function_ratio: Option<usize>,
     min_repeated_literal_occurrences: Option<usize>,
     min_data_clump_occurrences: Option<usize>,
     churn: Option<ChurnMode>,
@@ -199,6 +205,21 @@ fn apply_structure_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) 
         &mut args.max_public_items,
         DEFAULT_MAX_PUBLIC_ITEMS,
         config.max_public_items,
+    );
+    apply_usize_default(
+        &mut args.function_proliferation.max_functions_per_file,
+        DEFAULT_MAX_FUNCTIONS_PER_FILE,
+        config.max_functions_per_file,
+    );
+    apply_usize_default(
+        &mut args.function_proliferation.max_functions_per_100_lines,
+        DEFAULT_MAX_FUNCTIONS_PER_100_LINES,
+        config.max_functions_per_100_lines,
+    );
+    apply_usize_default(
+        &mut args.function_proliferation.max_small_function_ratio,
+        DEFAULT_MAX_SMALL_FUNCTION_RATIO,
+        config.max_small_function_ratio,
     );
 }
 

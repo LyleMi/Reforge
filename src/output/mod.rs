@@ -178,7 +178,7 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
     output.push_str(&paint(color, "Signals", AnsiStyle::Section));
     output.push('\n');
     output.push_str(&format!(
-        "  Critical: {}\n  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Happy-path-only tests: {}\n  File naming drift: {}\n  Directory drift: {}\n  Data clumps: {}\n  Parallel implementations: {}\n  Shadowed abstractions: {}\n  Duplicate type shapes: {}\n  Config key drift: {}\n  Fixture factory drift: {}\n  Generic bucket drift: {}\n  Adapter boundary bypasses: {}\n  Stale compatibility paths: {}\n  Missing documentation sets: {}\n  Missing user guides: {}\n  Missing report schema docs: {}\n  Missing metrics model docs: {}\n  Missing architecture docs: {}\n  Stale CLI docs: {}\n  Stale schema docs: {}\n",
+        "  Critical: {}\n  Warnings: {}\n  Info: {}\n  Large files: {}\n  Large directories: {}\n  Debt markers: {}\n  Similar function groups: {}\n  Long functions: {}\n  Complex functions: {}\n  Deep nesting: {}\n  Many parameters: {}\n  Large types: {}\n  Large public surfaces: {}\n  Import-heavy files: {}\n  Function proliferation: {}\n  Repeated literals: {}\n  Repeated error patterns: {}\n  Test duplication: {}\n  Happy-path-only tests: {}\n  File naming drift: {}\n  Directory drift: {}\n  Data clumps: {}\n  Parallel implementations: {}\n  Shadowed abstractions: {}\n  Duplicate type shapes: {}\n  Config key drift: {}\n  Fixture factory drift: {}\n  Generic bucket drift: {}\n  Adapter boundary bypasses: {}\n  Stale compatibility paths: {}\n  Missing documentation sets: {}\n  Missing user guides: {}\n  Missing report schema docs: {}\n  Missing metrics model docs: {}\n  Missing architecture docs: {}\n  Stale CLI docs: {}\n  Stale schema docs: {}\n",
         breakdown.critical,
         breakdown.warnings,
         breakdown.info,
@@ -193,6 +193,7 @@ fn render_signal_breakdown(output: &mut String, breakdown: &FindingBreakdown, co
         breakdown.count(FindingKind::LargeType),
         breakdown.count(FindingKind::LargePublicSurface),
         breakdown.count(FindingKind::ImportHeavyFile),
+        breakdown.count(FindingKind::FunctionProliferation),
         breakdown.count(FindingKind::RepeatedLiteral),
         breakdown.count(FindingKind::RepeatedErrorPattern),
         breakdown.count(FindingKind::TestDuplication),
@@ -515,6 +516,12 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
         "import-heavy file",
         DisplayMetric::Primary,
         MetricFormat::Count("imports"),
+    ),
+    display(
+        FindingKind::FunctionProliferation,
+        "function proliferation",
+        DisplayMetric::Named("function_count"),
+        MetricFormat::PluralCount("function"),
     ),
     display(
         FindingKind::RepeatedLiteral,

@@ -35,6 +35,11 @@ fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
         max_type_members: 30,
         max_imports: 35,
         max_public_items: 30,
+        function_proliferation: crate::cli::FunctionProliferationArgs {
+            max_functions_per_file: 40,
+            max_functions_per_100_lines: 12,
+            max_small_function_ratio: 70,
+        },
         min_repeated_literal_occurrences: 4,
         min_data_clump_occurrences: 3,
         include_test_structure: false,
@@ -370,11 +375,11 @@ fn loads_config_and_cli_overrides_configured_values() -> Result<()> {
     fs::create_dir_all(root.join("src"))?;
     fs::write(
         root.join("reforge.toml"),
-        "max-file-lines = 2\nchurn = \"off\"\nhotspot-model = \"static\"\nchurn-window-days = 30\n",
+        "max-file-lines = 2\nmax-functions-per-file = 3\nmax-functions-per-100-lines = 10\nmax-small-function-ratio = 60\nchurn = \"off\"\nhotspot-model = \"static\"\nchurn-window-days = 30\n",
     )?;
     fs::write(
         root.join("src/main.rs"),
-        "fn main() {\n  let value = 1;\n  dbg!(value);\n}\n",
+        "fn one() {}\nfn two() {}\nfn three() {}\nfn four() {}\nfn five() {}\n",
     )?;
 
     let mut args = scan_args(root.clone(), false);
@@ -395,6 +400,12 @@ fn loads_config_and_cli_overrides_configured_values() -> Result<()> {
             .findings
             .iter()
             .any(|finding| finding.kind == FindingKind::LargeFile)
+    );
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.kind == FindingKind::FunctionProliferation)
     );
     Ok(())
 }

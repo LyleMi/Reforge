@@ -19,6 +19,9 @@ fn options() -> StructureOptions {
         max_type_members: 3,
         max_imports: 2,
         max_public_items: 2,
+        max_functions_per_file: 40,
+        max_functions_per_100_lines: 12,
+        max_small_function_ratio: 70,
         min_repeated_literal_occurrences: 3,
         min_data_clump_occurrences: 3,
         max_dir_files: 3,
@@ -212,6 +215,66 @@ export class BigThing {
         findings
             .iter()
             .any(|finding| finding.kind == FindingKind::LargeType)
+    );
+    Ok(())
+}
+
+#[test]
+fn reports_function_proliferation_for_dense_small_functions() -> Result<()> {
+    let source = r#"
+fn one() -> i32 { 1 }
+fn two() -> i32 { 2 }
+fn three() -> i32 { 3 }
+fn four() -> i32 { 4 }
+fn five() -> i32 { 5 }
+"#;
+    let mut opts = options();
+    opts.max_functions_per_file = 3;
+    opts.max_functions_per_100_lines = 50;
+    opts.max_small_function_ratio = 60;
+
+    let findings = scan_structure(&[source_file("src/lib.rs", source)], &opts)?;
+    let finding = findings
+        .iter()
+        .find(|finding| finding.kind == FindingKind::FunctionProliferation)
+        .expect("dense small functions should be reported");
+
+    assert_eq!(metric_value(finding, "function_count"), Some(5));
+    assert_eq!(metric_value(finding, "small_function_ratio"), Some(100));
+    Ok(())
+}
+
+#[test]
+fn skips_function_proliferation_when_small_function_ratio_is_low() -> Result<()> {
+    let source = r#"
+fn one() -> i32 { 1 }
+fn two() -> i32 { 2 }
+fn three() -> i32 { 3 }
+fn four() -> i32 {
+    if true {
+        return 4;
+    }
+    0
+}
+fn five() -> i32 {
+    if true {
+        return 5;
+    }
+    0
+}
+"#;
+    let mut opts = options();
+    opts.max_functions_per_file = 3;
+    opts.max_functions_per_100_lines = 20;
+    opts.max_small_function_ratio = 70;
+
+    let findings = scan_structure(&[source_file("src/lib.rs", source)], &opts)?;
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::FunctionProliferation),
+        "{findings:#?}"
     );
     Ok(())
 }

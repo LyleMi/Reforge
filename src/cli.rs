@@ -82,6 +82,9 @@ pub struct ScanArgs {
     #[arg(long, default_value_t = 30)]
     pub max_public_items: usize,
 
+    #[command(flatten)]
+    pub function_proliferation: FunctionProliferationArgs,
+
     /// Report repeated literals seen at least this many times.
     #[arg(long, default_value_t = 4)]
     pub min_repeated_literal_occurrences: usize,
@@ -129,6 +132,21 @@ pub struct ScanArgs {
     /// Colorize human output. Auto writes colors only when stdout is a TTY.
     #[arg(long, value_enum, default_value_t = ColorMode::Auto)]
     pub color: ColorMode,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct FunctionProliferationArgs {
+    /// Report files with more functions than this threshold when density signals also match.
+    #[arg(long, default_value_t = 40)]
+    pub max_functions_per_file: usize,
+
+    /// Report files above this function density per 100 lines when other proliferation signals match.
+    #[arg(long, default_value_t = 12)]
+    pub max_functions_per_100_lines: usize,
+
+    /// Report files whose small-function percentage exceeds this threshold when other proliferation signals match.
+    #[arg(long, default_value_t = 70)]
+    pub max_small_function_ratio: usize,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -298,6 +316,12 @@ mod tests {
             "12",
             "--max-public-items",
             "8",
+            "--max-functions-per-file",
+            "24",
+            "--max-functions-per-100-lines",
+            "10",
+            "--max-small-function-ratio",
+            "65",
             "--min-repeated-literal-occurrences",
             "5",
             "--min-data-clump-occurrences",
@@ -314,6 +338,9 @@ mod tests {
         assert_eq!(args.max_type_members, 20);
         assert_eq!(args.max_imports, 12);
         assert_eq!(args.max_public_items, 8);
+        assert_eq!(args.function_proliferation.max_functions_per_file, 24);
+        assert_eq!(args.function_proliferation.max_functions_per_100_lines, 10);
+        assert_eq!(args.function_proliferation.max_small_function_ratio, 65);
         assert_eq!(args.min_repeated_literal_occurrences, 5);
         assert_eq!(args.min_data_clump_occurrences, 4);
         assert!(args.include_test_structure);
@@ -332,6 +359,9 @@ mod tests {
         assert_eq!(args.max_type_members, 30);
         assert_eq!(args.max_imports, 35);
         assert_eq!(args.max_public_items, 30);
+        assert_eq!(args.function_proliferation.max_functions_per_file, 40);
+        assert_eq!(args.function_proliferation.max_functions_per_100_lines, 12);
+        assert_eq!(args.function_proliferation.max_small_function_ratio, 70);
         assert_eq!(args.min_repeated_literal_occurrences, 4);
         assert_eq!(args.min_data_clump_occurrences, 3);
         assert!(!args.include_test_structure);

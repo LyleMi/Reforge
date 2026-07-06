@@ -266,6 +266,9 @@ config values when the CLI option is not changed.
 max-file-lines = 600
 max-function-complexity = 12
 max-imports = 25
+max-functions-per-file = 40
+max-functions-per-100-lines = 12
+max-small-function-ratio = 70
 
 churn = "auto"
 hotspot-model = "hybrid"
@@ -297,6 +300,9 @@ ignore-paths = ["vendor", "generated/snapshots"]
 | `--max-type-members` | `30` | Report large types by member count. |
 | `--max-imports` | `35` | Report import-heavy files. |
 | `--max-public-items` | `30` | Report large public/exported surfaces. |
+| `--max-functions-per-file` | `40` | Report over-splitting risk only when function count and density signals also match. |
+| `--max-functions-per-100-lines` | `12` | Report over-splitting risk only when function density also exceeds this threshold. |
+| `--max-small-function-ratio` | `70` | Report over-splitting risk only when this percentage of functions are small and simple. |
 | `--min-repeated-literal-occurrences` | `4` | Report repeated literals. |
 | `--min-data-clump-occurrences` | `3` | Report repeated parameter groups. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |

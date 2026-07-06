@@ -49,6 +49,10 @@ Structural detectors use Tree-sitter for supported languages.
 - `large_public_surface`: public/exported item count exceeds
   `--max-public-items`.
 - `import_heavy_file`: import count exceeds `--max-imports`.
+- `function_proliferation`: a production file has many functions, high
+  functions-per-100-lines density, and a high percentage of small simple
+  functions. This is an over-splitting signal, not proof that any function is
+  unused.
 
 Tests are excluded from general structural findings unless
 `--include-test-structure` is passed.
