@@ -86,11 +86,11 @@ pub struct ScanArgs {
     pub function_proliferation: FunctionProliferationArgs,
 
     /// Report repeated literals seen at least this many times.
-    #[arg(long, default_value_t = 8)]
+    #[arg(long, default_value_t = 12)]
     pub min_repeated_literal_occurrences: usize,
 
     /// Report repeated parameter groups seen at least this many times.
-    #[arg(long, default_value_t = 3)]
+    #[arg(long, default_value_t = 4)]
     pub min_data_clump_occurrences: usize,
 
     /// Include test files in general structural analysis.
@@ -362,8 +362,8 @@ mod tests {
         assert_eq!(args.function_proliferation.max_functions_per_file, 40);
         assert_eq!(args.function_proliferation.max_functions_per_100_lines, 12);
         assert_eq!(args.function_proliferation.max_small_function_ratio, 70);
-        assert_eq!(args.min_repeated_literal_occurrences, 8);
-        assert_eq!(args.min_data_clump_occurrences, 3);
+        assert_eq!(args.min_repeated_literal_occurrences, 12);
+        assert_eq!(args.min_data_clump_occurrences, 4);
         assert!(!args.include_test_structure);
     }
 

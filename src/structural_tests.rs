@@ -485,6 +485,16 @@ test("three", () => {
   const label = "shared literal";
   expect(3).toBe(3);
 });
+test("four", () => {
+  setupUserFixture();
+  const label = "shared literal";
+  expect(4).toBe(4);
+});
+test("five", () => {
+  setupUserFixture();
+  const label = "shared literal";
+  expect(5).toBe(5);
+});
 "#;
 
     let mut opts = options();

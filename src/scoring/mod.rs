@@ -25,6 +25,82 @@ const DEFAULT_MAX_PUBLIC_ITEMS: usize = 30;
 const MIN_SCORE: f64 = 0.0;
 const MAX_SCORE: f64 = 100.0;
 
+const IMPACT_SCORES: &[(FindingKind, f64)] = &[
+    (FindingKind::DebtMarker, 25.0),
+    (FindingKind::RepeatedLiteral, 30.0),
+    (FindingKind::HappyPathOnlyTests, 35.0),
+    (FindingKind::FileNamingDrift, 40.0),
+    (FindingKind::ShadowedAbstraction, 45.0),
+    (FindingKind::TestDuplication, 45.0),
+    (FindingKind::ConfigKeyDrift, 50.0),
+    (FindingKind::FixtureFactoryDrift, 50.0),
+    (FindingKind::GenericBucketDrift, 50.0),
+    (FindingKind::AdapterBoundaryBypass, 60.0),
+    (FindingKind::LargePublicSurface, 60.0),
+    (FindingKind::ImportHeavyFile, 60.0),
+    (FindingKind::FunctionProliferation, 60.0),
+    (FindingKind::UnusedFunction, 60.0),
+    (FindingKind::LargeFile, 65.0),
+    (FindingKind::LargeDirectory, 65.0),
+    (FindingKind::RepeatedErrorPattern, 65.0),
+    (FindingKind::DirectoryDrift, 65.0),
+    (FindingKind::DataClump, 65.0),
+    (FindingKind::DuplicateTypeShape, 65.0),
+    (FindingKind::StaleCompatibilityPath, 65.0),
+    (FindingKind::MissingDocumentationSet, 70.0),
+    (FindingKind::MissingUserGuide, 70.0),
+    (FindingKind::MissingMetricsModelDocs, 70.0),
+    (FindingKind::MissingArchitectureDocs, 70.0),
+    (FindingKind::LongFunction, 70.0),
+    (FindingKind::DeepNesting, 70.0),
+    (FindingKind::ManyParameters, 70.0),
+    (FindingKind::LargeType, 70.0),
+    (FindingKind::ParallelImplementation, 70.0),
+    (FindingKind::StaleCliDocumentation, 75.0),
+    (FindingKind::SimilarFunctions, 80.0),
+    (FindingKind::ComplexFunction, 90.0),
+    (FindingKind::MissingReportSchemaDocs, 90.0),
+    (FindingKind::StaleSchemaDocumentation, 90.0),
+];
+
+const ACTIONABILITY_SCORES: &[(FindingKind, f64)] = &[
+    (FindingKind::RepeatedLiteral, 40.0),
+    (FindingKind::HappyPathOnlyTests, 40.0),
+    (FindingKind::GenericBucketDrift, 50.0),
+    (FindingKind::TestDuplication, 55.0),
+    (FindingKind::DebtMarker, 60.0),
+    (FindingKind::FileNamingDrift, 60.0),
+    (FindingKind::DirectoryDrift, 60.0),
+    (FindingKind::ShadowedAbstraction, 65.0),
+    (FindingKind::ConfigKeyDrift, 65.0),
+    (FindingKind::FixtureFactoryDrift, 65.0),
+    (FindingKind::StaleCompatibilityPath, 65.0),
+    (FindingKind::MissingMetricsModelDocs, 70.0),
+    (FindingKind::MissingArchitectureDocs, 70.0),
+    (FindingKind::RepeatedErrorPattern, 70.0),
+    (FindingKind::AdapterBoundaryBypass, 70.0),
+    (FindingKind::LargeDirectory, 75.0),
+    (FindingKind::ImportHeavyFile, 75.0),
+    (FindingKind::LargePublicSurface, 75.0),
+    (FindingKind::FunctionProliferation, 75.0),
+    (FindingKind::UnusedFunction, 75.0),
+    (FindingKind::DataClump, 75.0),
+    (FindingKind::MissingDocumentationSet, 85.0),
+    (FindingKind::MissingUserGuide, 85.0),
+    (FindingKind::MissingReportSchemaDocs, 85.0),
+    (FindingKind::StaleCliDocumentation, 85.0),
+    (FindingKind::StaleSchemaDocumentation, 85.0),
+    (FindingKind::LargeFile, 85.0),
+    (FindingKind::LongFunction, 85.0),
+    (FindingKind::ComplexFunction, 85.0),
+    (FindingKind::DeepNesting, 85.0),
+    (FindingKind::ManyParameters, 85.0),
+    (FindingKind::LargeType, 85.0),
+    (FindingKind::SimilarFunctions, 85.0),
+    (FindingKind::ParallelImplementation, 85.0),
+    (FindingKind::DuplicateTypeShape, 85.0),
+];
+
 #[derive(Debug, Clone)]
 pub struct FindingInput {
     kind: FindingKind,
@@ -296,75 +372,18 @@ fn best_file_hotspot_for_finding<'a>(
 }
 
 fn impact_score(kind: FindingKind) -> f64 {
-    match kind {
-        FindingKind::DebtMarker => 25.0,
-        FindingKind::RepeatedLiteral | FindingKind::FileNamingDrift => 40.0,
-        FindingKind::HappyPathOnlyTests | FindingKind::ShadowedAbstraction => 45.0,
-        FindingKind::ConfigKeyDrift | FindingKind::FixtureFactoryDrift => 50.0,
-        FindingKind::MissingDocumentationSet
-        | FindingKind::MissingUserGuide
-        | FindingKind::MissingMetricsModelDocs
-        | FindingKind::MissingArchitectureDocs => 70.0,
-        FindingKind::StaleCliDocumentation => 75.0,
-        FindingKind::MissingReportSchemaDocs | FindingKind::StaleSchemaDocumentation => 90.0,
-        FindingKind::LargeFile | FindingKind::LargeDirectory => 65.0,
-        FindingKind::LongFunction
-        | FindingKind::DeepNesting
-        | FindingKind::ManyParameters
-        | FindingKind::LargeType => 70.0,
-        FindingKind::LargePublicSurface
-        | FindingKind::ImportHeavyFile
-        | FindingKind::FunctionProliferation
-        | FindingKind::UnusedFunction => 60.0,
-        FindingKind::RepeatedErrorPattern
-        | FindingKind::TestDuplication
-        | FindingKind::DirectoryDrift
-        | FindingKind::DataClump
-        | FindingKind::DuplicateTypeShape
-        | FindingKind::GenericBucketDrift
-        | FindingKind::StaleCompatibilityPath => 65.0,
-        FindingKind::ComplexFunction => 90.0,
-        FindingKind::SimilarFunctions
-        | FindingKind::ParallelImplementation
-        | FindingKind::AdapterBoundaryBypass => 80.0,
-    }
+    score_for_kind(kind, IMPACT_SCORES)
 }
 
 fn actionability_score(kind: FindingKind) -> f64 {
-    match kind {
-        FindingKind::RepeatedLiteral | FindingKind::HappyPathOnlyTests => 45.0,
-        FindingKind::DebtMarker | FindingKind::FileNamingDrift | FindingKind::DirectoryDrift => {
-            60.0
-        }
-        FindingKind::MissingMetricsModelDocs | FindingKind::MissingArchitectureDocs => 70.0,
-        FindingKind::MissingDocumentationSet
-        | FindingKind::MissingUserGuide
-        | FindingKind::MissingReportSchemaDocs
-        | FindingKind::StaleCliDocumentation
-        | FindingKind::StaleSchemaDocumentation => 85.0,
-        FindingKind::ShadowedAbstraction
-        | FindingKind::ConfigKeyDrift
-        | FindingKind::FixtureFactoryDrift
-        | FindingKind::GenericBucketDrift
-        | FindingKind::StaleCompatibilityPath => 65.0,
-        FindingKind::RepeatedErrorPattern | FindingKind::TestDuplication => 70.0,
-        FindingKind::LargeDirectory
-        | FindingKind::ImportHeavyFile
-        | FindingKind::LargePublicSurface
-        | FindingKind::FunctionProliferation
-        | FindingKind::UnusedFunction
-        | FindingKind::DataClump => 75.0,
-        FindingKind::LargeFile
-        | FindingKind::LongFunction
-        | FindingKind::ComplexFunction
-        | FindingKind::DeepNesting
-        | FindingKind::ManyParameters
-        | FindingKind::LargeType
-        | FindingKind::SimilarFunctions
-        | FindingKind::ParallelImplementation
-        | FindingKind::DuplicateTypeShape
-        | FindingKind::AdapterBoundaryBypass => 85.0,
-    }
+    score_for_kind(kind, ACTIONABILITY_SCORES)
+}
+
+fn score_for_kind(kind: FindingKind, scores: &[(FindingKind, f64)]) -> f64 {
+    scores
+        .iter()
+        .find_map(|(candidate, score)| (*candidate == kind).then_some(*score))
+        .unwrap_or(50.0)
 }
 
 pub(crate) fn metric_dimension(kind: FindingKind, metric_name: &str) -> MetricDimension {

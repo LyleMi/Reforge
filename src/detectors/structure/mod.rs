@@ -88,6 +88,7 @@ pub(crate) struct RawStructureTypeMetric {
 type Occurrence = RelatedLocation;
 
 const FUNCTION_DENSITY_LINE_UNIT: usize = 100;
+const MIN_TEST_SETUP_OCCURRENCES: usize = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum FileNamingStyle {
@@ -189,7 +190,9 @@ pub(crate) fn scan_parsed_structure(
     ));
     signals.findings.extend(group_occurrences(
         signals.test_setups,
-        options.min_data_clump_occurrences,
+        options
+            .min_data_clump_occurrences
+            .max(MIN_TEST_SETUP_OCCURRENCES),
         FindingKind::TestDuplication,
         |_, count| format!("test setup pattern is repeated {count} times"),
     ));
