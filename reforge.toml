@@ -1,0 +1,128 @@
+churn = "auto"
+hotspot-model = "hybrid"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/structure/analysis/aggregation.rs"
+line = 151
+reason = "scanner naming-style classifier intentionally centralizes syntax branching"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/drift/analysis.rs"
+line = 93
+reason = "drift name extraction accepts multiple language syntaxes in one conservative helper"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/drift/analysis.rs"
+line = 174
+reason = "type-shape field extraction covers multiple AST segment forms"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/drift/mod.rs"
+line = 234
+reason = "drift type-shape collection keeps cross-language traversal in one audited path"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/detectors/drift/mod.rs"
+line = 234
+reason = "drift type-shape collection uses nested AST guards to avoid false positives"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/drift/mod.rs"
+line = 509
+reason = "duplicate type-shape grouping keeps scoring and related locations together"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/structure/analysis.rs"
+line = 667
+reason = "test-case heuristic intentionally groups language-specific evidence checks"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/scoring/mod.rs"
+line = 455
+reason = "ranking explanation is a compact mapping from scoring factors to report text"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/similarity.rs"
+line = 255
+reason = "similarity extraction dispatches across supported Tree-sitter grammars"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/similarity.rs"
+line = 441
+reason = "token normalization intentionally centralizes syntax variants for stable grouping"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/structure/analysis.rs"
+line = 188
+reason = "public item counting dispatches across supported Tree-sitter grammars"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/structure/analysis/aggregation.rs"
+line = 419
+reason = "directory concept splitting handles mixed file-name conventions conservatively"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/detectors/structure/analysis/aggregation.rs"
+line = 419
+reason = "directory concept splitting uses nested guards to preserve naming behavior"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/unused_functions.rs"
+line = 145
+reason = "unused-function candidate dispatch is intentionally explicit per language"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/scoring/hotspots.rs"
+line = 165
+reason = "hotspot percentile risk calculation is kept local for stable ranking behavior"
+
+[[suppressions]]
+kind = "large_type"
+path = "src/cli.rs"
+line = 97
+reason = "ScanArgs mirrors the public CLI surface and is intentionally explicit"
+
+[[suppressions]]
+kind = "long_function"
+path = "src/output/html.rs"
+line = 395
+reason = "HTML finding renderer keeps static report markup in one cohesive pass"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/output/html.rs"
+line = 1
+reason = "static HTML renderer stays self-contained to produce dependency-free reports"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/output/human.rs"
+line = 1
+reason = "terminal renderer keeps display metadata and formatting together"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/cli.rs"
+line = 1
+reason = "CLI definition centralizes clap arguments and defaults for config generation"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/detectors/structure/mod.rs"
+line = 1
+reason = "structural detector orchestrates shared AST metrics before deeper module splits"
