@@ -5,10 +5,10 @@ use crate::model::{
     FileRawMetric, Finding, FindingKind, Hotspot, HotspotLevel, ScanReport, Severity,
 };
 
-const FILE_HEATMAP_PAGE_SIZE: usize = 12;
-const FINDING_PAGE_SIZE: usize = 10;
-const HOTSPOT_PAGE_SIZE: usize = 8;
-const SIMILAR_GROUP_PAGE_SIZE: usize = 6;
+const FILE_HEATMAP_PAGE_SIZE: usize = 8;
+const FINDING_PAGE_SIZE: usize = 6;
+const HOTSPOT_PAGE_SIZE: usize = 5;
+const SIMILAR_GROUP_PAGE_SIZE: usize = 4;
 const RELATED_LOCATION_LIMIT: usize = 8;
 
 pub fn print_html_report(report: &ScanReport) -> io::Result<()> {
@@ -222,7 +222,12 @@ impl HtmlRenderContext<'_> {
 
     fn render_file_heatmap(&mut self) {
         self.output
-            .push_str("<section class=\"panel file-panel\"><div class=\"section-title\"><h2>File Heatmap</h2><span>risk, findings, size</span></div>\n");
+            .push_str("<section class=\"panel file-panel\"><div class=\"section-title\"><h2>File Heatmap</h2><span>");
+        self.output.push_str(&escape_html(&format!(
+            "{} files ranked",
+            self.report.raw_metrics.files.len()
+        )));
+        self.output.push_str("</span></div>\n");
 
         let files = ranked_file_overviews(self.report);
         if files.is_empty() {
@@ -262,7 +267,12 @@ impl HtmlRenderContext<'_> {
 
     fn render_hotspots(&mut self) {
         self.output
-            .push_str("<section class=\"panel hotspots-panel\"><div class=\"section-title\"><h2>Watchlist</h2><span>ranked review targets</span></div>\n");
+            .push_str("<section class=\"panel hotspots-panel\"><div class=\"section-title\"><h2>Watchlist</h2><span>");
+        self.output.push_str(&escape_html(&format!(
+            "{} ranked targets",
+            self.report.hotspots.len()
+        )));
+        self.output.push_str("</span></div>\n");
 
         if self.report.hotspots.is_empty() {
             self.output
@@ -310,7 +320,10 @@ impl HtmlRenderContext<'_> {
             .collect::<Vec<_>>();
 
         self.output
-            .push_str("<section class=\"panel similar-panel\"><div class=\"section-title\"><h2>Similar Function Groups</h2><span>duplication clusters</span></div>\n");
+            .push_str("<section class=\"panel similar-panel\"><div class=\"section-title\"><h2>Similar Function Groups</h2><span>");
+        self.output
+            .push_str(&escape_html(&format!("{} clusters", groups.len())));
+        self.output.push_str("</span></div>\n");
 
         if groups.is_empty() {
             self.output
@@ -365,7 +378,12 @@ impl HtmlRenderContext<'_> {
 
     fn render_findings(&mut self) {
         self.output
-            .push_str("<section class=\"panel findings-panel\"><div class=\"section-title\"><h2>Findings</h2><span>prioritized diagnostics</span></div>\n");
+            .push_str("<section class=\"panel findings-panel\"><div class=\"section-title\"><h2>Findings</h2><span>");
+        self.output.push_str(&escape_html(&format!(
+            "{} diagnostics",
+            self.report.findings.len()
+        )));
+        self.output.push_str("</span></div>\n");
 
         if self.report.findings.is_empty() {
             self.output

@@ -406,7 +406,7 @@ fn html_report_paginates_long_sections_without_omitting_items() {
     let output = render_html_report(&report(findings));
 
     assert!(output.contains("data-page-controls=\"findings\""));
-    assert!(output.contains("data-page-size=\"10\""));
+    assert!(output.contains("data-page-size=\"6\""));
     assert!(output.contains("src/file_11.rs:1"));
     assert!(!output.contains("more findings omitted"));
 }
