@@ -389,9 +389,24 @@ fn renders_html_report_with_visual_sections() {
     let output = render_html_report(&scan_report);
 
     assert!(output.starts_with("<!doctype html>"));
-    assert!(output.contains("Codebase refactoring map"));
+    assert!(output.contains("Refactoring signal console"));
+    assert!(output.contains("Signal plane"));
     assert!(output.contains("File Heatmap"));
     assert!(output.contains("Similar Function Groups"));
     assert!(output.contains("src/a.rs:10 alpha"));
     assert!(output.contains("similar functions"));
+}
+
+#[test]
+fn html_report_paginates_long_sections_without_omitting_items() {
+    let findings = (0..12)
+        .map(|index| large_file(&format!("src/file_{index}.rs"), 1_200 + index))
+        .collect::<Vec<_>>();
+
+    let output = render_html_report(&report(findings));
+
+    assert!(output.contains("data-page-controls=\"findings\""));
+    assert!(output.contains("data-page-size=\"10\""));
+    assert!(output.contains("src/file_11.rs:1"));
+    assert!(!output.contains("more findings omitted"));
 }

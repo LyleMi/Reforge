@@ -5,10 +5,10 @@ use crate::model::{
     FileRawMetric, Finding, FindingKind, Hotspot, HotspotLevel, ScanReport, Severity,
 };
 
-const FILE_HEATMAP_LIMIT: usize = 24;
-const FINDING_LIMIT: usize = 80;
-const HOTSPOT_LIMIT: usize = 20;
-const SIMILAR_GROUP_LIMIT: usize = 12;
+const FILE_HEATMAP_PAGE_SIZE: usize = 12;
+const FINDING_PAGE_SIZE: usize = 10;
+const HOTSPOT_PAGE_SIZE: usize = 8;
+const SIMILAR_GROUP_PAGE_SIZE: usize = 6;
 const RELATED_LOCATION_LIMIT: usize = 8;
 
 pub fn print_html_report(report: &ScanReport) -> io::Result<()> {
@@ -53,19 +53,24 @@ impl HtmlRenderContext<'_> {
         self.render_hotspots();
         self.render_similar_groups();
         self.render_findings();
-        self.output.push_str("</main>\n</body>\n</html>\n");
+        self.output.push_str("</main>\n<script>\n");
+        self.output.push_str(PAGINATION_SCRIPT);
+        self.output.push_str("</script>\n</body>\n</html>\n");
     }
 
     fn render_header(&mut self) {
         let summary = &self.report.summary;
+        let breakdown = SeverityBreakdown::from_findings(&self.report.findings);
         self.output.push_str("<header class=\"hero\">\n");
-        self.output.push_str("<div>\n");
+        self.output.push_str("<div class=\"hero-inner\">\n");
+        self.output.push_str("<div class=\"hero-copy\">\n");
         self.output
-            .push_str("<p class=\"eyebrow\">Reforge visual report</p>\n");
-        self.output.push_str("<h1>Codebase refactoring map</h1>\n");
+            .push_str("<p class=\"eyebrow\">Reforge static report</p>\n");
+        self.output
+            .push_str("<h1>Refactoring signal console</h1>\n");
         self.output.push_str("<p class=\"subhead\">");
         self.output.push_str(&escape_html(&format!(
-            "{} files scanned in {} with {} hotspot ranking and churn {}{}.",
+            "{} files scanned in {} with {} hotspot ranking. Churn is {}{}.",
             summary.scanned_files,
             format_duration(summary.duration_ms),
             hotspot_model_label(summary.hotspot_model),
@@ -78,7 +83,38 @@ impl HtmlRenderContext<'_> {
                 .unwrap_or_default()
         )));
         self.output.push_str("</p>\n</div>\n");
+        self.output
+            .push_str("<aside class=\"signal-board\" aria-label=\"Scan signal overview\">\n");
+        self.output
+            .push_str("<div class=\"board-top\"><span>Signal plane</span><strong>");
+        self.output
+            .push_str(&self.report.summary.finding_count.to_string());
+        self.output.push_str("</strong></div>\n");
+        self.output
+            .push_str("<div class=\"trace-grid\" aria-hidden=\"true\">");
+        self.render_trace_cell("critical", breakdown.critical);
+        self.render_trace_cell("warning", breakdown.warnings);
+        self.render_trace_cell("info", breakdown.info);
+        self.render_trace_cell("watch", self.report.summary.hotspot_count);
+        self.output.push_str("</div>\n");
+        self.output
+            .push_str("<div class=\"board-meta\"><span>critical ");
+        self.output.push_str(&breakdown.critical.to_string());
+        self.output.push_str("</span><span>warning ");
+        self.output.push_str(&breakdown.warnings.to_string());
+        self.output.push_str("</span><span>info ");
+        self.output.push_str(&breakdown.info.to_string());
+        self.output.push_str("</span></div>\n");
+        self.output.push_str("</aside>\n");
         self.output.push_str("</header>\n");
+    }
+
+    fn render_trace_cell(&mut self, class_name: &str, count: usize) {
+        self.output.push_str("<span class=\"trace-cell ");
+        self.output.push_str(class_name);
+        self.output.push_str("\" style=\"--level:");
+        self.output.push_str(&count.min(20).to_string());
+        self.output.push_str("\"></span>");
     }
 
     fn render_summary(&mut self) {
@@ -124,7 +160,8 @@ impl HtmlRenderContext<'_> {
         let dimensions = dimension_breakdown(&self.report.findings);
         let severities = SeverityBreakdown::from_findings(&self.report.findings);
 
-        self.output.push_str("<section class=\"panel-grid\">\n");
+        self.output
+            .push_str("<section class=\"panel-grid diagnostics-grid\">\n");
         self.output
             .push_str("<article class=\"panel\"><h2>Risk Distribution</h2>\n");
         self.render_distribution_bar(&[
@@ -185,7 +222,7 @@ impl HtmlRenderContext<'_> {
 
     fn render_file_heatmap(&mut self) {
         self.output
-            .push_str("<section class=\"panel\"><div class=\"section-title\"><h2>File Heatmap</h2><span>risk, findings, size</span></div>\n");
+            .push_str("<section class=\"panel file-panel\"><div class=\"section-title\"><h2>File Heatmap</h2><span>risk, findings, size</span></div>\n");
 
         let files = ranked_file_overviews(self.report);
         if files.is_empty() {
@@ -196,12 +233,12 @@ impl HtmlRenderContext<'_> {
         }
 
         self.output.push_str("<div class=\"file-heatmap\">\n");
-        for file in files.iter().take(FILE_HEATMAP_LIMIT) {
+        for file in &files {
             let heat = heat_class(file.risk);
             self.output.push_str("<div class=\"file-row ");
             self.output.push_str(heat);
             self.output
-                .push_str("\">\n<div class=\"file-main\"><strong>");
+                .push_str("\" data-page-item=\"files\">\n<div class=\"file-main\"><strong>");
             self.output
                 .push_str(&escape_html(&display_path(&file.path)));
             self.output.push_str("</strong><span>");
@@ -219,20 +256,13 @@ impl HtmlRenderContext<'_> {
             )));
             self.output.push_str("</small></div>\n</div>\n");
         }
-        if files.len() > FILE_HEATMAP_LIMIT {
-            self.output.push_str("<p class=\"more\">");
-            self.output.push_str(&format!(
-                "+{} more files omitted from the heatmap",
-                files.len() - FILE_HEATMAP_LIMIT
-            ));
-            self.output.push_str("</p>\n");
-        }
+        self.render_pagination_controls("files", files.len(), FILE_HEATMAP_PAGE_SIZE);
         self.output.push_str("</div>\n</section>\n");
     }
 
     fn render_hotspots(&mut self) {
         self.output
-            .push_str("<section class=\"panel\"><div class=\"section-title\"><h2>Watchlist</h2><span>ranked review targets</span></div>\n");
+            .push_str("<section class=\"panel hotspots-panel\"><div class=\"section-title\"><h2>Watchlist</h2><span>ranked review targets</span></div>\n");
 
         if self.report.hotspots.is_empty() {
             self.output
@@ -242,9 +272,10 @@ impl HtmlRenderContext<'_> {
         }
 
         self.output.push_str("<div class=\"table-like\">\n");
-        for hotspot in self.report.hotspots.iter().take(HOTSPOT_LIMIT) {
-            self.output
-                .push_str("<article class=\"row-card\"><div><span class=\"pill ");
+        for hotspot in &self.report.hotspots {
+            self.output.push_str(
+                "<article class=\"row-card\" data-page-item=\"hotspots\"><div><span class=\"pill ",
+            );
             self.output.push_str(severity_class(hotspot.severity));
             self.output.push_str("\">");
             self.output.push_str(severity_label(hotspot.severity));
@@ -266,6 +297,7 @@ impl HtmlRenderContext<'_> {
                 .push_str(&escape_html(&concise_hotspot_reason(&hotspot.reason)));
             self.output.push_str("</p></article>\n");
         }
+        self.render_pagination_controls("hotspots", self.report.hotspots.len(), HOTSPOT_PAGE_SIZE);
         self.output.push_str("</div>\n</section>\n");
     }
 
@@ -278,7 +310,7 @@ impl HtmlRenderContext<'_> {
             .collect::<Vec<_>>();
 
         self.output
-            .push_str("<section class=\"panel\"><div class=\"section-title\"><h2>Similar Function Groups</h2><span>duplication clusters</span></div>\n");
+            .push_str("<section class=\"panel similar-panel\"><div class=\"section-title\"><h2>Similar Function Groups</h2><span>duplication clusters</span></div>\n");
 
         if groups.is_empty() {
             self.output
@@ -287,9 +319,11 @@ impl HtmlRenderContext<'_> {
             return;
         }
 
-        for finding in groups.into_iter().take(SIMILAR_GROUP_LIMIT) {
-            self.output
-                .push_str("<article class=\"group-card\"><div><strong>");
+        let group_count = groups.len();
+        for finding in groups {
+            self.output.push_str(
+                "<article class=\"group-card\" data-page-item=\"similar-groups\"><div><strong>",
+            );
             self.output
                 .push_str(&escape_html(&finding_summary(finding)));
             self.output
@@ -325,12 +359,13 @@ impl HtmlRenderContext<'_> {
             self.output.push_str("</ul></article>\n");
         }
 
+        self.render_pagination_controls("similar-groups", group_count, SIMILAR_GROUP_PAGE_SIZE);
         self.output.push_str("</section>\n");
     }
 
     fn render_findings(&mut self) {
         self.output
-            .push_str("<section class=\"panel\"><div class=\"section-title\"><h2>Findings</h2><span>prioritized diagnostics</span></div>\n");
+            .push_str("<section class=\"panel findings-panel\"><div class=\"section-title\"><h2>Findings</h2><span>prioritized diagnostics</span></div>\n");
 
         if self.report.findings.is_empty() {
             self.output
@@ -349,9 +384,10 @@ impl HtmlRenderContext<'_> {
         });
 
         self.output.push_str("<div class=\"finding-list\">\n");
-        for finding in findings.into_iter().take(FINDING_LIMIT) {
+        let finding_count = findings.len();
+        for finding in findings {
             self.output.push_str(
-                "<article class=\"finding-card\"><div class=\"finding-head\"><span class=\"pill ",
+                "<article class=\"finding-card\" data-page-item=\"findings\"><div class=\"finding-head\"><span class=\"pill ",
             );
             self.output.push_str(severity_class(finding.severity));
             self.output.push_str("\">");
@@ -382,15 +418,22 @@ impl HtmlRenderContext<'_> {
             }
             self.output.push_str("</article>\n");
         }
-        if self.report.findings.len() > FINDING_LIMIT {
-            self.output.push_str("<p class=\"more\">");
-            self.output.push_str(&format!(
-                "+{} more findings omitted",
-                self.report.findings.len() - FINDING_LIMIT
-            ));
-            self.output.push_str("</p>\n");
-        }
+        self.render_pagination_controls("findings", finding_count, FINDING_PAGE_SIZE);
         self.output.push_str("</div>\n</section>\n");
+    }
+
+    fn render_pagination_controls(&mut self, group: &str, total: usize, page_size: usize) {
+        if total <= page_size {
+            return;
+        }
+
+        self.output
+            .push_str("<nav class=\"pager\" data-page-controls=\"");
+        self.output.push_str(group);
+        self.output.push_str("\" data-page-size=\"");
+        self.output.push_str(&page_size.to_string());
+        self.output
+            .push_str("\" aria-label=\"Section pagination\"><span data-page-range></span><div><button type=\"button\" data-page-action=\"prev\">Prev</button><span data-page-status></span><button type=\"button\" data-page-action=\"next\">Next</button></div></nav>\n");
     }
 }
 
@@ -665,3 +708,56 @@ fn escape_html(value: &str) -> String {
 }
 
 const STYLES: &str = include_str!("../../assets/report.css");
+
+const PAGINATION_SCRIPT: &str = r#"(() => {
+  const groups = new Map();
+  document.querySelectorAll("[data-page-item]").forEach((item) => {
+    const group = item.dataset.pageItem;
+    if (!groups.has(group)) {
+      groups.set(group, []);
+    }
+    groups.get(group).push(item);
+  });
+
+  document.querySelectorAll("[data-page-controls]").forEach((controls) => {
+    const group = controls.dataset.pageControls;
+    const items = groups.get(group) || [];
+    const pageSize = Math.max(1, Number(controls.dataset.pageSize || 10));
+    const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+    const status = controls.querySelector("[data-page-status]");
+    const range = controls.querySelector("[data-page-range]");
+    const prev = controls.querySelector('[data-page-action="prev"]');
+    const next = controls.querySelector('[data-page-action="next"]');
+    let page = 0;
+
+    const render = () => {
+      const start = page * pageSize;
+      const end = Math.min(start + pageSize, items.length);
+      items.forEach((item, index) => {
+        item.hidden = index < start || index >= end;
+      });
+      if (status) {
+        status.textContent = `${page + 1} / ${pageCount}`;
+      }
+      if (range) {
+        range.textContent = `${start + 1}-${end} of ${items.length}`;
+      }
+      if (prev) {
+        prev.disabled = page === 0;
+      }
+      if (next) {
+        next.disabled = page >= pageCount - 1;
+      }
+    };
+
+    prev?.addEventListener("click", () => {
+      page = Math.max(0, page - 1);
+      render();
+    });
+    next?.addEventListener("click", () => {
+      page = Math.min(pageCount - 1, page + 1);
+      render();
+    });
+    render();
+  });
+})();"#;
