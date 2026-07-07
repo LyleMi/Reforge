@@ -94,7 +94,8 @@ fn sarif_result(finding: &Finding, rule_indices: &BTreeMap<FindingKind, usize>) 
             "priority": finding.priority,
             "severity": severity_label(finding.severity),
             "confidence": finding.confidence,
-            "rank_explanation": finding.rank_explanation
+            "rank_explanation": finding.rank_explanation,
+            "recommendation": finding.recommendation()
         }
     });
 

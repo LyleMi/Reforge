@@ -7,7 +7,7 @@ use tree_sitter::Node;
 use crate::language::{
     ARROW_FUNCTION, BODY_FIELD, FUNCTION_DECLARATION, FUNCTION_DEFINITION, FUNCTION_ITEM,
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
-    NAME_FIELD, PARAMETERS_FIELD, adapter_for_path, has_rust_cfg_test_attribute,
+    NAME_FIELD, PARAMETERS_FIELD, adapter_for_path, child_by_kind, has_rust_cfg_test_attribute,
 };
 use crate::model::{METRIC_NESTING_DEPTH, METRIC_PUBLIC_ITEMS};
 use crate::scanner::{
@@ -680,6 +680,11 @@ fn function_parts<'tree>(
                 body: node.child_by_field_name(BODY_FIELD)?,
             })
         }
+        LanguageFamily::Java
+        | LanguageFamily::CSharp
+        | LanguageFamily::Kotlin
+        | LanguageFamily::Php
+        | LanguageFamily::Ruby => added_language_function_parts(node, traversal),
         _ => None,
     }
 }
@@ -688,6 +693,96 @@ fn function_name(node: Node<'_>, source: &str) -> Option<String> {
     node.child_by_field_name("name")
         .and_then(|name| name.utf8_text(source.as_bytes()).ok())
         .map(ToString::to_string)
+}
+
+fn added_language_function_parts<'tree>(
+    node: Node<'tree>,
+    traversal: StructureTraversal<'_>,
+) -> Option<FunctionParts<'tree>> {
+    match traversal.family {
+        LanguageFamily::Java | LanguageFamily::CSharp => method_function_parts(node, traversal),
+        LanguageFamily::Kotlin => kotlin_function_parts(node, traversal),
+        LanguageFamily::Php => php_function_parts(node, traversal),
+        LanguageFamily::Ruby => ruby_function_parts(node, traversal),
+        _ => None,
+    }
+}
+
+fn method_function_parts<'tree>(
+    node: Node<'tree>,
+    traversal: StructureTraversal<'_>,
+) -> Option<FunctionParts<'tree>> {
+    if node.kind() != METHOD_DECLARATION {
+        return None;
+    }
+    named_function_parts(
+        node,
+        traversal.source,
+        node.child_by_field_name(PARAMETERS_FIELD),
+        node.child_by_field_name(BODY_FIELD)?,
+    )
+}
+
+fn kotlin_function_parts<'tree>(
+    node: Node<'tree>,
+    traversal: StructureTraversal<'_>,
+) -> Option<FunctionParts<'tree>> {
+    if node.kind() != FUNCTION_DECLARATION {
+        return None;
+    }
+    named_function_parts(
+        node,
+        traversal.source,
+        child_by_kind(node, "function_value_parameters"),
+        child_by_kind(node, "function_body")?,
+    )
+}
+
+fn php_function_parts<'tree>(
+    node: Node<'tree>,
+    traversal: StructureTraversal<'_>,
+) -> Option<FunctionParts<'tree>> {
+    if !matches!(node.kind(), FUNCTION_DEFINITION | METHOD_DECLARATION) {
+        return None;
+    }
+    named_function_parts(
+        node,
+        traversal.source,
+        node.child_by_field_name(PARAMETERS_FIELD),
+        node.child_by_field_name(BODY_FIELD)?,
+    )
+}
+
+fn ruby_function_parts<'tree>(
+    node: Node<'tree>,
+    traversal: StructureTraversal<'_>,
+) -> Option<FunctionParts<'tree>> {
+    if !matches!(node.kind(), "method" | "singleton_method") {
+        return None;
+    }
+    named_function_parts(
+        node,
+        traversal.source,
+        node.child_by_field_name(PARAMETERS_FIELD),
+        node.child_by_field_name(BODY_FIELD)?,
+    )
+}
+
+fn named_function_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+    parameters: Option<Node<'tree>>,
+    body: Node<'tree>,
+) -> Option<FunctionParts<'tree>> {
+    Some(FunctionParts {
+        name: node
+            .child_by_field_name(NAME_FIELD)?
+            .utf8_text(source.as_bytes())
+            .ok()?
+            .to_string(),
+        parameters,
+        body,
+    })
 }
 
 fn complexity(node: Node<'_>, traversal: StructureTraversal<'_>) -> usize {
@@ -740,6 +835,14 @@ fn is_decision_node(node: Node<'_>, traversal: StructureTraversal<'_>) -> bool {
             | "catch_clause"
             | "except_clause"
             | "conditional_expression"
+            | "try_statement"
+            | "if"
+            | "unless"
+            | "for"
+            | "while"
+            | "case"
+            | "when"
+            | "rescue"
     ) {
         return true;
     }
@@ -774,6 +877,14 @@ fn is_nesting_node(node: Node<'_>, family: LanguageFamily) -> bool {
             | "case_clause"
             | "catch_clause"
             | "except_clause"
+            | "try_statement"
+            | "if"
+            | "unless"
+            | "for"
+            | "while"
+            | "case"
+            | "when"
+            | "rescue"
     ) || (family == LanguageFamily::Python && kind == "elif_clause")
 }
 

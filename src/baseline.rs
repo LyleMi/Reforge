@@ -4,8 +4,36 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 
-use crate::cli::BaselineMode;
+use crate::cli::{BaselineMode, BaselineShow};
 use crate::model::{Finding, SCAN_REPORT_SCHEMA_VERSION, ScanReport, Severity};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BaselineFindingStatus {
+    New,
+    Worse,
+    Same,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BaselineFinding<'a> {
+    pub finding: &'a Finding,
+    pub status: BaselineFindingStatus,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BaselineDiffSummary {
+    pub new: usize,
+    pub worse: usize,
+    pub same: usize,
+    pub resolved: usize,
+}
+
+#[derive(Debug)]
+pub(crate) struct BaselineDiff<'a> {
+    pub summary: BaselineDiffSummary,
+    pub findings: Vec<BaselineFinding<'a>>,
+    pub show: BaselineShow,
+}
 
 pub(crate) fn load_baseline(path: &Path) -> Result<ScanReport> {
     let contents = fs::read_to_string(path)
@@ -35,23 +63,68 @@ pub(crate) fn selected_findings<'a>(
     let Some(baseline) = baseline else {
         return current.iter().collect();
     };
-    if mode == BaselineMode::All {
-        return current.iter().collect();
-    }
 
+    let show = match mode {
+        BaselineMode::New => BaselineShow::New,
+        BaselineMode::NewOrWorse => BaselineShow::NewOrWorse,
+        BaselineMode::All => BaselineShow::All,
+    };
+
+    diff_findings(current, baseline, show)
+        .findings
+        .into_iter()
+        .map(|entry| entry.finding)
+        .collect()
+}
+
+pub(crate) fn diff_findings<'a>(
+    current: &'a [Finding],
+    baseline: &ScanReport,
+    show: BaselineShow,
+) -> BaselineDiff<'a> {
     let previous = baseline
         .findings
         .iter()
         .map(|finding| (finding.id.as_str(), finding))
         .collect::<BTreeMap<_, _>>();
-
-    current
+    let current_ids = current
         .iter()
-        .filter(|finding| match previous.get(finding.id.as_str()) {
-            None => true,
-            Some(previous) => mode == BaselineMode::NewOrWorse && is_worse(finding, previous),
-        })
-        .collect()
+        .map(|finding| finding.id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    let mut summary = BaselineDiffSummary {
+        resolved: baseline
+            .findings
+            .iter()
+            .filter(|finding| !current_ids.contains(finding.id.as_str()))
+            .count(),
+        ..BaselineDiffSummary::default()
+    };
+    let mut findings = Vec::new();
+
+    for finding in current {
+        let status = match previous.get(finding.id.as_str()) {
+            None => BaselineFindingStatus::New,
+            Some(previous) if is_worse(finding, previous) => BaselineFindingStatus::Worse,
+            Some(_) => BaselineFindingStatus::Same,
+        };
+
+        match status {
+            BaselineFindingStatus::New => summary.new += 1,
+            BaselineFindingStatus::Worse => summary.worse += 1,
+            BaselineFindingStatus::Same => summary.same += 1,
+        }
+
+        if show_matches(show, status) {
+            findings.push(BaselineFinding { finding, status });
+        }
+    }
+
+    BaselineDiff {
+        summary,
+        findings,
+        show,
+    }
 }
 
 pub(crate) fn gate_failures<'a>(
@@ -120,6 +193,19 @@ fn validate_finding_ids(path: &Path, report: &ScanReport) -> Result<()> {
 fn is_worse(current: &Finding, previous: &Finding) -> bool {
     severity_rank(current.severity) > severity_rank(previous.severity)
         || current.priority > previous.priority
+}
+
+fn show_matches(show: BaselineShow, status: BaselineFindingStatus) -> bool {
+    match show {
+        BaselineShow::New => status == BaselineFindingStatus::New,
+        BaselineShow::NewOrWorse => {
+            matches!(
+                status,
+                BaselineFindingStatus::New | BaselineFindingStatus::Worse
+            )
+        }
+        BaselineShow::All => true,
+    }
 }
 
 fn severity_rank(severity: Severity) -> u8 {
@@ -223,6 +309,69 @@ mod tests {
             selected
                 .iter()
                 .map(|finding| finding.id.as_str())
+                .collect::<Vec<_>>(),
+            ["rf1-worse", "rf1-new"]
+        );
+    }
+
+    #[test]
+    fn diff_classifies_new_worse_same_and_resolved_findings() {
+        let old = baseline(vec![
+            finding("rf1-same", 50, Severity::Warning),
+            finding("rf1-worse-priority", 50, Severity::Warning),
+            finding("rf1-worse-severity", 50, Severity::Warning),
+            finding("rf1-resolved", 80, Severity::Critical),
+        ]);
+        let current = vec![
+            finding("rf1-same", 50, Severity::Warning),
+            finding("rf1-worse-priority", 60, Severity::Warning),
+            finding("rf1-worse-severity", 50, Severity::Critical),
+            finding("rf1-new", 20, Severity::Info),
+        ];
+
+        let diff = diff_findings(&current, &old, BaselineShow::All);
+
+        assert_eq!(
+            diff.summary,
+            BaselineDiffSummary {
+                new: 1,
+                worse: 2,
+                same: 1,
+                resolved: 1,
+            }
+        );
+        assert_eq!(
+            diff.findings
+                .iter()
+                .map(|entry| (entry.finding.id.as_str(), entry.status))
+                .collect::<Vec<_>>(),
+            [
+                ("rf1-same", BaselineFindingStatus::Same),
+                ("rf1-worse-priority", BaselineFindingStatus::Worse),
+                ("rf1-worse-severity", BaselineFindingStatus::Worse),
+                ("rf1-new", BaselineFindingStatus::New),
+            ]
+        );
+    }
+
+    #[test]
+    fn diff_show_new_or_worse_selects_only_actionable_changes() {
+        let old = baseline(vec![
+            finding("rf1-same", 50, Severity::Warning),
+            finding("rf1-worse", 50, Severity::Warning),
+        ]);
+        let current = vec![
+            finding("rf1-same", 50, Severity::Warning),
+            finding("rf1-worse", 60, Severity::Warning),
+            finding("rf1-new", 20, Severity::Info),
+        ];
+
+        let diff = diff_findings(&current, &old, BaselineShow::NewOrWorse);
+
+        assert_eq!(
+            diff.findings
+                .iter()
+                .map(|entry| entry.finding.id.as_str())
                 .collect::<Vec<_>>(),
             ["rf1-worse", "rf1-new"]
         );

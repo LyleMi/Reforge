@@ -468,6 +468,62 @@ func Three() error {
 }
 
 #[test]
+fn reports_new_language_function_metrics_and_long_functions() -> Result<()> {
+    let cases = [
+        (
+            "src/App.java",
+            "calculate",
+            "import java.util.List;\npublic class App {\n  public int calculate(List<Item> items) {\n    int total = 0;\n    for (Item item : items) {\n      if (item.score > 10) {\n        total += item.score * 2;\n      } else {\n        total += item.score;\n      }\n    }\n    return total;\n  }\n}\n",
+        ),
+        (
+            "src/App.cs",
+            "Calculate",
+            "using System.Collections.Generic;\npublic class App {\n  public int Calculate(List<Item> items) {\n    var total = 0;\n    foreach (var item in items) {\n      if (item.Score > 10) {\n        total += item.Score * 2;\n      } else {\n        total += item.Score;\n      }\n    }\n    return total;\n  }\n}\n",
+        ),
+        (
+            "src/App.kt",
+            "calculate",
+            "import app.Item\nfun calculate(items: List<Item>): Int {\n  var total = 0\n  for (item in items) {\n    if (item.score > 10) {\n      total += item.score * 2\n    } else {\n      total += item.score\n    }\n  }\n  return total\n}\n",
+        ),
+        (
+            "src/app.php",
+            "calculate",
+            "<?php\nuse App\\Item;\nfunction calculate(array $items): int {\n  $total = 0;\n  foreach ($items as $item) {\n    if ($item->score > 10) {\n      $total += $item->score * 2;\n    } else {\n      $total += $item->score;\n    }\n  }\n  return $total;\n}\n",
+        ),
+        (
+            "src/app.rb",
+            "calculate",
+            "class App\n  def calculate(items)\n    total = 0\n    items.each do |item|\n      if item.score > 10\n        total += item.score * 2\n      else\n        total += item.score\n      end\n    end\n    total\n  end\nend\n",
+        ),
+    ];
+
+    for (path, name, source) in cases {
+        let file = source_file(path, source);
+        let parsed = parse_source_files(std::slice::from_ref(&file))?;
+        let metrics = collect_raw_structure_metrics(&parsed);
+        assert_eq!(
+            metrics[0]
+                .functions
+                .iter()
+                .find(|function| function.name == name)
+                .map(|function| function.parameter_count),
+            Some(1),
+            "{path}"
+        );
+
+        let findings = scan_structure(&[file], &options())?;
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.kind == FindingKind::LongFunction),
+            "{path}: {findings:#?}"
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
 fn skips_test_files_for_structure_by_default_but_reports_test_duplication() -> Result<()> {
     let source = r#"
 test("one", () => {

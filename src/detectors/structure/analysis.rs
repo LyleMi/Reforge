@@ -25,6 +25,11 @@ pub(super) fn type_metric(node: Node<'_>, traversal: StructureTraversal<'_>) -> 
         }
         LanguageFamily::Python if kind == "class_definition" => node.child_by_field_name("name"),
         LanguageFamily::Go if kind == "type_spec" => node.child_by_field_name("name"),
+        LanguageFamily::Java
+        | LanguageFamily::CSharp
+        | LanguageFamily::Kotlin
+        | LanguageFamily::Php
+        | LanguageFamily::Ruby => added_language_type_name_node(node, traversal.family),
         _ => None,
     }?;
 
@@ -38,6 +43,42 @@ pub(super) fn type_metric(node: Node<'_>, traversal: StructureTraversal<'_>) -> 
         lines: node_line_span(node),
         members: count_type_members(node, traversal.family),
     })
+}
+
+fn added_language_type_name_node<'tree>(
+    node: Node<'tree>,
+    family: LanguageFamily,
+) -> Option<Node<'tree>> {
+    let kind = node.kind();
+    let is_type = match family {
+        LanguageFamily::Java => matches!(
+            kind,
+            "class_declaration"
+                | "interface_declaration"
+                | "enum_declaration"
+                | "annotation_type_declaration"
+        ),
+        LanguageFamily::CSharp => matches!(
+            kind,
+            "class_declaration"
+                | "interface_declaration"
+                | "struct_declaration"
+                | "record_declaration"
+                | "enum_declaration"
+        ),
+        LanguageFamily::Kotlin => matches!(kind, "class_declaration" | "object_declaration"),
+        LanguageFamily::Php => matches!(
+            kind,
+            "class_declaration"
+                | "interface_declaration"
+                | "trait_declaration"
+                | "enum_declaration"
+        ),
+        LanguageFamily::Ruby => matches!(kind, "class" | "module"),
+        _ => false,
+    };
+
+    is_type.then(|| node.child_by_field_name("name")).flatten()
 }
 
 pub(super) fn count_type_members(node: Node<'_>, family: LanguageFamily) -> usize {
@@ -69,6 +110,37 @@ pub(super) fn is_type_member(node: Node<'_>, family: LanguageFamily) -> bool {
         ),
         LanguageFamily::Python => matches!(kind, FUNCTION_DEFINITION | "assignment"),
         LanguageFamily::Go => matches!(kind, "field_declaration" | "method_elem"),
+        LanguageFamily::Java
+        | LanguageFamily::CSharp
+        | LanguageFamily::Kotlin
+        | LanguageFamily::Php
+        | LanguageFamily::Ruby => added_language_type_member(kind, family),
+    }
+}
+
+fn added_language_type_member(kind: &str, family: LanguageFamily) -> bool {
+    match family {
+        LanguageFamily::Java => matches!(
+            kind,
+            METHOD_DECLARATION
+                | "constructor_declaration"
+                | "compact_constructor_declaration"
+                | "field_declaration"
+        ),
+        LanguageFamily::CSharp => matches!(
+            kind,
+            METHOD_DECLARATION
+                | "constructor_declaration"
+                | "field_declaration"
+                | "property_declaration"
+        ),
+        LanguageFamily::Kotlin => matches!(kind, FUNCTION_DECLARATION | "property_declaration"),
+        LanguageFamily::Php => matches!(
+            kind,
+            METHOD_DECLARATION | "property_declaration" | "const_declaration"
+        ),
+        LanguageFamily::Ruby => matches!(kind, "method" | "singleton_method"),
+        _ => false,
     }
 }
 
@@ -89,10 +161,28 @@ pub(super) fn count_imports(root: Node<'_>, family: LanguageFamily) -> usize {
             LanguageFamily::Go if child.kind() == "import_declaration" => {
                 count += count_named_descendants(child, "import_spec").max(1);
             }
+            LanguageFamily::Java
+            | LanguageFamily::CSharp
+            | LanguageFamily::Kotlin
+            | LanguageFamily::Php
+                if added_language_import(child.kind(), family) =>
+            {
+                count += 1
+            }
             _ => {}
         }
     }
     count
+}
+
+fn added_language_import(kind: &str, family: LanguageFamily) -> bool {
+    matches!(
+        (family, kind),
+        (LanguageFamily::Java, "import_declaration")
+            | (LanguageFamily::CSharp, "using_directive")
+            | (LanguageFamily::Kotlin, "import_header")
+            | (LanguageFamily::Php, "namespace_use_declaration")
+    )
 }
 
 pub(super) fn count_public_items(root: Node<'_>, traversal: StructureTraversal<'_>) -> usize {
@@ -108,10 +198,31 @@ pub(super) fn count_public_items(root: Node<'_>, traversal: StructureTraversal<'
             LanguageFamily::JavaScriptTypeScript if child.kind() == "export_statement" => 1,
             LanguageFamily::Python if python_public_item(child, traversal.source) => 1,
             LanguageFamily::Go if go_public_item(child, traversal.source) => 1,
+            LanguageFamily::Java
+            | LanguageFamily::CSharp
+            | LanguageFamily::Kotlin
+            | LanguageFamily::Php
+            | LanguageFamily::Ruby
+                if added_language_public_item(child, traversal) =>
+            {
+                1
+            }
             _ => 0,
         };
     }
     count
+}
+
+fn added_language_public_item(node: Node<'_>, traversal: StructureTraversal<'_>) -> bool {
+    match traversal.family {
+        LanguageFamily::Java | LanguageFamily::CSharp => {
+            has_public_modifier(node, traversal.source)
+        }
+        LanguageFamily::Kotlin => kotlin_public_item(node, traversal.source),
+        LanguageFamily::Php => php_public_item(node, traversal.source),
+        LanguageFamily::Ruby => ruby_public_item(node),
+        _ => false,
+    }
 }
 
 pub(super) fn rust_public_item(node: Node<'_>) -> bool {
@@ -171,6 +282,52 @@ pub(super) fn is_exported_go_identifier(name: &str) -> bool {
     name.chars()
         .next()
         .is_some_and(|character| character.is_uppercase())
+}
+
+fn has_public_modifier(node: Node<'_>, source: &str) -> bool {
+    child_by_kind(node, "modifiers")
+        .or_else(|| child_by_kind(node, "modifier"))
+        .and_then(|modifiers| modifiers.utf8_text(source.as_bytes()).ok())
+        .is_some_and(|text| text.split_whitespace().any(|token| token == "public"))
+}
+
+fn kotlin_public_item(node: Node<'_>, source: &str) -> bool {
+    if !matches!(
+        node.kind(),
+        FUNCTION_DECLARATION | "class_declaration" | "object_declaration"
+    ) {
+        return false;
+    }
+
+    child_by_kind(node, "modifiers")
+        .and_then(|modifiers| modifiers.utf8_text(source.as_bytes()).ok())
+        .is_none_or(|text| {
+            !text
+                .split_whitespace()
+                .any(|token| matches!(token, "private" | "internal" | "protected"))
+        })
+}
+
+fn php_public_item(node: Node<'_>, source: &str) -> bool {
+    match node.kind() {
+        FUNCTION_DEFINITION
+        | "class_declaration"
+        | "interface_declaration"
+        | "trait_declaration"
+        | "enum_declaration" => true,
+        METHOD_DECLARATION => node
+            .utf8_text(source.as_bytes())
+            .ok()
+            .is_none_or(|text| !text.split_whitespace().any(|token| token == "private")),
+        _ => false,
+    }
+}
+
+fn ruby_public_item(node: Node<'_>) -> bool {
+    matches!(
+        node.kind(),
+        "class" | "module" | "method" | "singleton_method"
+    )
 }
 
 impl StructureSignalCollector<'_, '_> {
@@ -524,6 +681,16 @@ pub(super) fn is_test_case_line(line: &str, family: LanguageFamily) -> bool {
             line.starts_with("def test_") || line.starts_with("async def test_")
         }
         LanguageFamily::Go => line.starts_with("func Test"),
+        LanguageFamily::Java | LanguageFamily::CSharp | LanguageFamily::Kotlin => {
+            line.starts_with("@Test")
+                || line.starts_with("[Test")
+                || line.starts_with("[Fact")
+                || line.starts_with("[Theory")
+        }
+        LanguageFamily::Php => {
+            line.starts_with("public function test") || line.starts_with("function test")
+        }
+        LanguageFamily::Ruby => line.starts_with("def test_") || line.starts_with("it "),
     }
 }
 
@@ -531,7 +698,13 @@ pub(super) fn test_case_name(line: &str, family: LanguageFamily) -> Option<Strin
     match family {
         LanguageFamily::Rust => Some("test attribute".to_string()),
         LanguageFamily::JavaScriptTypeScript => quoted_test_name(line),
-        LanguageFamily::Python | LanguageFamily::Go => line
+        LanguageFamily::Python
+        | LanguageFamily::Go
+        | LanguageFamily::Java
+        | LanguageFamily::CSharp
+        | LanguageFamily::Kotlin
+        | LanguageFamily::Php
+        | LanguageFamily::Ruby => line
             .split(['(', '{'])
             .next()
             .map(str::trim)

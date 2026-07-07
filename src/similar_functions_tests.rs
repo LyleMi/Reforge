@@ -314,6 +314,226 @@ func Gamma(rows []Item) int {
 }
 
 #[test]
+fn detects_similar_functions_in_new_tree_sitter_languages() -> Result<()> {
+    let cases = [
+        (
+            "src/App.java",
+            r#"
+class App {
+  int alpha(Item[] items) {
+    int total = 0;
+    for (Item item : items) {
+      if (item.score > 10) {
+        total += item.score * 2;
+      } else {
+        total += item.score;
+      }
+    }
+    return total;
+  }
+
+  int beta(Item[] records) {
+    int sum = 1;
+    for (Item record : records) {
+      if (record.score > 20) {
+        sum += record.score * 2;
+      } else {
+        sum += record.score;
+      }
+    }
+    return sum;
+  }
+
+  int gamma(Item[] rows) {
+    int acc = 2;
+    for (Item row : rows) {
+      if (row.score > 30) {
+        acc += row.score * 2;
+      } else {
+        acc += row.score;
+      }
+    }
+    return acc;
+  }
+}
+"#,
+        ),
+        (
+            "src/App.cs",
+            r#"
+class App {
+  int Alpha(Item[] items) {
+    var total = 0;
+    foreach (var item in items) {
+      if (item.Score > 10) {
+        total += item.Score * 2;
+      } else {
+        total += item.Score;
+      }
+    }
+    return total;
+  }
+
+  int Beta(Item[] records) {
+    var sum = 1;
+    foreach (var record in records) {
+      if (record.Score > 20) {
+        sum += record.Score * 2;
+      } else {
+        sum += record.Score;
+      }
+    }
+    return sum;
+  }
+
+  int Gamma(Item[] rows) {
+    var acc = 2;
+    foreach (var row in rows) {
+      if (row.Score > 30) {
+        acc += row.Score * 2;
+      } else {
+        acc += row.Score;
+      }
+    }
+    return acc;
+  }
+}
+"#,
+        ),
+        (
+            "src/App.kt",
+            r#"
+fun alpha(items: List<Item>): Int {
+    var total = 0
+    for (item in items) {
+        if (item.score > 10) {
+            total += item.score * 2
+        } else {
+            total += item.score
+        }
+    }
+    return total
+}
+
+fun beta(records: List<Item>): Int {
+    var sum = 1
+    for (record in records) {
+        if (record.score > 20) {
+            sum += record.score * 2
+        } else {
+            sum += record.score
+        }
+    }
+    return sum
+}
+
+fun gamma(rows: List<Item>): Int {
+    var acc = 2
+    for (row in rows) {
+        if (row.score > 30) {
+            acc += row.score * 2
+        } else {
+            acc += row.score
+        }
+    }
+    return acc
+}
+"#,
+        ),
+        (
+            "src/app.php",
+            r#"
+<?php
+function alpha(array $items): int {
+    $total = 0;
+    foreach ($items as $item) {
+        if ($item->score > 10) {
+            $total += $item->score * 2;
+        } else {
+            $total += $item->score;
+        }
+    }
+    return $total;
+}
+
+function beta(array $records): int {
+    $sum = 1;
+    foreach ($records as $record) {
+        if ($record->score > 20) {
+            $sum += $record->score * 2;
+        } else {
+            $sum += $record->score;
+        }
+    }
+    return $sum;
+}
+
+function gamma(array $rows): int {
+    $acc = 2;
+    foreach ($rows as $row) {
+        if ($row->score > 30) {
+            $acc += $row->score * 2;
+        } else {
+            $acc += $row->score;
+        }
+    }
+    return $acc;
+}
+"#,
+        ),
+        (
+            "src/app.rb",
+            r#"
+def alpha(items)
+  total = 0
+  items.each do |item|
+    if item.score > 10
+      total += item.score * 2
+    else
+      total += item.score
+    end
+  end
+  total
+end
+
+def beta(records)
+  sum = 1
+  records.each do |record|
+    if record.score > 20
+      sum += record.score * 2
+    else
+      sum += record.score
+    end
+  end
+  sum
+end
+
+def gamma(rows)
+  acc = 2
+  rows.each do |row|
+    if row.score > 30
+      acc += row.score * 2
+    else
+      acc += row.score
+    end
+  end
+  acc
+end
+"#,
+        ),
+    ];
+
+    for (path, source) in cases {
+        let scan = scan_similar_functions_report(&[source_file(path, source)], &options())?;
+        assert_eq!(scan.candidate_count, 3, "{path}: {scan:#?}");
+        assert_eq!(scan.findings.len(), 1, "{path}: {scan:#?}");
+        assert_eq!(metric_value(&scan.findings[0], "group_size"), Some(3));
+    }
+
+    Ok(())
+}
+
+#[test]
 fn requires_minimum_group_size() -> Result<()> {
     let source = r#"
 function alpha(items) {

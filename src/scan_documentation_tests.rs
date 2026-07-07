@@ -23,6 +23,12 @@ fn scan_args(path: std::path::PathBuf) -> ScanArgs {
             exclude_tests: false,
             ignore_paths: Vec::new(),
         },
+        finding_controls: crate::cli::FindingControlArgs {
+            only: None,
+            exclude_detector: None,
+            min_priority: None,
+            severity: None,
+        },
         min_similar_functions: 3,
         min_function_tokens: 80,
         function_similarity: 0.85,
@@ -47,6 +53,7 @@ fn scan_args(path: std::path::PathBuf) -> ScanArgs {
         ci: crate::cli::CiArgs {
             baseline: None,
             baseline_mode: crate::cli::BaselineMode::NewOrWorse,
+            show: crate::cli::BaselineShow::All,
             fail_on: None,
         },
         churn: Some(crate::cli::ChurnMode::Off),
@@ -86,20 +93,21 @@ fn write_project_marker(root: &Path) -> Result<()> {
 fn cli_flags_doc() -> &'static str {
     "--max-file-lines --max-dir-files --include-hidden --include-generated \
 --no-gitignore --exclude-tests --ignore-path --min-similar-functions --min-function-tokens --function-similarity \
+--only --exclude-detector --min-priority --severity \
 --include-test-similarity --max-function-lines --max-function-complexity \
 --max-nesting-depth --max-function-parameters --max-type-lines \
 --max-type-members --max-imports --max-public-items \
 --max-functions-per-file --max-functions-per-100-lines --max-small-function-ratio \
 --min-repeated-literal-occurrences --min-data-clump-occurrences \
 --include-test-structure --config --churn --hotspot-model \
---baseline --baseline-mode --fail-on --churn-window-days --churn-max-commit-lines --output --output-file \
+--baseline --baseline-mode --show --fail-on --churn-window-days --churn-max-commit-lines --output --output-file \
 --progress --color"
 }
 
 fn schema_fields_doc() -> &'static str {
     "schema_version summary stats metrics_summary raw_metrics hotspots findings \
 id kind severity path line metrics priority confidence priority_factors \
-rank_explanation related_locations"
+rank_explanation recommendation related_locations"
 }
 
 fn write_complete_docs(root: &Path) -> Result<()> {

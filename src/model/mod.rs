@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
 use crate::cli::{ChurnMode, HotspotModel};
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 9;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 10;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 pub(crate) const METRIC_NESTING_DEPTH: &str = "nesting_depth";
 pub(crate) const METRIC_PUBLIC_ITEMS: &str = "public_items";
@@ -47,6 +47,8 @@ pub enum FindingKind {
     MissingArchitectureDocs,
     StaleCliDocumentation,
     StaleSchemaDocumentation,
+    DependencyCycle,
+    DependencyHub,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -130,7 +132,171 @@ impl Finding {
     pub fn refresh_id(&mut self) {
         self.id = stable_finding_id(self);
     }
+
+    pub fn recommendation(&self) -> &'static str {
+        recommendation_for_kind(self.kind)
+    }
 }
+
+pub fn recommendation_for_kind(kind: FindingKind) -> &'static str {
+    KIND_RECOMMENDATIONS
+        .iter()
+        .find_map(|(candidate, recommendation)| (*candidate == kind).then_some(*recommendation))
+        .unwrap_or(
+            "Review the finding and choose the smallest refactor that reduces the reported risk.",
+        )
+}
+
+const KIND_RECOMMENDATIONS: &[(FindingKind, &str)] = &[
+    (
+        FindingKind::LargeFile,
+        "Split the file around cohesive responsibilities and move shared helpers behind clear module boundaries.",
+    ),
+    (
+        FindingKind::LargeDirectory,
+        "Group related files into focused subdirectories with explicit ownership boundaries.",
+    ),
+    (
+        FindingKind::DebtMarker,
+        "Resolve the marked debt or replace the marker with an owner, rationale, and tracking reference.",
+    ),
+    (
+        FindingKind::SimilarFunctions,
+        "Extract the shared behavior into a common helper or deliberately separate the variants if they should evolve independently.",
+    ),
+    (
+        FindingKind::LongFunction,
+        "Extract named steps until the function has one clear orchestration path.",
+    ),
+    (
+        FindingKind::ComplexFunction,
+        "Simplify branching with guard clauses, smaller decision helpers, or a clearer state model.",
+    ),
+    (
+        FindingKind::DeepNesting,
+        "Flatten control flow with early returns and extracted helpers for nested branches.",
+    ),
+    (
+        FindingKind::ManyParameters,
+        "Introduce a small parameter object or split the function by responsibility.",
+    ),
+    (
+        FindingKind::LargeType,
+        "Separate independent responsibilities into smaller types or move behavior to collaborators.",
+    ),
+    (
+        FindingKind::LargePublicSurface,
+        "Reduce public API exposure to the stable operations callers actually need.",
+    ),
+    (
+        FindingKind::ImportHeavyFile,
+        "Review dependencies and split orchestration, domain logic, and adapters into narrower modules.",
+    ),
+    (
+        FindingKind::FunctionProliferation,
+        "Consolidate tiny related functions into cohesive units or move them near their owning abstraction.",
+    ),
+    (
+        FindingKind::UnusedFunction,
+        "Delete the unused function or add the missing call path if it is intentionally exposed.",
+    ),
+    (
+        FindingKind::RepeatedLiteral,
+        "Replace repeated literals with a named constant or domain concept where the value has shared meaning.",
+    ),
+    (
+        FindingKind::RepeatedErrorPattern,
+        "Centralize repeated error handling in a helper, result mapper, or shared policy.",
+    ),
+    (
+        FindingKind::TestDuplication,
+        "Extract common test setup into fixtures while keeping each assertion path explicit.",
+    ),
+    (
+        FindingKind::HappyPathOnlyTests,
+        "Add focused failure, boundary, and malformed-input cases around the same behavior.",
+    ),
+    (
+        FindingKind::FileNamingDrift,
+        "Normalize file naming within the directory or split mixed conventions by layer.",
+    ),
+    (
+        FindingKind::DirectoryDrift,
+        "Reorganize mixed concepts into directories that match domain or layer ownership.",
+    ),
+    (
+        FindingKind::DataClump,
+        "Introduce a named value object for fields that repeatedly travel together.",
+    ),
+    (
+        FindingKind::ParallelImplementation,
+        "Merge parallel implementations behind one abstraction or document why both variants must remain.",
+    ),
+    (
+        FindingKind::ShadowedAbstraction,
+        "Route callers through the existing abstraction instead of maintaining a local duplicate.",
+    ),
+    (
+        FindingKind::DuplicateTypeShape,
+        "Consolidate duplicate type shapes or introduce a shared DTO/model with explicit conversion points.",
+    ),
+    (
+        FindingKind::ConfigKeyDrift,
+        "Centralize related configuration keys and keep aliases documented at the boundary.",
+    ),
+    (
+        FindingKind::FixtureFactoryDrift,
+        "Consolidate fixture factories so test data defaults come from one named source.",
+    ),
+    (
+        FindingKind::GenericBucketDrift,
+        "Move generic bucket contents into modules named for the concept they own.",
+    ),
+    (
+        FindingKind::AdapterBoundaryBypass,
+        "Route boundary access through the adapter instead of reaching across layers directly.",
+    ),
+    (
+        FindingKind::StaleCompatibilityPath,
+        "Remove the compatibility path if callers have migrated or add an explicit sunset plan.",
+    ),
+    (
+        FindingKind::MissingDocumentationSet,
+        "Add the missing documentation files or update the documentation index to match supported docs.",
+    ),
+    (
+        FindingKind::MissingUserGuide,
+        "Document the user-facing workflow, including commands, options, and expected output.",
+    ),
+    (
+        FindingKind::MissingReportSchemaDocs,
+        "Update the report schema reference to include current serialized fields and compatibility notes.",
+    ),
+    (
+        FindingKind::MissingMetricsModelDocs,
+        "Document how raw metrics, percentiles, hotspots, and priority factors are computed.",
+    ),
+    (
+        FindingKind::MissingArchitectureDocs,
+        "Add architecture notes that explain module boundaries and detector/reporting flow.",
+    ),
+    (
+        FindingKind::StaleCliDocumentation,
+        "Update CLI documentation so listed flags and defaults match the parser.",
+    ),
+    (
+        FindingKind::StaleSchemaDocumentation,
+        "Update schema documentation for the current report fields and finding kinds.",
+    ),
+    (
+        FindingKind::DependencyCycle,
+        "Break the cycle by moving shared contracts to a lower-level module or inverting one dependency.",
+    ),
+    (
+        FindingKind::DependencyHub,
+        "Review the hub for mixed responsibilities and split fan-in/fan-out behind narrower interfaces.",
+    ),
+];
 
 pub fn stable_finding_id(finding: &Finding) -> String {
     let mut input = String::new();
@@ -212,7 +378,7 @@ impl Serialize for Finding {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("Finding", 12)?;
+        let mut state = serializer.serialize_struct("Finding", 13)?;
         state.serialize_field("id", &self.id)?;
         state.serialize_field("kind", &self.kind)?;
         state.serialize_field("severity", &self.severity)?;
@@ -224,6 +390,7 @@ impl Serialize for Finding {
         state.serialize_field("priority_factors", &self.priority_factors)?;
         state.serialize_field("rank_explanation", &self.rank_explanation)?;
         state.serialize_field("message", &self.message)?;
+        state.serialize_field("recommendation", &self.recommendation())?;
         state.serialize_field("related_locations", serialized_related_locations(self))?;
         state.end()
     }

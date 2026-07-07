@@ -8,7 +8,8 @@ use tree_sitter::{Node, Parser, Tree};
 use crate::language::{
     BODY_FIELD, FUNCTION_DECLARATION, FUNCTION_DEFINITION, FUNCTION_ITEM,
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
-    NAME_FIELD, adapter_for_path, has_rust_cfg_test_attribute, is_identifier_like_kind,
+    NAME_FIELD, adapter_for_path, child_by_kind, has_rust_cfg_test_attribute,
+    is_identifier_like_kind,
 };
 use crate::scanner::{
     Finding, FindingInput, FindingKind, FindingMetric, RelatedLocation, scored_finding,
@@ -311,8 +312,106 @@ fn extract_function_parts<'tree>(
             };
             Some((name.to_string(), category, body))
         }
+        LanguageFamily::Java
+        | LanguageFamily::CSharp
+        | LanguageFamily::Kotlin
+        | LanguageFamily::Php
+        | LanguageFamily::Ruby => extract_added_language_function_parts(node, extraction),
         _ => None,
     }
+}
+
+fn extract_added_language_function_parts<'tree>(
+    node: Node<'tree>,
+    extraction: CandidateExtraction<'_>,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    match extraction.family {
+        LanguageFamily::Java | LanguageFamily::CSharp => {
+            method_parts(node, extraction.source, METHOD_DECLARATION)
+        }
+        LanguageFamily::Kotlin => kotlin_function_parts(node, extraction.source),
+        LanguageFamily::Php => php_function_parts(node, extraction.source),
+        LanguageFamily::Ruby => ruby_method_parts(node, extraction.source),
+        _ => None,
+    }
+}
+
+fn method_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+    expected_kind: &str,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    if node.kind() != expected_kind {
+        return None;
+    }
+
+    let name = node
+        .child_by_field_name(NAME_FIELD)?
+        .utf8_text(source.as_bytes())
+        .ok()?;
+    let body = node.child_by_field_name(BODY_FIELD)?;
+    Some((name.to_string(), FunctionCategory::Method, body))
+}
+
+fn kotlin_function_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    if node.kind() != FUNCTION_DECLARATION {
+        return None;
+    }
+
+    let name = node
+        .child_by_field_name(NAME_FIELD)?
+        .utf8_text(source.as_bytes())
+        .ok()?;
+    let body = child_by_kind(node, "function_body")?;
+    let category = if has_ancestor_kind(node, "class_declaration")
+        || has_ancestor_kind(node, "object_declaration")
+    {
+        FunctionCategory::Method
+    } else {
+        FunctionCategory::Function
+    };
+    Some((name.to_string(), category, body))
+}
+
+fn php_function_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    let kind = node.kind();
+    if !matches!(kind, FUNCTION_DEFINITION | METHOD_DECLARATION) {
+        return None;
+    }
+
+    let name = node
+        .child_by_field_name(NAME_FIELD)?
+        .utf8_text(source.as_bytes())
+        .ok()?;
+    let body = node.child_by_field_name(BODY_FIELD)?;
+    let category = if kind == METHOD_DECLARATION {
+        FunctionCategory::Method
+    } else {
+        FunctionCategory::Function
+    };
+    Some((name.to_string(), category, body))
+}
+
+fn ruby_method_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    if !matches!(node.kind(), "method" | "singleton_method") {
+        return None;
+    }
+
+    let name = node
+        .child_by_field_name(NAME_FIELD)?
+        .utf8_text(source.as_bytes())
+        .ok()?;
+    let body = node.child_by_field_name(BODY_FIELD)?;
+    Some((name.to_string(), FunctionCategory::Method, body))
 }
 
 fn has_ancestor_kind(mut node: Node<'_>, kind: &str) -> bool {

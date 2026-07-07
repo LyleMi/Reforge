@@ -19,6 +19,19 @@ pub(super) fn parameter_names(
         LanguageFamily::JavaScriptTypeScript => {
             javascript_typescript_parameter_names(parameters, source)
         }
+        LanguageFamily::Java => field_named_parameter_names(
+            parameters,
+            source,
+            &["formal_parameter", "spread_parameter"],
+        ),
+        LanguageFamily::CSharp => field_named_parameter_names(parameters, source, &["parameter"]),
+        LanguageFamily::Kotlin => field_named_parameter_names(parameters, source, &["parameter"]),
+        LanguageFamily::Php => field_named_parameter_names(
+            parameters,
+            source,
+            &["simple_parameter", "variadic_parameter"],
+        ),
+        LanguageFamily::Ruby => ruby_parameter_names(parameters, source),
         _ => {
             let mut names = Vec::new();
             let mut cursor = parameters.walk();
@@ -28,6 +41,58 @@ pub(super) fn parameter_names(
             names
         }
     }
+}
+
+fn field_named_parameter_names(
+    parameters: Node<'_>,
+    source: &str,
+    parameter_kinds: &[&str],
+) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut cursor = parameters.walk();
+    for child in parameters.named_children(&mut cursor) {
+        if !parameter_kinds.contains(&child.kind()) {
+            continue;
+        }
+
+        if let Some(name) = child
+            .child_by_field_name("name")
+            .and_then(|name| name.utf8_text(source.as_bytes()).ok())
+            .map(normalize_identifier)
+            .filter(|name| !name.is_empty())
+        {
+            names.push(name);
+        } else {
+            names.push("value".to_string());
+        }
+    }
+    names
+}
+
+fn ruby_parameter_names(parameters: Node<'_>, source: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut cursor = parameters.walk();
+    for child in parameters.named_children(&mut cursor) {
+        match child.kind() {
+            IDENTIFIER_KIND => collect_parameter_name(child, source, &mut names),
+            "optional_parameter"
+            | "keyword_parameter"
+            | "splat_parameter"
+            | "hash_splat_parameter"
+            | "block_parameter" => {
+                if let Some(name) = child
+                    .child_by_field_name("name")
+                    .or_else(|| child.child_by_field_name("left"))
+                {
+                    collect_parameter_name(name, source, &mut names);
+                } else {
+                    collect_parameter_name(child, source, &mut names);
+                }
+            }
+            _ => {}
+        }
+    }
+    names
 }
 
 fn rust_parameter_names(parameters: Node<'_>, source: &str) -> Vec<String> {

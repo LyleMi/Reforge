@@ -43,10 +43,14 @@ mod unused_functions {
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, ErrorKind, IsTerminal, Write};
+use std::path::{Path, PathBuf};
 
-use crate::cli::{Cli, Command, OutputFormat, ScanArgs};
+use crate::cli::{
+    Cli, Command, ConfigArgs, ConfigCommand, ConfigOutputFormat, ConfigShowArgs,
+    ConfigValidateArgs, InitArgs, OutputFormat, ScanArgs,
+};
 use crate::model::ScanReport;
 use crate::scan::{NoopProgress, StderrProgress};
 
@@ -54,7 +58,9 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Scan(args) => run_scan(args)?,
+        Command::Init(args) => run_init(args)?,
+        Command::Config(args) => run_config(args)?,
+        Command::Scan(args) => run_scan(*args)?,
     }
 
     Ok(())
@@ -64,6 +70,110 @@ fn main() -> Result<()> {
 struct OutputSettings {
     format: OutputFormat,
     color: bool,
+}
+
+fn run_init(args: InitArgs) -> Result<()> {
+    let output_path = init_output_path(&args.path);
+    if output_path.exists() && !args.force {
+        bail!(
+            "configuration file {} already exists; pass --force to overwrite it",
+            output_path.display()
+        );
+    }
+
+    if let Some(parent) = output_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create directory {}", parent.display()))?;
+    }
+
+    let mut file = if args.force {
+        OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&output_path)
+    } else {
+        OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&output_path)
+    }
+    .with_context(|| format!("failed to write config file {}", output_path.display()))?;
+
+    file.write_all(scan::default_config_toml()?.as_bytes())
+        .with_context(|| format!("failed to write config file {}", output_path.display()))?;
+    println!("Wrote {}", output_path.display());
+    Ok(())
+}
+
+fn init_output_path(path: &Path) -> PathBuf {
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
+    {
+        path.to_path_buf()
+    } else {
+        path.join(scan::CONFIG_FILE_NAME)
+    }
+}
+
+fn run_config(args: ConfigArgs) -> Result<()> {
+    match args.command {
+        ConfigCommand::Validate(args) => run_config_validate(args),
+        ConfigCommand::Show(args) => run_config_show(args),
+    }
+}
+
+fn run_config_validate(args: ConfigValidateArgs) -> Result<()> {
+    match scan::validate_config(args.config.as_deref(), &args.path)? {
+        Some(path) => println!("Config valid: {}", path.display()),
+        None => println!("No reforge.toml found; defaults are valid."),
+    }
+    Ok(())
+}
+
+fn run_config_show(args: ConfigShowArgs) -> Result<()> {
+    let mut scan_args = ScanArgs::defaults_for_path(args.path);
+    scan_args.config = args.config;
+    let effective = scan::effective_config_output(&scan_args, &scan_args.path)?;
+
+    match args.output {
+        ConfigOutputFormat::Human => print_effective_config_human(&effective),
+        ConfigOutputFormat::Json => {
+            let mut stdout = std::io::stdout().lock();
+            serde_json::to_writer_pretty(&mut stdout, &effective)?;
+            writeln!(stdout)?;
+            Ok(())
+        }
+        ConfigOutputFormat::Yaml => {
+            let mut stdout = std::io::stdout().lock();
+            serde_yaml::to_writer(&mut stdout, &effective)?;
+            Ok(())
+        }
+    }
+}
+
+fn print_effective_config_human(config: &impl serde::Serialize) -> Result<()> {
+    let value = serde_json::to_value(config)?;
+    let Some(fields) = value.as_object() else {
+        bail!("effective config did not serialize to an object");
+    };
+
+    println!("Effective Reforge config");
+    for (key, value) in fields {
+        println!("  {key}: {}", render_config_value(value)?);
+    }
+    Ok(())
+}
+
+fn render_config_value(value: &serde_json::Value) -> Result<String> {
+    Ok(match value {
+        serde_json::Value::String(value) => value.clone(),
+        _ => serde_json::to_string(value)?,
+    })
 }
 
 fn run_scan(args: ScanArgs) -> Result<()> {
@@ -76,6 +186,9 @@ fn run_scan(args: ScanArgs) -> Result<()> {
         .map(|path| baseline::load_baseline(path))
         .transpose()?;
     let report = scan_with_progress(&args, stderr_is_tty)?;
+    let baseline_diff = baseline_report
+        .as_ref()
+        .map(|baseline| baseline::diff_findings(&report.findings, baseline, args.ci.show));
     let selected = baseline::selected_findings(
         &report.findings,
         baseline_report.as_ref(),
@@ -88,9 +201,9 @@ fn run_scan(args: ScanArgs) -> Result<()> {
         .unwrap_or_default();
 
     if args.output_file.is_some() {
-        write_report_file(&args, &report, settings)?;
+        write_report_file(&args, &report, baseline_diff.as_ref(), settings)?;
     } else {
-        print_report(&report, settings)?;
+        print_report(&report, baseline_diff.as_ref(), settings)?;
     }
 
     if !gate_failures.is_empty() {
@@ -125,20 +238,45 @@ fn scan_with_progress(args: &ScanArgs, stderr_is_tty: bool) -> Result<ScanReport
     }
 }
 
-fn write_report_file(args: &ScanArgs, report: &ScanReport, settings: OutputSettings) -> Result<()> {
+fn write_report_file(
+    args: &ScanArgs,
+    report: &ScanReport,
+    baseline_diff: Option<&baseline::BaselineDiff<'_>>,
+    settings: OutputSettings,
+) -> Result<()> {
     let output_file = args
         .output_file
         .as_ref()
         .expect("output file should be present before writing");
     let file = File::create(output_file)
         .with_context(|| format!("failed to create output file {}", output_file.display()))?;
-    write_report(BufWriter::new(file), report, settings)
+    write_report(BufWriter::new(file), report, baseline_diff, settings)
 }
 
-fn write_report(writer: impl Write, report: &ScanReport, settings: OutputSettings) -> Result<()> {
+fn write_report(
+    writer: impl Write,
+    report: &ScanReport,
+    baseline_diff: Option<&baseline::BaselineDiff<'_>>,
+    settings: OutputSettings,
+) -> Result<()> {
     match settings.format {
+        OutputFormat::Human if settings.color && baseline_diff.is_some() => {
+            report::write_human_report_with_baseline_colored(
+                writer,
+                report,
+                baseline_diff.expect("checked above"),
+                true,
+            )?;
+        }
         OutputFormat::Human if settings.color => {
             report::write_human_report_colored(writer, report, true)?;
+        }
+        OutputFormat::Human if baseline_diff.is_some() => {
+            report::write_human_report_with_baseline(
+                writer,
+                report,
+                baseline_diff.expect("checked above"),
+            )?;
         }
         OutputFormat::Human => report::write_human_report(writer, report)?,
         OutputFormat::Html => report::write_html_report(writer, report)?,
@@ -150,11 +288,25 @@ fn write_report(writer: impl Write, report: &ScanReport, settings: OutputSetting
     Ok(())
 }
 
-fn print_report(report: &ScanReport, settings: OutputSettings) -> Result<()> {
+fn print_report(
+    report: &ScanReport,
+    baseline_diff: Option<&baseline::BaselineDiff<'_>>,
+    settings: OutputSettings,
+) -> Result<()> {
     match settings.format {
+        OutputFormat::Human if settings.color && baseline_diff.is_some() => {
+            handle_output_result(report::print_human_report_with_baseline_colored(
+                report,
+                baseline_diff.expect("checked above"),
+                true,
+            ))
+        }
         OutputFormat::Human if settings.color => {
             handle_output_result(report::print_human_report_colored(report, true))
         }
+        OutputFormat::Human if baseline_diff.is_some() => handle_output_result(
+            report::print_human_report_with_baseline(report, baseline_diff.expect("checked above")),
+        ),
         OutputFormat::Human => handle_output_result(report::print_human_report(report)),
         OutputFormat::Html => handle_output_result(report::print_html_report(report)),
         OutputFormat::Json => handle_output_result(report::print_json_report(report)),

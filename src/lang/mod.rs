@@ -28,6 +28,11 @@ pub(crate) enum LanguageFamily {
     JavaScriptTypeScript,
     Python,
     Go,
+    Java,
+    CSharp,
+    Kotlin,
+    Php,
+    Ruby,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -70,6 +75,26 @@ pub(crate) fn adapter_for_path(path: &Path) -> Option<LanguageAdapter> {
             family: LanguageFamily::Go,
             language: || tree_sitter_go::LANGUAGE.into(),
         }),
+        "java" => Some(LanguageAdapter {
+            family: LanguageFamily::Java,
+            language: || tree_sitter_java::LANGUAGE.into(),
+        }),
+        "cs" => Some(LanguageAdapter {
+            family: LanguageFamily::CSharp,
+            language: || tree_sitter_c_sharp::LANGUAGE.into(),
+        }),
+        "kt" => Some(LanguageAdapter {
+            family: LanguageFamily::Kotlin,
+            language: || tree_sitter_kotlin_ng::LANGUAGE.into(),
+        }),
+        "php" => Some(LanguageAdapter {
+            family: LanguageFamily::Php,
+            language: || tree_sitter_php::LANGUAGE_PHP.into(),
+        }),
+        "rb" => Some(LanguageAdapter {
+            family: LanguageFamily::Ruby,
+            language: || tree_sitter_ruby::LANGUAGE.into(),
+        }),
         _ => None,
     }
 }
@@ -81,6 +106,9 @@ pub(crate) fn is_binding_identifier_kind(kind: &str) -> bool {
             | FIELD_IDENTIFIER_KIND
             | PROPERTY_IDENTIFIER_KIND
             | SHORTHAND_PROPERTY_IDENTIFIER_KIND
+            | "constant"
+            | "name"
+            | "variable_name"
     )
 }
 
@@ -90,6 +118,12 @@ pub(crate) fn is_identifier_like_kind(kind: &str) -> bool {
             kind,
             TYPE_IDENTIFIER_KIND | SCOPED_IDENTIFIER_KIND | SELF_KIND
         )
+}
+
+pub(crate) fn child_by_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .find(|child| child.kind() == kind)
 }
 
 pub(crate) fn has_rust_cfg_test_attribute(node: Node<'_>, source: &str) -> bool {

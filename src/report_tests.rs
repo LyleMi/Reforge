@@ -245,7 +245,75 @@ fn renders_hotspots_even_when_no_findings() {
 }
 
 #[test]
-fn renders_json_report_schema_v9_with_stable_ids_and_priority_metadata() {
+fn renders_human_baseline_diff_summary_and_selected_findings() {
+    let same = large_file("src/same.rs", 900);
+    let mut old_worse = large_file("src/worse.rs", 900);
+    let worse = large_file("src/worse.rs", 1_300);
+    let new = large_file("src/new.rs", 900);
+    let resolved = large_file("src/resolved.rs", 900);
+    old_worse.priority = old_worse.priority.saturating_sub(1);
+    let baseline = report(vec![same.clone(), old_worse, resolved]);
+    let scan_report = report(vec![same, worse, new]);
+    let diff = crate::baseline::diff_findings(
+        &scan_report.findings,
+        &baseline,
+        crate::cli::BaselineShow::NewOrWorse,
+    );
+
+    let output = render_human_report_with_baseline(&scan_report, &diff);
+
+    assert!(output.contains("Baseline diff"));
+    assert!(
+        output
+            .lines()
+            .any(|line| line.contains("New") && line.ends_with("1"))
+    );
+    assert!(
+        output
+            .lines()
+            .any(|line| line.contains("Worse") && line.ends_with("1"))
+    );
+    assert!(
+        output
+            .lines()
+            .any(|line| line.contains("Same") && line.ends_with("1"))
+    );
+    assert!(
+        output
+            .lines()
+            .any(|line| line.contains("Resolved") && line.ends_with("1"))
+    );
+    assert!(output.contains("Findings (new or worse)"));
+    assert!(output.contains("worse    warning"));
+    assert!(output.contains("new      warning"));
+    assert!(output.contains("src/worse.rs:1"));
+    assert!(output.contains("src/new.rs:1"));
+    assert!(!output.contains("src/same.rs:1"));
+    assert!(!output.contains("src/resolved.rs:1"));
+}
+
+#[test]
+fn renders_human_baseline_diff_when_selected_findings_are_empty() {
+    let same = large_file("src/same.rs", 900);
+    let resolved = large_file("src/resolved.rs", 900);
+    let baseline = report(vec![same.clone(), resolved]);
+    let scan_report = report(vec![same]);
+    let diff = crate::baseline::diff_findings(
+        &scan_report.findings,
+        &baseline,
+        crate::cli::BaselineShow::New,
+    );
+
+    let output = render_human_report_with_baseline(&scan_report, &diff);
+
+    assert!(output.contains("Baseline diff"));
+    assert!(output.contains("Findings (new)"));
+    assert!(output.contains("No findings matched --show new."));
+    assert!(!output.contains("src/same.rs:1"));
+}
+
+#[test]
+fn renders_json_report_schema_v10_with_stable_ids_and_priority_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
@@ -262,7 +330,7 @@ fn renders_json_report_schema_v9_with_stable_ids_and_priority_metadata() {
     let value: serde_json::Value =
         serde_json::from_str(&serde_json::to_string(&scan_report).unwrap()).unwrap();
 
-    assert_eq!(value["schema_version"], 9);
+    assert_eq!(value["schema_version"], SCAN_REPORT_SCHEMA_VERSION);
     assert_eq!(value["summary"]["scanned_files"], 2);
     assert_eq!(value["summary"]["hotspot_model"], "hybrid");
     assert!(value.get("metrics_summary").is_some());
@@ -274,6 +342,10 @@ fn renders_json_report_schema_v9_with_stable_ids_and_priority_metadata() {
             .is_some_and(|id| id.starts_with("rf1-"))
     );
     assert_eq!(value["findings"][0]["kind"], "similar_functions");
+    assert_eq!(
+        value["findings"][0]["recommendation"],
+        "Extract the shared behavior into a common helper or deliberately separate the variants if they should evolve independently."
+    );
     assert_eq!(value["findings"][0]["metrics"][0]["name"], "group_size");
     assert_eq!(
         value["findings"][0]["metrics"][0]["dimension"],
@@ -336,7 +408,7 @@ fn writes_json_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&output).unwrap()["schema_version"],
-        9
+        SCAN_REPORT_SCHEMA_VERSION
     );
 }
 
@@ -350,7 +422,7 @@ fn writes_yaml_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_yaml::from_str::<serde_yaml::Value>(&output).unwrap()["schema_version"],
-        9
+        SCAN_REPORT_SCHEMA_VERSION
     );
 }
 
@@ -415,6 +487,10 @@ fn renders_sarif_report_with_rules_results_and_fingerprints() {
         value["runs"][0]["results"][0]["partialFingerprints"]["reforgeFindingId"],
         scan_report.findings[0].id
     );
+    assert_eq!(
+        value["runs"][0]["results"][0]["properties"]["recommendation"],
+        "Split the file around cohesive responsibilities and move shared helpers behind clear module boundaries."
+    );
 }
 
 #[test]
@@ -453,6 +529,18 @@ fn renders_html_report_with_visual_sections() {
             recent_weighted_churn: 8,
         },
     });
+    scan_report.summary.hotspot_count = 1;
+    scan_report.hotspots.push(Hotspot {
+        level: HotspotLevel::Function,
+        path: "src/a.rs".to_string(),
+        line: Some(10),
+        name: Some("alpha".to_string()),
+        priority: 62,
+        severity: Severity::Warning,
+        static_risk: 0.6,
+        churn_risk: 0.4,
+        reason: "hybrid model: repeated edits and high static risk".to_string(),
+    });
 
     let output = render_html_report(&scan_report);
 
@@ -463,6 +551,22 @@ fn renders_html_report_with_visual_sections() {
     assert!(output.contains("Similar Function Groups"));
     assert!(output.contains("src/a.rs:10 alpha"));
     assert!(output.contains("similar functions"));
+    assert!(output.contains("data-search-group=\"findings\""));
+    assert!(output.contains("data-search-group=\"hotspots\""));
+    assert!(output.contains("data-filter-field=\"severity\""));
+    assert!(output.contains("data-filter-field=\"kind\""));
+    assert!(output.contains("data-filter-field=\"level\""));
+    assert!(output.contains("data-sort-group=\"findings\""));
+    assert!(output.contains("data-filter-kind=\"similar_functions\""));
+    assert!(output.contains("data-filter-severity=\"warning\""));
+    assert!(output.contains("data-filter-level=\"function\""));
+    assert!(output.contains(&format!(
+        "data-sort-priority=\"{}\"",
+        scan_report.findings[0].priority
+    )));
+    assert!(output.contains("<details class=\"detail-block\"><summary>Related locations (2)"));
+    assert!(output.contains("data-filter-empty=\"findings\""));
+    assert!(output.contains("data-filter-empty=\"hotspots\""));
 }
 
 #[test]

@@ -23,6 +23,12 @@ fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
             exclude_tests: false,
             ignore_paths: Vec::new(),
         },
+        finding_controls: crate::cli::FindingControlArgs {
+            only: None,
+            exclude_detector: None,
+            min_priority: None,
+            severity: None,
+        },
         min_similar_functions: 3,
         min_function_tokens: 80,
         function_similarity: 0.85,
@@ -47,6 +53,7 @@ fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
         ci: crate::cli::CiArgs {
             baseline: None,
             baseline_mode: crate::cli::BaselineMode::NewOrWorse,
+            show: crate::cli::BaselineShow::All,
             fail_on: None,
         },
         churn: None,
@@ -156,6 +163,44 @@ fn reports_directories_with_many_source_files() -> Result<()> {
         findings[0]
             .message
             .contains("directory contains 3 source files")
+    );
+    Ok(())
+}
+
+#[test]
+fn reports_dependency_cycles_between_resolved_source_files() -> Result<()> {
+    let root = test_root("dependency-cycle");
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(
+        root.join("src/a.ts"),
+        "import { b } from './b';\nexport const a = b;\n",
+    )?;
+    fs::write(
+        root.join("src/b.ts"),
+        "import { a } from './a';\nexport const b = a;\n",
+    )?;
+
+    let findings = scan_path(&scan_args(root.clone(), false))?;
+
+    fs::remove_dir_all(root)?;
+
+    let cycle = findings
+        .iter()
+        .find(|finding| finding.kind == FindingKind::DependencyCycle)
+        .expect("resolved dependency cycle should be reported");
+    assert_eq!(metric_value(cycle, "cycle_files"), Some(2));
+    assert_eq!(cycle.related_locations.len(), 2);
+    assert!(
+        cycle
+            .related_locations
+            .iter()
+            .any(|location| location.path.ends_with("src/a.ts"))
+    );
+    assert!(
+        cycle
+            .related_locations
+            .iter()
+            .any(|location| location.path.ends_with("src/b.ts"))
     );
     Ok(())
 }

@@ -54,6 +54,7 @@ const REQUIRED_SCHEMA_FIELDS: &[&str] = &[
     "confidence",
     "priority_factors",
     "rank_explanation",
+    "recommendation",
     "related_locations",
 ];
 

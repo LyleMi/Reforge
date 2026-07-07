@@ -3,6 +3,7 @@ use std::io::{self, Write};
 
 use crate::model::{
     FileRawMetric, Finding, FindingKind, Hotspot, HotspotLevel, ScanReport, Severity,
+    serialized_finding_kind,
 };
 
 const FILE_HEATMAP_PAGE_SIZE: usize = 8;
@@ -281,17 +282,26 @@ impl HtmlRenderContext<'_> {
             return;
         }
 
+        self.output.push_str(
+            "<div class=\"report-controls\" data-controls-for=\"hotspots\"><label>Search hotspots <input type=\"search\" data-search-group=\"hotspots\" placeholder=\"Path, symbol, reason\"></label><label>Level <select data-filter-group=\"hotspots\" data-filter-field=\"level\"><option value=\"\">All levels</option><option value=\"file\">File</option><option value=\"function\">Function</option><option value=\"type\">Type</option></select></label></div>\n",
+        );
         self.output.push_str("<div class=\"table-like\">\n");
         for hotspot in &self.report.hotspots {
+            let target = render_hotspot_target(hotspot);
+            let reason = concise_hotspot_reason(&hotspot.reason);
+            let search_text = format!("{target} {reason} {}", hotspot_level_label(hotspot.level));
             self.output.push_str(
-                "<article class=\"row-card\" data-page-item=\"hotspots\"><div><span class=\"pill ",
+                "<article class=\"row-card\" data-page-item=\"hotspots\" data-search-text=\"",
             );
+            self.output.push_str(&escape_html(&search_text));
+            self.output.push_str("\" data-filter-level=\"");
+            self.output.push_str(hotspot_level_label(hotspot.level));
+            self.output.push_str("\"><div><span class=\"pill ");
             self.output.push_str(severity_class(hotspot.severity));
             self.output.push_str("\">");
             self.output.push_str(severity_label(hotspot.severity));
             self.output.push_str("</span><strong>");
-            self.output
-                .push_str(&escape_html(&render_hotspot_target(hotspot)));
+            self.output.push_str(&escape_html(&target));
             self.output.push_str("</strong><small>");
             self.output.push_str(&escape_html(&format!(
                 "{} · static {:.2} · churn {:.2}",
@@ -303,10 +313,12 @@ impl HtmlRenderContext<'_> {
                 .push_str("</small></div><div class=\"priority\">");
             self.output.push_str(&hotspot.priority.to_string());
             self.output.push_str("</div><p>");
-            self.output
-                .push_str(&escape_html(&concise_hotspot_reason(&hotspot.reason)));
+            self.output.push_str(&escape_html(&reason));
             self.output.push_str("</p></article>\n");
         }
+        self.output.push_str(
+            "<p class=\"empty\" data-filter-empty=\"hotspots\" hidden>No matching hotspots.</p>\n",
+        );
         self.render_pagination_controls("hotspots", self.report.hotspots.len(), HOTSPOT_PAGE_SIZE);
         self.output.push_str("</div>\n</section>\n");
     }
@@ -342,7 +354,11 @@ impl HtmlRenderContext<'_> {
             self.output
                 .push_str("</strong><span class=\"priority mini\">");
             self.output.push_str(&finding.priority.to_string());
-            self.output.push_str("</span></div><ul>\n");
+            self.output.push_str("</span></div>");
+            if finding.related_locations.len() > RELATED_LOCATION_LIMIT {
+                self.render_related_locations_detail(finding, "Group locations");
+            }
+            self.output.push_str("<ul class=\"related-preview\">\n");
             for location in finding
                 .related_locations
                 .iter()
@@ -364,7 +380,7 @@ impl HtmlRenderContext<'_> {
             if finding.related_locations.len() > RELATED_LOCATION_LIMIT {
                 self.output.push_str("<li class=\"more\">");
                 self.output.push_str(&format!(
-                    "+{} more related locations",
+                    "+{} more in expandable list",
                     finding.related_locations.len() - RELATED_LOCATION_LIMIT
                 ));
                 self.output.push_str("</li>\n");
@@ -401,23 +417,43 @@ impl HtmlRenderContext<'_> {
                 .then_with(|| left.line.cmp(&right.line))
         });
 
+        self.render_finding_controls();
         self.output.push_str("<div class=\"finding-list\">\n");
         let finding_count = findings.len();
         for finding in findings {
+            let kind_value = serialized_finding_kind(finding.kind);
+            let kind_label = finding_kind_label(finding.kind);
+            let location = finding_location(finding);
+            let summary = finding_summary(finding);
+            let search_text = finding_search_text(finding, &summary, &location, &kind_label);
             self.output.push_str(
-                "<article class=\"finding-card\" data-page-item=\"findings\"><div class=\"finding-head\"><span class=\"pill ",
+                "<article class=\"finding-card\" data-page-item=\"findings\" data-search-text=\"",
             );
+            self.output.push_str(&escape_html(&search_text));
+            self.output.push_str("\" data-filter-severity=\"");
+            self.output.push_str(severity_class(finding.severity));
+            self.output.push_str("\" data-filter-kind=\"");
+            self.output.push_str(&escape_html(&kind_value));
+            self.output.push_str("\" data-sort-priority=\"");
+            self.output.push_str(&finding.priority.to_string());
+            self.output.push_str("\" data-sort-path=\"");
+            self.output.push_str(&escape_html(&location));
+            self.output.push_str("\" data-sort-kind=\"");
+            self.output.push_str(&escape_html(&kind_label));
+            self.output.push_str("\" data-sort-severity=\"");
+            self.output
+                .push_str(&severity_sort_value(finding.severity).to_string());
+            self.output
+                .push_str("\"><div class=\"finding-head\"><span class=\"pill ");
             self.output.push_str(severity_class(finding.severity));
             self.output.push_str("\">");
             self.output.push_str(severity_label(finding.severity));
             self.output.push_str("</span><strong>");
-            self.output
-                .push_str(&escape_html(&finding_summary(finding)));
+            self.output.push_str(&escape_html(&summary));
             self.output.push_str("</strong><span class=\"priority\">");
             self.output.push_str(&finding.priority.to_string());
             self.output.push_str("</span></div><p class=\"location\">");
-            self.output
-                .push_str(&escape_html(&finding_location(finding)));
+            self.output.push_str(&escape_html(&location));
             self.output.push_str("</p>");
             if !finding.metrics.is_empty() {
                 self.output.push_str("<div class=\"metric-list\">");
@@ -434,10 +470,63 @@ impl HtmlRenderContext<'_> {
                     .push_str(&escape_html(&finding.rank_explanation));
                 self.output.push_str("</p>");
             }
+            self.render_related_locations_detail(finding, "Related locations");
             self.output.push_str("</article>\n");
         }
+        self.output.push_str(
+            "<p class=\"empty\" data-filter-empty=\"findings\" hidden>No matching findings.</p>\n",
+        );
         self.render_pagination_controls("findings", finding_count, FINDING_PAGE_SIZE);
         self.output.push_str("</div>\n</section>\n");
+    }
+
+    fn render_finding_controls(&mut self) {
+        let mut kinds = BTreeMap::<String, String>::new();
+        for finding in &self.report.findings {
+            kinds.insert(
+                serialized_finding_kind(finding.kind),
+                finding_kind_label(finding.kind),
+            );
+        }
+
+        self.output.push_str("<div class=\"report-controls\" data-controls-for=\"findings\"><label>Search findings <input type=\"search\" data-search-group=\"findings\" placeholder=\"Path, kind, metric, detail\"></label><label>Severity <select data-filter-group=\"findings\" data-filter-field=\"severity\"><option value=\"\">All severities</option><option value=\"critical\">Critical</option><option value=\"warning\">Warning</option><option value=\"info\">Info</option></select></label><label>Kind <select data-filter-group=\"findings\" data-filter-field=\"kind\"><option value=\"\">All kinds</option>");
+        for (value, label) in kinds {
+            self.output.push_str("<option value=\"");
+            self.output.push_str(&escape_html(&value));
+            self.output.push_str("\">");
+            self.output.push_str(&escape_html(&title_label(&label)));
+            self.output.push_str("</option>");
+        }
+        self.output.push_str("</select></label><label>Sort <select data-sort-group=\"findings\"><option value=\"priority\">Priority</option><option value=\"path\">Path</option><option value=\"kind\">Kind</option><option value=\"severity\">Severity</option></select></label></div>\n");
+    }
+
+    fn render_related_locations_detail(&mut self, finding: &Finding, label: &str) {
+        if finding.related_locations.is_empty() {
+            return;
+        }
+
+        self.output
+            .push_str("<details class=\"detail-block\"><summary>");
+        self.output.push_str(&escape_html(&format!(
+            "{label} ({})",
+            finding.related_locations.len()
+        )));
+        self.output.push_str("</summary><ul>\n");
+        for location in &finding.related_locations {
+            self.output.push_str("<li>");
+            self.output.push_str(&escape_html(&format!(
+                "{}:{}{}",
+                display_path(&location.path),
+                location.line,
+                location
+                    .name
+                    .as_ref()
+                    .map(|name| format!(" {name}"))
+                    .unwrap_or_default()
+            )));
+            self.output.push_str("</li>\n");
+        }
+        self.output.push_str("</ul></details>\n");
     }
 
     fn render_pagination_controls(&mut self, group: &str, total: usize, page_size: usize) {
@@ -591,6 +680,31 @@ fn finding_location(finding: &Finding) -> String {
         .unwrap_or_else(|| display_path(&finding.path))
 }
 
+fn finding_search_text(
+    finding: &Finding,
+    summary: &str,
+    location: &str,
+    kind_label: &str,
+) -> String {
+    let mut parts = vec![
+        summary.to_string(),
+        location.to_string(),
+        kind_label.to_string(),
+        severity_label(finding.severity).to_string(),
+        finding.rank_explanation.clone(),
+    ];
+    parts.extend(finding.metrics.iter().map(format_metric));
+    parts.extend(finding.related_locations.iter().map(|location| {
+        format!(
+            "{}:{} {}",
+            display_path(&location.path),
+            location.line,
+            location.name.as_deref().unwrap_or("")
+        )
+    }));
+    parts.join(" ")
+}
+
 fn render_hotspot_target(hotspot: &Hotspot) -> String {
     let mut target = display_path(&hotspot.path);
     if let Some(line) = hotspot.line {
@@ -683,6 +797,14 @@ fn severity_class(severity: Severity) -> &'static str {
     }
 }
 
+fn severity_sort_value(severity: Severity) -> u8 {
+    match severity {
+        Severity::Info => 1,
+        Severity::Warning => 2,
+        Severity::Critical => 3,
+    }
+}
+
 fn heat_class(risk: u8) -> &'static str {
     match risk {
         70..=u8::MAX => "heat-critical",
@@ -737,8 +859,117 @@ const PAGINATION_SCRIPT: &str = r#"(() => {
     groups.get(group).push(item);
   });
 
+  const textValue = (item, key) => (item.dataset[key] || "").toLowerCase();
+  const numericValue = (item, key) => Number(item.dataset[key] || 0);
+
+  groups.forEach((items, group) => {
+    const controls = document.querySelector(`[data-page-controls="${group}"]`);
+    const pageSize = controls ? Math.max(1, Number(controls.dataset.pageSize || 10)) : items.length || 1;
+    const status = controls?.querySelector("[data-page-status]");
+    const range = controls?.querySelector("[data-page-range]");
+    const prev = controls?.querySelector('[data-page-action="prev"]');
+    const next = controls?.querySelector('[data-page-action="next"]');
+    const search = document.querySelector(`[data-search-group="${group}"]`);
+    const filters = Array.from(document.querySelectorAll(`[data-filter-group="${group}"]`));
+    const sorter = document.querySelector(`[data-sort-group="${group}"]`);
+    const empty = document.querySelector(`[data-filter-empty="${group}"]`);
+    const parent = items[0]?.parentElement;
+    let page = 0;
+
+    const matchesSearch = (item) => {
+      const query = (search?.value || "").trim().toLowerCase();
+      if (!query) {
+        return true;
+      }
+      return textValue(item, "searchText").includes(query);
+    };
+
+    const matchesFilters = (item) => filters.every((filter) => {
+      const value = filter.value;
+      if (!value) {
+        return true;
+      }
+      const field = filter.dataset.filterField;
+      return field ? item.dataset[`filter${field[0].toUpperCase()}${field.slice(1)}`] === value : true;
+    });
+
+    const sortItems = (activeItems) => {
+      const sortBy = sorter?.value || "";
+      if (!sortBy) {
+        return activeItems;
+      }
+      return [...activeItems].sort((left, right) => {
+        if (sortBy === "priority" || sortBy === "severity") {
+          return numericValue(right, `sort${sortBy[0].toUpperCase()}${sortBy.slice(1)}`) -
+            numericValue(left, `sort${sortBy[0].toUpperCase()}${sortBy.slice(1)}`);
+        }
+        const leftValue = textValue(left, `sort${sortBy[0].toUpperCase()}${sortBy.slice(1)}`);
+        const rightValue = textValue(right, `sort${sortBy[0].toUpperCase()}${sortBy.slice(1)}`);
+        return leftValue.localeCompare(rightValue);
+      });
+    };
+
+    const render = () => {
+      const activeItems = sortItems(items.filter((item) => matchesSearch(item) && matchesFilters(item)));
+      const pageCount = Math.max(1, Math.ceil(activeItems.length / pageSize));
+      page = Math.min(page, pageCount - 1);
+      const start = activeItems.length === 0 ? 0 : page * pageSize;
+      const end = Math.min(start + pageSize, activeItems.length);
+      const visibleItems = new Set(activeItems.slice(start, end));
+
+      if (parent) {
+        const marker = controls || empty || null;
+        activeItems.forEach((item) => parent.insertBefore(item, marker));
+      }
+
+      items.forEach((item) => {
+        item.hidden = !visibleItems.has(item);
+      });
+
+      if (empty) {
+        empty.hidden = activeItems.length !== 0;
+      }
+      if (controls) {
+        controls.hidden = activeItems.length <= pageSize;
+      }
+      if (status) {
+        status.textContent = `${page + 1} / ${pageCount}`;
+      }
+      if (range) {
+        range.textContent = activeItems.length === 0 ? "0 of 0" : `${start + 1}-${end} of ${activeItems.length}`;
+      }
+      if (prev) {
+        prev.disabled = page === 0;
+      }
+      if (next) {
+        next.disabled = page >= pageCount - 1;
+      }
+    };
+
+    const resetAndRender = () => {
+      page = 0;
+      render();
+    };
+
+    search?.addEventListener("input", resetAndRender);
+    filters.forEach((filter) => filter.addEventListener("change", resetAndRender));
+    sorter?.addEventListener("change", resetAndRender);
+    prev?.addEventListener("click", () => {
+      page = Math.max(0, page - 1);
+      render();
+    });
+    next?.addEventListener("click", () => {
+      page += 1;
+      render();
+    });
+    render();
+  });
+
   document.querySelectorAll("[data-page-controls]").forEach((controls) => {
     const group = controls.dataset.pageControls;
+    if (groups.has(group)) {
+      return;
+    }
     const items = groups.get(group) || [];
     const pageSize = Math.max(1, Number(controls.dataset.pageSize || 10));
     const pageCount = Math.max(1, Math.ceil(items.length / pageSize));

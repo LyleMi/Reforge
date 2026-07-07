@@ -9,6 +9,7 @@ use ignore::{DirEntry, WalkBuilder};
 
 use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
 use crate::cli::ScanArgs;
+use crate::detectors::dependency_graph::scan_dependency_graph;
 use crate::documentation::scan_documentation;
 use crate::model::{
     ChurnFileMetric, FileRawMetric, Finding, FindingKind, FindingMetric, FunctionRawMetric,
@@ -28,10 +29,15 @@ use crate::unused_functions::{UnusedFunctionOptions, scan_parsed_unused_function
 
 mod churn;
 mod config;
+mod finding_control;
 mod progress;
 
 use churn::collect_churn_metrics;
-use config::effective_scan_args;
+pub(crate) use config::{
+    CONFIG_FILE_NAME, default_config_toml, effective_config_output, validate_config,
+};
+use config::{ConfigSuppression, effective_scan_config};
+use finding_control::apply_finding_controls;
 use progress::ProgressEvent;
 pub(crate) use progress::{NoopProgress, ProgressSink, StderrProgress};
 
@@ -83,7 +89,8 @@ pub(crate) fn scan_path(args: &ScanArgs) -> Result<Vec<Finding>> {
 pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> Result<ScanReport> {
     let started_at = Instant::now();
     let root = resolve_scan_root(args)?;
-    let effective_args = effective_scan_args(args, &root)?;
+    let effective = effective_scan_config(args, &root)?;
+    let effective_args = effective.args;
     let mut scan = SourceScan::default();
     let source_plan = collect_source_scan_plan(&root, &effective_args)?;
 
@@ -99,17 +106,19 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         progress,
         &mut scan,
     )?;
-    let similar_function_group_count = {
+    {
         let mut signals = ScanSignalContext {
+            root: &root,
             args: &effective_args,
             progress,
             scan: &mut scan,
         };
         signals.scan_structural_signals()?;
         signals.scan_unused_function_signals();
+        signals.scan_dependency_graph_signals();
         signals.scan_agent_drift_signals();
-        signals.scan_similarity_signals()?
-    };
+        signals.scan_similarity_signals()?;
+    }
     scan.findings.extend(scan_documentation(&root)?);
     merge_structure_raw_metrics(&mut scan.raw_metrics, &scan.parsed_sources);
     let churn_summary = collect_churn_metrics(&root, &effective_args, &mut scan.raw_metrics)?;
@@ -122,6 +131,12 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
             .expect("effective args should set hotspot model"),
     );
     finalize_scoring(&mut scan.findings, &scan.raw_metrics, &hotspots);
+    let similar_function_group_count = apply_post_score_finding_controls(
+        &mut scan,
+        &root,
+        &effective_args,
+        &effective.suppressions,
+    )?;
 
     let summary = ScanSummary {
         scanned_files: scan.stats.source_files_scanned,
@@ -150,6 +165,20 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         hotspots,
         findings: scan.findings,
     })
+}
+
+fn apply_post_score_finding_controls(
+    scan: &mut SourceScan,
+    root: &Path,
+    args: &ScanArgs,
+    suppressions: &[ConfigSuppression],
+) -> Result<usize> {
+    apply_finding_controls(&mut scan.findings, root, args, suppressions)?;
+    Ok(scan
+        .findings
+        .iter()
+        .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
+        .count())
 }
 
 fn merge_structure_raw_metrics(raw_metrics: &mut RawMetrics, parsed_sources: &[ParsedSourceFile]) {
@@ -196,12 +225,24 @@ fn merge_structure_raw_metrics(raw_metrics: &mut RawMetrics, parsed_sources: &[P
 }
 
 struct ScanSignalContext<'a> {
+    root: &'a Path,
     args: &'a ScanArgs,
     progress: &'a mut dyn ProgressSink,
     scan: &'a mut SourceScan,
 }
 
 impl ScanSignalContext<'_> {
+    fn scan_dependency_graph_signals(&mut self) {
+        self.progress.report(&format!(
+            "Analyzing dependency graph in {} files",
+            self.scan.structure_sources.len()
+        ));
+        self.scan.findings.extend(scan_dependency_graph(
+            &self.scan.structure_sources,
+            self.root,
+        ));
+    }
+
     fn scan_agent_drift_signals(&mut self) {
         self.progress.report(&format!(
             "Analyzing agent drift signals in {} files",

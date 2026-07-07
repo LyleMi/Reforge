@@ -172,6 +172,11 @@ fn candidate_name_node<'tree>(
         LanguageFamily::Go if node.kind() == FUNCTION_DECLARATION => {
             node.child_by_field_name(NAME_FIELD)
         }
+        LanguageFamily::Java
+        | LanguageFamily::CSharp
+        | LanguageFamily::Kotlin
+        | LanguageFamily::Php
+        | LanguageFamily::Ruby => None,
         _ => None,
     }
 }
@@ -200,6 +205,11 @@ fn is_public_or_exported_function(
             .chars()
             .next()
             .is_some_and(|character| character.is_uppercase()),
+        LanguageFamily::Java
+        | LanguageFamily::CSharp
+        | LanguageFamily::Kotlin
+        | LanguageFamily::Php
+        | LanguageFamily::Ruby => true,
     }
 }
 

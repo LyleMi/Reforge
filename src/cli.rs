@@ -3,6 +3,27 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
+pub const DEFAULT_MAX_FILE_LINES: usize = 800;
+pub const DEFAULT_MAX_DIR_FILES: usize = 40;
+pub const DEFAULT_MIN_SIMILAR_FUNCTIONS: usize = 3;
+pub const DEFAULT_MIN_FUNCTION_TOKENS: usize = 80;
+pub const DEFAULT_FUNCTION_SIMILARITY: f64 = 0.85;
+pub const DEFAULT_MAX_FUNCTION_LINES: usize = 80;
+pub const DEFAULT_MAX_FUNCTION_COMPLEXITY: usize = 15;
+pub const DEFAULT_MAX_NESTING_DEPTH: usize = 4;
+pub const DEFAULT_MAX_FUNCTION_PARAMETERS: usize = 5;
+pub const DEFAULT_MAX_TYPE_LINES: usize = 250;
+pub const DEFAULT_MAX_TYPE_MEMBERS: usize = 30;
+pub const DEFAULT_MAX_IMPORTS: usize = 35;
+pub const DEFAULT_MAX_PUBLIC_ITEMS: usize = 30;
+pub const DEFAULT_MAX_FUNCTIONS_PER_FILE: usize = 40;
+pub const DEFAULT_MAX_FUNCTIONS_PER_100_LINES: usize = 12;
+pub const DEFAULT_MAX_SMALL_FUNCTION_RATIO: usize = 70;
+pub const DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES: usize = 12;
+pub const DEFAULT_MIN_DATA_CLUMP_OCCURRENCES: usize = 4;
+pub const DEFAULT_CHURN_WINDOW_DAYS: usize = 180;
+pub const DEFAULT_CHURN_MAX_COMMIT_LINES: usize = 2_000;
+
 #[derive(Debug, Parser)]
 #[command(name = "reforge")]
 #[command(about = "Detect refactoring signals across a codebase")]
@@ -13,8 +34,63 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Write a default reforge.toml configuration file.
+    Init(InitArgs),
+    /// Inspect and validate configuration.
+    Config(ConfigArgs),
     /// Scan a directory for basic refactoring signals.
-    Scan(ScanArgs),
+    Scan(Box<ScanArgs>),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct InitArgs {
+    /// Directory to receive reforge.toml, or an exact .toml file path.
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Overwrite an existing configuration file.
+    #[arg(long)]
+    pub force: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ConfigArgs {
+    #[command(subcommand)]
+    pub command: ConfigCommand,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ConfigCommand {
+    /// Validate discovered or explicit configuration without scanning.
+    Validate(ConfigValidateArgs),
+    /// Print effective scan defaults after applying configuration.
+    Show(ConfigShowArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ConfigValidateArgs {
+    /// Directory or file used for reforge.toml discovery.
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Optional configuration file. When omitted, reforge.toml is discovered from PATH.
+    #[arg(long)]
+    pub config: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ConfigShowArgs {
+    /// Directory or file used for reforge.toml discovery.
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Optional configuration file. When omitted, reforge.toml is discovered from PATH.
+    #[arg(long)]
+    pub config: Option<PathBuf>,
+
+    /// Output format.
+    #[arg(long, value_enum, default_value_t = ConfigOutputFormat::Human)]
+    pub output: ConfigOutputFormat,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -24,26 +100,29 @@ pub struct ScanArgs {
     pub path: PathBuf,
 
     /// Report files whose total line count is above this threshold.
-    #[arg(long, default_value_t = 800)]
+    #[arg(long, default_value_t = DEFAULT_MAX_FILE_LINES)]
     pub max_file_lines: usize,
 
     /// Report directories whose direct source file count is above this threshold.
-    #[arg(long, default_value_t = 40)]
+    #[arg(long, default_value_t = DEFAULT_MAX_DIR_FILES)]
     pub max_dir_files: usize,
 
     #[command(flatten)]
     pub filters: ScanFilterArgs,
 
+    #[command(flatten)]
+    pub finding_controls: FindingControlArgs,
+
     /// Report groups with at least this many structurally similar functions.
-    #[arg(long, default_value_t = 3)]
+    #[arg(long, default_value_t = DEFAULT_MIN_SIMILAR_FUNCTIONS)]
     pub min_similar_functions: usize,
 
     /// Ignore functions whose normalized body has fewer tokens than this threshold.
-    #[arg(long, default_value_t = 80)]
+    #[arg(long, default_value_t = DEFAULT_MIN_FUNCTION_TOKENS)]
     pub min_function_tokens: usize,
 
     /// Minimum normalized token similarity for functions to be grouped.
-    #[arg(long, default_value_t = 0.85)]
+    #[arg(long, default_value_t = DEFAULT_FUNCTION_SIMILARITY)]
     pub function_similarity: f64,
 
     /// Include test files in similar-function analysis.
@@ -51,46 +130,46 @@ pub struct ScanArgs {
     pub include_test_similarity: bool,
 
     /// Report functions whose line span is above this threshold.
-    #[arg(long, default_value_t = 80)]
+    #[arg(long, default_value_t = DEFAULT_MAX_FUNCTION_LINES)]
     pub max_function_lines: usize,
 
     /// Report functions whose estimated cyclomatic complexity is above this threshold.
-    #[arg(long, default_value_t = 15)]
+    #[arg(long, default_value_t = DEFAULT_MAX_FUNCTION_COMPLEXITY)]
     pub max_function_complexity: usize,
 
     /// Report functions whose nested control-flow depth is above this threshold.
-    #[arg(long, default_value_t = 4)]
+    #[arg(long, default_value_t = DEFAULT_MAX_NESTING_DEPTH)]
     pub max_nesting_depth: usize,
 
     /// Report functions with more parameters than this threshold.
-    #[arg(long, default_value_t = 5)]
+    #[arg(long, default_value_t = DEFAULT_MAX_FUNCTION_PARAMETERS)]
     pub max_function_parameters: usize,
 
     /// Report types whose line span is above this threshold.
-    #[arg(long, default_value_t = 250)]
+    #[arg(long, default_value_t = DEFAULT_MAX_TYPE_LINES)]
     pub max_type_lines: usize,
 
     /// Report types whose member count is above this threshold.
-    #[arg(long, default_value_t = 30)]
+    #[arg(long, default_value_t = DEFAULT_MAX_TYPE_MEMBERS)]
     pub max_type_members: usize,
 
     /// Report files with more imports than this threshold.
-    #[arg(long, default_value_t = 35)]
+    #[arg(long, default_value_t = DEFAULT_MAX_IMPORTS)]
     pub max_imports: usize,
 
     /// Report files with more public/exported items than this threshold.
-    #[arg(long, default_value_t = 30)]
+    #[arg(long, default_value_t = DEFAULT_MAX_PUBLIC_ITEMS)]
     pub max_public_items: usize,
 
     #[command(flatten)]
     pub function_proliferation: FunctionProliferationArgs,
 
     /// Report repeated literals seen at least this many times.
-    #[arg(long, default_value_t = 12)]
+    #[arg(long, default_value_t = DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES)]
     pub min_repeated_literal_occurrences: usize,
 
     /// Report repeated parameter groups seen at least this many times.
-    #[arg(long, default_value_t = 4)]
+    #[arg(long, default_value_t = DEFAULT_MIN_DATA_CLUMP_OCCURRENCES)]
     pub min_data_clump_occurrences: usize,
 
     /// Include test files in general structural analysis.
@@ -140,15 +219,15 @@ pub struct ScanArgs {
 #[derive(Debug, Clone, Args)]
 pub struct FunctionProliferationArgs {
     /// Report files with more functions than this threshold when density signals also match.
-    #[arg(long, default_value_t = 40)]
+    #[arg(long, default_value_t = DEFAULT_MAX_FUNCTIONS_PER_FILE)]
     pub max_functions_per_file: usize,
 
     /// Report files above this function density per 100 lines when other proliferation signals match.
-    #[arg(long, default_value_t = 12)]
+    #[arg(long, default_value_t = DEFAULT_MAX_FUNCTIONS_PER_100_LINES)]
     pub max_functions_per_100_lines: usize,
 
     /// Report files whose small-function percentage exceeds this threshold when other proliferation signals match.
-    #[arg(long, default_value_t = 70)]
+    #[arg(long, default_value_t = DEFAULT_MAX_SMALL_FUNCTION_RATIO)]
     pub max_small_function_ratio: usize,
 }
 
@@ -162,12 +241,16 @@ pub struct CiArgs {
     #[arg(long, value_enum, default_value_t = BaselineMode::NewOrWorse)]
     pub baseline_mode: BaselineMode,
 
+    /// Which baseline comparison findings to show in human output.
+    #[arg(long, value_enum, default_value_t = BaselineShow::All)]
+    pub show: BaselineShow,
+
     /// Exit with a failure when selected findings meet or exceed this severity.
     #[arg(long, value_enum)]
     pub fail_on: Option<FailOnSeverity>,
 }
 
-#[derive(Debug, Clone, Args)]
+#[derive(Debug, Clone, Default, Args)]
 pub struct ScanFilterArgs {
     /// Include hidden files and directories.
     #[arg(long)]
@@ -190,6 +273,25 @@ pub struct ScanFilterArgs {
     pub ignore_paths: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default, Args)]
+pub struct FindingControlArgs {
+    /// Only report findings from these detector kinds.
+    #[arg(long, value_name = "KIND[,KIND...]")]
+    pub only: Option<String>,
+
+    /// Exclude findings from these detector kinds.
+    #[arg(long = "exclude-detector", value_name = "KIND[,KIND...]")]
+    pub exclude_detector: Option<String>,
+
+    /// Only report findings with priority at or above this value.
+    #[arg(long, value_name = "0-100")]
+    pub min_priority: Option<u8>,
+
+    /// Only report findings at or above this severity.
+    #[arg(long, value_enum)]
+    pub severity: Option<FindingSeverity>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
     Human,
@@ -200,7 +302,21 @@ pub enum OutputFormat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ConfigOutputFormat {
+    Human,
+    Json,
+    Yaml,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum BaselineMode {
+    New,
+    NewOrWorse,
+    All,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum BaselineShow {
     New,
     NewOrWorse,
     All,
@@ -208,6 +324,13 @@ pub enum BaselineMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum FailOnSeverity {
+    Info,
+    Warning,
+    Critical,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum FindingSeverity {
     Info,
     Warning,
     Critical,
@@ -244,6 +367,42 @@ pub enum HotspotModel {
 }
 
 impl ScanArgs {
+    pub fn defaults_for_path(path: PathBuf) -> Self {
+        Self {
+            path,
+            max_file_lines: DEFAULT_MAX_FILE_LINES,
+            max_dir_files: DEFAULT_MAX_DIR_FILES,
+            filters: ScanFilterArgs::default(),
+            finding_controls: FindingControlArgs::default(),
+            min_similar_functions: DEFAULT_MIN_SIMILAR_FUNCTIONS,
+            min_function_tokens: DEFAULT_MIN_FUNCTION_TOKENS,
+            function_similarity: DEFAULT_FUNCTION_SIMILARITY,
+            include_test_similarity: false,
+            max_function_lines: DEFAULT_MAX_FUNCTION_LINES,
+            max_function_complexity: DEFAULT_MAX_FUNCTION_COMPLEXITY,
+            max_nesting_depth: DEFAULT_MAX_NESTING_DEPTH,
+            max_function_parameters: DEFAULT_MAX_FUNCTION_PARAMETERS,
+            max_type_lines: DEFAULT_MAX_TYPE_LINES,
+            max_type_members: DEFAULT_MAX_TYPE_MEMBERS,
+            max_imports: DEFAULT_MAX_IMPORTS,
+            max_public_items: DEFAULT_MAX_PUBLIC_ITEMS,
+            function_proliferation: FunctionProliferationArgs::default(),
+            min_repeated_literal_occurrences: DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES,
+            min_data_clump_occurrences: DEFAULT_MIN_DATA_CLUMP_OCCURRENCES,
+            include_test_structure: false,
+            config: None,
+            ci: CiArgs::default(),
+            churn: None,
+            hotspot_model: None,
+            churn_window_days: None,
+            churn_max_commit_lines: None,
+            output: None,
+            output_file: None,
+            progress: ProgressMode::Auto,
+            color: ColorMode::Auto,
+        }
+    }
+
     pub fn output_format(&self) -> OutputFormat {
         self.output
             .unwrap_or_else(|| match self.output_file_extension() {
@@ -269,7 +428,47 @@ impl ScanArgs {
     }
 }
 
+impl Default for ScanArgs {
+    fn default() -> Self {
+        Self::defaults_for_path(PathBuf::from("."))
+    }
+}
+
+impl Default for FunctionProliferationArgs {
+    fn default() -> Self {
+        Self {
+            max_functions_per_file: DEFAULT_MAX_FUNCTIONS_PER_FILE,
+            max_functions_per_100_lines: DEFAULT_MAX_FUNCTIONS_PER_100_LINES,
+            max_small_function_ratio: DEFAULT_MAX_SMALL_FUNCTION_RATIO,
+        }
+    }
+}
+
+impl Default for CiArgs {
+    fn default() -> Self {
+        Self {
+            baseline: None,
+            baseline_mode: BaselineMode::NewOrWorse,
+            show: BaselineShow::All,
+            fail_on: None,
+        }
+    }
+}
+
 impl FailOnSeverity {
+    pub fn matches(self, severity: crate::model::Severity) -> bool {
+        match self {
+            Self::Info => true,
+            Self::Warning => matches!(
+                severity,
+                crate::model::Severity::Warning | crate::model::Severity::Critical
+            ),
+            Self::Critical => severity == crate::model::Severity::Critical,
+        }
+    }
+}
+
+impl FindingSeverity {
     pub fn matches(self, severity: crate::model::Severity) -> bool {
         match self {
             Self::Info => true,
@@ -306,6 +505,65 @@ impl ColorMode {
 mod tests {
     use super::*;
 
+    fn scan_args_from(cli: Cli) -> ScanArgs {
+        match cli.command {
+            Command::Scan(args) => *args,
+            other => panic!("expected scan command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_init_command() {
+        let cli = Cli::parse_from(["reforge", "init", "config/reforge.toml", "--force"]);
+
+        match cli.command {
+            Command::Init(args) => {
+                assert_eq!(args.path, PathBuf::from("config/reforge.toml"));
+                assert!(args.force);
+            }
+            other => panic!("expected init command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_config_validate_command() {
+        let cli = Cli::parse_from([
+            "reforge",
+            "config",
+            "validate",
+            "src",
+            "--config",
+            "reforge.toml",
+        ]);
+
+        match cli.command {
+            Command::Config(args) => match args.command {
+                ConfigCommand::Validate(validate) => {
+                    assert_eq!(validate.path, PathBuf::from("src"));
+                    assert_eq!(validate.config, Some(PathBuf::from("reforge.toml")));
+                }
+                other => panic!("expected config validate command, got {other:?}"),
+            },
+            other => panic!("expected config command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_config_show_command() {
+        let cli = Cli::parse_from(["reforge", "config", "show", ".", "--output", "json"]);
+
+        match cli.command {
+            Command::Config(args) => match args.command {
+                ConfigCommand::Show(show) => {
+                    assert_eq!(show.path, PathBuf::from("."));
+                    assert_eq!(show.output, ConfigOutputFormat::Json);
+                }
+                other => panic!("expected config show command, got {other:?}"),
+            },
+            other => panic!("expected config command, got {other:?}"),
+        }
+    }
+
     #[test]
     fn parses_similar_function_thresholds() {
         let cli = Cli::parse_from([
@@ -320,7 +578,7 @@ mod tests {
             "0.9",
         ]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.min_similar_functions, 4);
         assert_eq!(args.min_function_tokens, 25);
         assert_eq!(args.function_similarity, 0.9);
@@ -330,7 +588,7 @@ mod tests {
     fn uses_stricter_default_similarity_thresholds() {
         let cli = Cli::parse_from(["reforge", "scan", "."]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.min_function_tokens, 80);
         assert_eq!(args.function_similarity, 0.85);
         assert!(!args.include_test_similarity);
@@ -340,7 +598,7 @@ mod tests {
     fn parses_test_similarity_flag() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--include-test-similarity"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert!(args.include_test_similarity);
     }
 
@@ -379,7 +637,7 @@ mod tests {
             "--include-test-structure",
         ]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.max_function_lines, 60);
         assert_eq!(args.max_function_complexity, 10);
         assert_eq!(args.max_nesting_depth, 3);
@@ -400,7 +658,7 @@ mod tests {
     fn uses_default_structure_thresholds() {
         let cli = Cli::parse_from(["reforge", "scan", "."]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.max_function_lines, 80);
         assert_eq!(args.max_function_complexity, 15);
         assert_eq!(args.max_nesting_depth, 4);
@@ -431,17 +689,49 @@ mod tests {
             "--exclude-tests",
         ]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.filters.ignore_paths, ["vendor", "generated/snapshots"]);
         assert!(args.filters.no_gitignore);
         assert!(args.filters.exclude_tests);
     }
 
     #[test]
+    fn parses_finding_control_options() {
+        let cli = Cli::parse_from([
+            "reforge",
+            "scan",
+            ".",
+            "--only",
+            "large_file,debt_marker",
+            "--exclude-detector",
+            "similar_functions",
+            "--min-priority",
+            "35",
+            "--severity",
+            "warning",
+        ]);
+
+        let args = scan_args_from(cli);
+        assert_eq!(
+            args.finding_controls.only,
+            Some("large_file,debt_marker".to_string())
+        );
+        assert_eq!(
+            args.finding_controls.exclude_detector,
+            Some("similar_functions".to_string())
+        );
+        assert_eq!(args.finding_controls.min_priority, Some(35));
+        assert_eq!(
+            args.finding_controls.severity,
+            Some(FindingSeverity::Warning)
+        );
+    }
+
+    #[test]
     fn parses_output_format() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output", "json"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output, Some(OutputFormat::Json));
         assert_eq!(args.output_format(), OutputFormat::Json);
     }
@@ -450,7 +740,7 @@ mod tests {
     fn parses_yaml_output_format() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output", "yaml"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output, Some(OutputFormat::Yaml));
         assert_eq!(args.output_format(), OutputFormat::Yaml);
     }
@@ -459,7 +749,7 @@ mod tests {
     fn parses_sarif_output_format() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output", "sarif"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output, Some(OutputFormat::Sarif));
         assert_eq!(args.output_format(), OutputFormat::Sarif);
     }
@@ -468,7 +758,7 @@ mod tests {
     fn parses_html_output_format() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output", "html"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output, Some(OutputFormat::Html));
         assert_eq!(args.output_format(), OutputFormat::Html);
     }
@@ -477,7 +767,7 @@ mod tests {
     fn parses_output_file() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.json"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output_file, Some(PathBuf::from("report.json")));
     }
 
@@ -485,7 +775,7 @@ mod tests {
     fn infers_json_output_format_from_output_file_extension() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.json"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output_format(), OutputFormat::Json);
     }
 
@@ -493,7 +783,7 @@ mod tests {
     fn infers_json_output_format_from_uppercase_output_file_extension() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "REPORT.JSON"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output_format(), OutputFormat::Json);
     }
 
@@ -501,7 +791,7 @@ mod tests {
     fn infers_yaml_output_format_from_output_file_extension() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.yaml"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output_format(), OutputFormat::Yaml);
     }
 
@@ -509,7 +799,7 @@ mod tests {
     fn infers_yaml_output_format_from_yml_output_file_extension() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "REPORT.YML"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output_format(), OutputFormat::Yaml);
     }
 
@@ -517,7 +807,7 @@ mod tests {
     fn infers_html_output_format_from_output_file_extension() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.html"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output_format(), OutputFormat::Html);
     }
 
@@ -525,7 +815,7 @@ mod tests {
     fn infers_html_output_format_from_htm_output_file_extension() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "REPORT.HTM"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output_format(), OutputFormat::Html);
     }
 
@@ -533,7 +823,7 @@ mod tests {
     fn infers_sarif_output_format_from_output_file_extension() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.sarif"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output_format(), OutputFormat::Sarif);
     }
 
@@ -549,7 +839,7 @@ mod tests {
             "human",
         ]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output_format(), OutputFormat::Human);
     }
 
@@ -565,7 +855,7 @@ mod tests {
             "json",
         ]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.output_format(), OutputFormat::Json);
     }
 
@@ -573,7 +863,7 @@ mod tests {
     fn parses_progress_mode() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--progress", "never"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.progress, ProgressMode::Never);
     }
 
@@ -589,7 +879,7 @@ mod tests {
     fn parses_color_mode() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--color", "never"]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.color, ColorMode::Never);
     }
 
@@ -617,7 +907,7 @@ mod tests {
             "1000",
         ]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.churn, Some(ChurnMode::On));
         assert_eq!(args.hotspot_model, Some(HotspotModel::Static));
         assert_eq!(args.churn_window_days, Some(90));
@@ -634,13 +924,16 @@ mod tests {
             "baseline.json",
             "--baseline-mode",
             "new",
+            "--show",
+            "new-or-worse",
             "--fail-on",
             "warning",
         ]);
 
-        let Command::Scan(args) = cli.command;
+        let args = scan_args_from(cli);
         assert_eq!(args.ci.baseline, Some(PathBuf::from("baseline.json")));
         assert_eq!(args.ci.baseline_mode, BaselineMode::New);
+        assert_eq!(args.ci.show, BaselineShow::NewOrWorse);
         assert_eq!(args.ci.fail_on, Some(FailOnSeverity::Warning));
     }
 }

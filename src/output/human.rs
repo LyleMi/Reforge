@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 
+use crate::baseline::{BaselineDiff, BaselineFinding, BaselineFindingStatus};
+use crate::cli::BaselineShow;
 use crate::model::{Finding, FindingKind, Hotspot, ScanReport, Severity};
 
 const RELATED_LOCATION_LIMIT: usize = 3;
@@ -12,6 +14,21 @@ pub fn print_human_report(report: &ScanReport) -> io::Result<()> {
 
 pub fn print_human_report_colored(report: &ScanReport, color: bool) -> io::Result<()> {
     write_human_report_colored(std::io::stdout().lock(), report, color)
+}
+
+pub(crate) fn print_human_report_with_baseline(
+    report: &ScanReport,
+    diff: &BaselineDiff<'_>,
+) -> io::Result<()> {
+    write_human_report_with_baseline_colored(std::io::stdout().lock(), report, diff, false)
+}
+
+pub(crate) fn print_human_report_with_baseline_colored(
+    report: &ScanReport,
+    diff: &BaselineDiff<'_>,
+    color: bool,
+) -> io::Result<()> {
+    write_human_report_with_baseline_colored(std::io::stdout().lock(), report, diff, color)
 }
 
 pub fn write_human_report(mut writer: impl Write, report: &ScanReport) -> io::Result<()> {
@@ -26,21 +43,64 @@ pub fn write_human_report_colored(
     writer.write_all(render_human_report_colored(report, color).as_bytes())
 }
 
+pub(crate) fn write_human_report_with_baseline(
+    writer: impl Write,
+    report: &ScanReport,
+    diff: &BaselineDiff<'_>,
+) -> io::Result<()> {
+    write_human_report_with_baseline_colored(writer, report, diff, false)
+}
+
+pub(crate) fn write_human_report_with_baseline_colored(
+    mut writer: impl Write,
+    report: &ScanReport,
+    diff: &BaselineDiff<'_>,
+    color: bool,
+) -> io::Result<()> {
+    writer.write_all(render_human_report_with_baseline_colored(report, diff, color).as_bytes())
+}
+
 pub fn render_human_report(report: &ScanReport) -> String {
     render_human_report_colored(report, false)
 }
 
 pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
+    render_human_report_view(report, None, color)
+}
+
+#[cfg(test)]
+pub(crate) fn render_human_report_with_baseline(
+    report: &ScanReport,
+    diff: &BaselineDiff<'_>,
+) -> String {
+    render_human_report_with_baseline_colored(report, diff, false)
+}
+
+pub(crate) fn render_human_report_with_baseline_colored(
+    report: &ScanReport,
+    diff: &BaselineDiff<'_>,
+    color: bool,
+) -> String {
+    render_human_report_view(report, Some(diff), color)
+}
+
+fn render_human_report_view<'report>(
+    report: &'report ScanReport,
+    baseline_diff: Option<&BaselineDiff<'report>>,
+    color: bool,
+) -> String {
     let mut output = String::new();
     let breakdown = FindingBreakdown::from_findings(&report.findings);
     let mut context = ReportRenderContext {
         output: &mut output,
         report,
+        baseline_diff,
         color,
     };
 
     context.render_header();
     context.render_result(&breakdown);
+    context.render_baseline_diff();
     context.render_scan_details();
 
     if report.findings.is_empty() {
@@ -58,13 +118,14 @@ pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
     output
 }
 
-struct ReportRenderContext<'a> {
-    output: &'a mut String,
-    report: &'a ScanReport,
+struct ReportRenderContext<'output, 'report, 'diff> {
+    output: &'output mut String,
+    report: &'report ScanReport,
+    baseline_diff: Option<&'diff BaselineDiff<'report>>,
     color: bool,
 }
 
-impl ReportRenderContext<'_> {
+impl ReportRenderContext<'_, '_, '_> {
     fn render_header(&mut self) {
         self.output
             .push_str(&paint(self.color, "Reforge scan", AnsiStyle::Header));
@@ -120,11 +181,61 @@ impl ReportRenderContext<'_> {
         self.render_summary_row("Function candidates", self.report.stats.function_candidates);
     }
 
-    fn render_findings(&mut self) {
+    fn render_baseline_diff(&mut self) {
+        let Some(diff) = self.baseline_diff else {
+            return;
+        };
+
         self.output.push('\n');
         self.output
-            .push_str(&paint(self.color, "Findings", AnsiStyle::Section));
+            .push_str(&paint(self.color, "Baseline diff", AnsiStyle::Section));
         self.output.push('\n');
+        self.render_summary_row("New", diff.summary.new);
+        self.render_summary_row("Worse", diff.summary.worse);
+        self.render_summary_row("Same", diff.summary.same);
+        self.render_summary_row("Resolved", diff.summary.resolved);
+        self.render_summary_row(
+            "Showing",
+            format!(
+                "{} ({} of {} current)",
+                baseline_show_label(diff.show),
+                diff.findings.len(),
+                self.report.findings.len()
+            ),
+        );
+    }
+
+    fn render_findings(&mut self) {
+        self.output.push('\n');
+        let title = self
+            .baseline_diff
+            .map(|diff| format!("Findings ({})", baseline_show_label(diff.show)))
+            .unwrap_or_else(|| "Findings".to_string());
+        self.output
+            .push_str(&paint(self.color, &title, AnsiStyle::Section));
+        self.output.push('\n');
+
+        if let Some(diff) = self.baseline_diff {
+            let findings = sorted_baseline_findings(&diff.findings);
+            if findings.is_empty() {
+                self.output.push_str(&format!(
+                    "  No findings matched --show {}.\n",
+                    baseline_show_value(diff.show)
+                ));
+                return;
+            }
+
+            for entry in findings {
+                self.output
+                    .push_str(&render_diff_finding(entry, self.color));
+
+                if has_related_location_details(entry.finding) {
+                    self.output
+                        .push_str(&render_related_locations(entry.finding, self.color));
+                }
+            }
+            return;
+        }
 
         for finding in sorted_findings(&self.report.findings) {
             self.output.push_str(&render_finding(finding, self.color));
@@ -209,6 +320,22 @@ fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
     sorted
 }
 
+fn sorted_baseline_findings<'a>(
+    findings: &'a [BaselineFinding<'a>],
+) -> Vec<&'a BaselineFinding<'a>> {
+    let mut sorted = findings.iter().collect::<Vec<_>>();
+    sorted.sort_by(|left, right| compare_findings(left.finding, right.finding));
+    sorted
+}
+
+fn compare_findings(left: &Finding, right: &Finding) -> std::cmp::Ordering {
+    right
+        .priority
+        .cmp(&left.priority)
+        .then_with(|| left.path.cmp(&right.path))
+        .then_with(|| left.line.cmp(&right.line))
+}
+
 fn render_finding(finding: &Finding, color: bool) -> String {
     let location = finding
         .line
@@ -218,6 +345,41 @@ fn render_finding(finding: &Finding, color: bool) -> String {
 
     let mut output = format!(
         "  {} p={:>2} c={:.2}  {}\n            {}\n",
+        render_severity_cell(finding.severity, color),
+        finding.priority,
+        finding.confidence,
+        concise_finding_message(finding),
+        paint(color, &location, AnsiStyle::Path),
+    );
+
+    if let Some(metrics) = metrics {
+        output.push_str(&format!("            metrics {metrics}\n"));
+    }
+    if !finding.rank_explanation.is_empty() {
+        output.push_str(&format!("            rank {}\n", finding.rank_explanation));
+    }
+    if should_render_recommendation(finding) {
+        output.push_str(&format!("            hint {}\n", finding.recommendation()));
+    }
+
+    output
+}
+
+fn should_render_recommendation(finding: &Finding) -> bool {
+    finding.priority >= 35
+}
+
+fn render_diff_finding(entry: &BaselineFinding<'_>, color: bool) -> String {
+    let finding = entry.finding;
+    let location = finding
+        .line
+        .map(|line| format!("{}:{line}", display_path(&finding.path)))
+        .unwrap_or_else(|| display_path(&finding.path));
+    let metrics = render_metric_summary(finding);
+
+    let mut output = format!(
+        "  {} {} p={:>2} c={:.2}  {}\n            {}\n",
+        render_status_cell(entry.status, color),
         render_severity_cell(finding.severity, color),
         finding.priority,
         finding.confidence,
@@ -365,6 +527,7 @@ fn has_related_location_details(finding: &Finding) -> bool {
             | FindingKind::GenericBucketDrift
             | FindingKind::AdapterBoundaryBypass
             | FindingKind::StaleCompatibilityPath
+            | FindingKind::DependencyCycle
     )
 }
 
@@ -704,6 +867,18 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
         DisplayMetric::Primary,
         MetricFormat::PluralCount("missing field"),
     ),
+    display(
+        FindingKind::DependencyCycle,
+        "dependency cycle",
+        DisplayMetric::Named("cycle_files"),
+        MetricFormat::PluralCount("file"),
+    ),
+    display(
+        FindingKind::DependencyHub,
+        "dependency hub",
+        DisplayMetric::Named("fan_out"),
+        MetricFormat::Count("outgoing dependencies"),
+    ),
 ];
 
 const fn display(
@@ -738,6 +913,18 @@ enum AnsiStyle {
     Info,
 }
 
+fn render_status_cell(status: BaselineFindingStatus, color: bool) -> String {
+    paint(
+        color,
+        &format!("{:<8}", baseline_status_label(status)),
+        match status {
+            BaselineFindingStatus::New => AnsiStyle::Info,
+            BaselineFindingStatus::Worse => AnsiStyle::Warning,
+            BaselineFindingStatus::Same => AnsiStyle::Muted,
+        },
+    )
+}
+
 fn render_severity_cell(severity: Severity, color: bool) -> String {
     paint(
         color,
@@ -748,6 +935,30 @@ fn render_severity_cell(severity: Severity, color: bool) -> String {
             Severity::Info => AnsiStyle::Info,
         },
     )
+}
+
+fn baseline_status_label(status: BaselineFindingStatus) -> &'static str {
+    match status {
+        BaselineFindingStatus::New => "new",
+        BaselineFindingStatus::Worse => "worse",
+        BaselineFindingStatus::Same => "same",
+    }
+}
+
+fn baseline_show_label(show: BaselineShow) -> &'static str {
+    match show {
+        BaselineShow::New => "new",
+        BaselineShow::NewOrWorse => "new or worse",
+        BaselineShow::All => "all current",
+    }
+}
+
+fn baseline_show_value(show: BaselineShow) -> &'static str {
+    match show {
+        BaselineShow::New => "new",
+        BaselineShow::NewOrWorse => "new-or-worse",
+        BaselineShow::All => "all",
+    }
 }
 
 fn paint(color: bool, text: &str, style: AnsiStyle) -> String {
