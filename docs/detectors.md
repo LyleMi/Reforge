@@ -18,9 +18,9 @@ before detector-specific analysis runs.
 ## Similar Functions
 
 `similar_functions` uses Tree-sitter to extract named functions and methods in
-Rust, JavaScript, TypeScript/TSX, Python, and Go. Function bodies are
-normalized so identifiers become `ID`, strings become `STR`, and numbers
-become `NUM`.
+Rust, JavaScript, TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
+Function bodies are normalized so identifiers become `ID`, strings become
+`STR`, and numbers become `NUM`.
 
 Candidates are grouped only within the same language family and same category
 of function or method. Similarity uses length ratio, multiset overlap, and a
@@ -60,14 +60,32 @@ Tests are excluded from general structural findings unless
 ## Unused Functions
 
 `unused_function` builds a conservative project-wide identifier index for
-Rust, JavaScript, TypeScript/TSX, Python, and Go. It reports private named
-free functions that have no same-name references outside their own function
-body.
+Rust, JavaScript, TypeScript/TSX, Python, and Go. It reports private named free
+functions that have no same-name references outside their own function body.
+Java, C#, Kotlin, PHP, and Ruby are parsed for structural and similarity
+signals, but skipped for unused-function candidates until their reference and
+visibility rules can be modeled more precisely.
 
 The detector skips public or exported functions, methods, common entry-point
 names such as `main` and `init`, and test helper definitions by default.
 References from scanned test files still count, so production helpers called
 only by tests are not reported unless tests are excluded from the scan.
+
+## Dependency Graph Signals
+
+`dependency_cycle` and `dependency_hub` use a conservative source-file import
+graph. The detector resolves only imports that point to another scanned source
+file under the scan root, such as relative JavaScript/TypeScript imports,
+Rust `mod` declarations, Python relative imports, Ruby `require_relative`
+calls, and quoted C/C++ includes that resolve to scanned source files.
+
+- `dependency_cycle`: a resolved strongly connected component spans multiple
+  source files.
+- `dependency_hub`: a project with enough resolved graph data has a file with
+  unusually high fan-in or fan-out.
+
+External packages, unresolved aliases, generated paths skipped by scan filters,
+and ambiguous language-specific module systems are ignored rather than guessed.
 
 ## Duplication and Test-Risk Signals
 
@@ -140,3 +158,16 @@ guide.
 Prefer findings with high priority, high confidence, cross-file spread, and
 clear related locations. Treat low-confidence heuristic findings as prompts for
 inspection, not automatic refactor instructions.
+
+## Filtering and Suppression
+
+Finding-kind controls use the snake-case detector names above. `--only` keeps
+only selected kinds, `--exclude-detector` removes selected kinds,
+`--min-priority` keeps findings at or above the final scored priority, and
+`--severity warning` keeps warning and critical findings.
+
+Intentional findings can be suppressed in source comments with
+`reforge:ignore`, `reforge:ignore-next-line`, or `reforge:ignore-file`.
+Each directive accepts an optional comma-separated kind list followed by a
+reason. Long-lived suppressions can also be recorded in `reforge.toml` with
+`[[suppressions]]` entries.

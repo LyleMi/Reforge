@@ -21,8 +21,8 @@ scores findings, and renders reports.
   implementations.
 - `src/scoring/mod.rs`: metric summaries, priority scoring, severity mapping,
   and hotspot ranking.
-- `src/baseline.rs`: schema 9 baseline loading, finding ID comparison, and
-  `--fail-on` gate selection.
+- `src/baseline.rs`: schema 10 baseline loading, finding ID comparison, diff
+  classification, and `--fail-on` gate selection.
 - `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF rendering.
 
 `src/main.rs` re-exports internal modules under compatibility names such as
@@ -49,7 +49,8 @@ into clearer directories.
 11. Render human, HTML, JSON, YAML, or SARIF output to stdout or
     `--output-file`.
 12. Apply `--fail-on` to all current findings or to the baseline-selected
-    finding set after the report is written.
+    finding set after the report is written. Human output can also render
+    baseline diff counts and `--show`-selected current findings.
 
 ## Data Flow
 
@@ -66,7 +67,7 @@ ranking or dashboards without relying only on findings.
 
 Tree-sitter support is routed through `LanguageAdapter`. Structural and
 similarity analysis currently supports Rust, JavaScript, TypeScript/TSX,
-Python, and Go.
+Python, Go, Java, C#, Kotlin, PHP, and Ruby.
 
 Files with parse errors are skipped for Tree-sitter detectors but can still
 contribute basic file metrics and debt-marker findings. Broad source discovery

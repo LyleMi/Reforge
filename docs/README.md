@@ -4,12 +4,15 @@ Reforge is a Rust CLI for detecting refactoring signals across source trees.
 This documentation expands the root README into stable user and maintainer
 references.
 
+Tree-sitter structural and similar-function analysis covers Rust, JavaScript,
+TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
+
 ## User Docs
 
 - [User Guide](user-guide.md): install, run scans, tune CLI options, read
   output, and troubleshoot common failures.
 - [Configuration](configuration.md): `reforge.toml` discovery, supported keys,
-  and CLI precedence.
+  suppressions, and CLI precedence.
 - [Report Schema](report-schema.md): JSON/YAML schema version `9`, SARIF
   output, field meanings, and compatibility notes.
 
@@ -28,6 +31,9 @@ references.
 ## Common Commands
 
 ```powershell
+cargo run -- init
+cargo run -- config validate .
+cargo run -- config show . --output json
 cargo run -- scan .
 cargo run -- scan . --output json --progress never
 cargo run -- scan . --output sarif --output-file reforge-report.sarif --progress never

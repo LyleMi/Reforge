@@ -21,7 +21,8 @@ or fast-moving codebases before refactoring work starts.
 
 ## Highlights
 
-- Scans Rust, JavaScript, TypeScript/TSX, Python, and Go source files.
+- Scans Rust, JavaScript, TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP,
+  and Ruby source files.
 - Uses Tree-sitter for structural analysis and similar-function detection.
 - Reports human-readable, HTML, JSON, or YAML output with raw metrics,
   percentile summaries, hotspots, and findings.
@@ -183,6 +184,13 @@ cargo run -- scan . --ignore-path vendor --ignore-path generated/snapshots
 cargo run -- scan . --no-gitignore
 ```
 
+Limit report noise to selected finding kinds or priority bands:
+
+```powershell
+cargo run -- scan . --only large_file,complex_function --min-priority 35
+cargo run -- scan . --exclude-detector debt_marker --severity warning
+```
+
 Exclude test files and test directories from the scan:
 
 ```powershell
@@ -239,11 +247,18 @@ Fail CI on current warning or critical findings:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-Compare against a prior schema 9 baseline and fail only on new or worse
+Compare against a prior schema 10 baseline and fail only on new or worse
 warning/critical findings:
 
 ```powershell
 cargo run -- scan . --baseline baseline.json --baseline-mode new-or-worse --fail-on warning --output json --progress never
+```
+
+Review only new or worse findings in human output while still showing diff
+counts:
+
+```powershell
+cargo run -- scan . --baseline baseline.json --show new-or-worse --output human --progress never
 ```
 
 ## Sample Output
@@ -281,7 +296,7 @@ signals from the hotspot `Watchlist`, `Signal mix` summarizes finding kinds,
 and each finding includes the ranking reason. HTML output renders the same
 scan as a static visual report with summary cards, risk distribution, file
 heatmap, hotspots, similar-function groups, and prioritized findings. JSON and
-YAML use schema version 9 and include `summary`, `metrics_summary`,
+YAML use schema version 10 and include `summary`, `metrics_summary`,
 `raw_metrics`, `hotspots`, and `findings`. SARIF output targets SARIF 2.1.0
 with rules keyed by finding kind and results fingerprinted by Reforge finding
 ID. Findings expose stable `id`, `priority`, `confidence`, `priority_factors`,
@@ -294,7 +309,7 @@ stay bounded.
 
 `--fail-on info|warning|critical` turns Reforge into a CI gate. Without a
 baseline, the gate evaluates all current findings after writing the requested
-report. With `--baseline <PATH>`, Reforge reads a prior schema 9 JSON or YAML
+report. With `--baseline <PATH>`, Reforge reads a prior schema 10 JSON or YAML
 report and matches findings by stable `id`.
 
 `--baseline-mode` controls which current findings are selected for the gate:
@@ -303,6 +318,13 @@ report and matches findings by stable `id`.
 - `new-or-worse`: new findings plus findings whose priority or severity
   increased. This is the default.
 - `all`: all current findings.
+
+Human reports include a `Baseline diff` section when `--baseline` is supplied,
+with counts for new, worse, same, and resolved findings. Use
+`--show new|new-or-worse|all` to choose which current findings are displayed in
+the human `Findings` section. The default is `all`, preserving the normal
+report view. This display option does not change `--baseline-mode` or
+`--fail-on`.
 
 Older reports without stable IDs are rejected as baselines; regenerate the
 baseline with the current Reforge before enabling the gate.
@@ -333,6 +355,17 @@ When `--config` is not provided, Reforge looks for `reforge.toml` from the scan
 root upward. CLI values override config values; existing threshold defaults use
 config values when the CLI option is not changed.
 
+Create, validate, and inspect config without scanning:
+
+```powershell
+cargo run -- init
+cargo run -- config validate .
+cargo run -- config show . --output json
+```
+
+`reforge init [PATH]` writes `reforge.toml` into a directory, or writes the
+exact file when `[PATH]` ends with `.toml`. Existing files require `--force`.
+
 ```toml
 max-file-lines = 600
 max-function-complexity = 12
@@ -346,7 +379,19 @@ hotspot-model = "hybrid"
 churn-window-days = 180
 churn-max-commit-lines = 2000
 ignore-paths = ["vendor", "generated/snapshots"]
+
+[[suppressions]]
+kind = "large_file"
+path = "src/generated.rs"
+line = 1
+reason = "generated fixture"
 ```
+
+Suppressions may omit `kind` to match every finding kind, and may omit `line`
+to suppress the whole path. Inline comments also suppress specific findings:
+`reforge:ignore [kind[,kind...]] reason`,
+`reforge:ignore-next-line [kind[,kind...]] reason`, and
+`reforge:ignore-file [kind[,kind...]] reason`.
 
 ## CLI Reference
 
@@ -359,6 +404,10 @@ ignore-paths = ["vendor", "generated/snapshots"]
 | `--no-gitignore` | `false` | Do not apply git ignore rules during scanning. |
 | `--exclude-tests` | `false` | Exclude test files and test directories from scanning. |
 | `--ignore-path` | none | Additional path to skip; can be repeated. |
+| `--only` | none | Report only these finding kinds, as `kind[,kind...]`. |
+| `--exclude-detector` | none | Exclude these finding kinds, as `kind[,kind...]`. |
+| `--min-priority` | none | Report findings whose final priority is at least this 0-100 value. |
+| `--severity` | none | Report findings at or above `info`, `warning`, or `critical`. |
 | `--min-similar-functions` | `3` | Minimum group size for similar-function findings. |
 | `--min-function-tokens` | `80` | Ignore smaller normalized function bodies. |
 | `--function-similarity` | `0.85` | Minimum normalized token similarity. |
@@ -374,16 +423,17 @@ ignore-paths = ["vendor", "generated/snapshots"]
 | `--max-functions-per-file` | `40` | Report over-splitting risk only when function count and density signals also match. |
 | `--max-functions-per-100-lines` | `12` | Report over-splitting risk only when function density also exceeds this threshold. |
 | `--max-small-function-ratio` | `70` | Report over-splitting risk only when this percentage of functions are small and simple. |
-| `--min-repeated-literal-occurrences` | `4` | Report repeated literals. |
-| `--min-data-clump-occurrences` | `3` | Report repeated parameter groups. |
+| `--min-repeated-literal-occurrences` | `12` | Report repeated literals. |
+| `--min-data-clump-occurrences` | `4` | Report repeated parameter groups. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a `reforge.toml` config file. |
 | `--churn` | `auto` | Use `auto`, `on`, or `off` for git churn metrics. |
 | `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
-| `--baseline` | none | Read a prior schema 9 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 10 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
+| `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
 | `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |
 | `--output` | inferred | Use `human`, `html`, `json`, `yaml`, or `sarif`. |
 | `--output-file` | stdout | Write the report to a file. |
@@ -410,6 +460,6 @@ is currently no separate `tests/` directory.
 
 ## Roadmap
 
-- Broaden Tree-sitter structural support beyond Rust, JavaScript/TypeScript,
-  Python, and Go.
+- Broaden Tree-sitter structural support beyond the current supported
+  languages.
 - Expand drift checks for framework-specific boundaries and generated code.

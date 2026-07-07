@@ -1,6 +1,6 @@
 # Report Schema
 
-JSON and YAML reports use schema version `9`. The same Rust data model is
+JSON and YAML reports use schema version `10`. The same Rust data model is
 serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 that carries the same finding IDs in result fingerprints.
 
@@ -8,7 +8,7 @@ that carries the same finding IDs in result fingerprints.
 
 ```json
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
@@ -20,7 +20,7 @@ that carries the same finding IDs in result fingerprints.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `9`.
+- `schema_version`: report schema version. Current value is `10`.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
@@ -152,6 +152,7 @@ Finding fields:
 - `priority_factors`: scoring inputs.
 - `rank_explanation`: short ranking explanation.
 - `message`: human-readable summary.
+- `recommendation`: concise refactoring hint computed from `kind`.
 - `related_locations`: additional locations for grouped findings.
 
 `metrics` entries contain:
@@ -207,6 +208,7 @@ by finding `kind`, and each result contains:
 - `relatedLocations`: related finding locations when present.
 - `partialFingerprints.reforgeFindingId`: stable finding `id`.
 - `properties.id`: stable finding `id`.
+- `properties.recommendation`: concise refactoring hint.
 
 ## Finding Kinds
 
@@ -247,14 +249,17 @@ Current `kind` values:
 - `missing_architecture_docs`
 - `stale_cli_documentation`
 - `stale_schema_documentation`
+- `dependency_cycle`
+- `dependency_hub`
 
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
 version `9` does not emit the legacy v4 fields `score`, `score_breakdown`, or
 `rank_reason`; use `priority`, `priority_factors`, and `rank_explanation`
-instead. Schema version `9` adds stable finding `id`; reports without IDs
-should be regenerated before being used as baselines.
+instead. Schema version `9` adds stable finding `id` and per-finding
+`recommendation`; reports without IDs should be regenerated before being used
+as baselines.
 
 New finding kinds may be added in future schema versions. Consumers should
 handle unknown `kind` values gracefully when possible.

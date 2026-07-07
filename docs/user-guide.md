@@ -67,7 +67,7 @@ source files with these extensions:
 - Broad source-file discovery: `c`, `cc`, `cpp`, `cs`, `go`, `java`, `js`,
   `jsx`, `kt`, `py`, `rb`, `rs`, `ts`, and `tsx`.
 - Tree-sitter structural analysis: Rust, JavaScript, TypeScript/TSX, Python,
-  and Go.
+  Go, Java, C#, Kotlin, PHP, and Ruby.
 
 By default, hidden files are skipped and common generated or dependency
 directories are skipped, including `target`, `node_modules`, `dist`, `build`,
@@ -83,6 +83,17 @@ by git.
 Test files and test directories such as `tests`, `__tests__`, `spec`, and
 `*.test.ts` are scanned by default. Use `--exclude-tests` when you want a
 production-source-only scan.
+
+Use finding filters when you want the report and CI gate to consider only part
+of the final scored finding set:
+
+```powershell
+cargo run -- scan . --only large_file,complex_function --min-priority 35
+cargo run -- scan . --exclude-detector debt_marker --severity warning
+```
+
+`--severity warning` keeps warning and critical findings. `--severity critical`
+keeps only critical findings.
 
 ## Output
 
@@ -149,6 +160,10 @@ Every finding in JSON, YAML, and SARIF has a stable `id` with an `rf1-` prefix.
 The ID is derived from the finding kind, primary location, related locations,
 and metric names so it can be used for baseline comparison.
 
+Filtering and suppression happen after scoring, so `priority`, `severity`, and
+stable IDs are calculated the same way whether or not a finding appears in the
+final report.
+
 `unused_function` findings are conservative dead-code prompts. Reforge reports
 private named free functions only when no same-name reference appears outside
 the function body. Public/exported functions, methods, and common entry-point
@@ -186,7 +201,7 @@ Without `--baseline`, all current findings are selected:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-With `--baseline <PATH>`, Reforge reads a prior schema 9 JSON or YAML report
+With `--baseline <PATH>`, Reforge reads a prior schema 10 JSON or YAML report
 and matches findings by stable `id`. Older reports without IDs are rejected;
 regenerate the baseline with the current Reforge.
 
@@ -201,13 +216,30 @@ regenerate the baseline with the current Reforge.
 cargo run -- scan . --baseline baseline.json --baseline-mode new-or-worse --fail-on warning --output json --progress never
 ```
 
+Human reports include baseline diff counts when `--baseline` is supplied:
+`new`, `worse`, `same`, and `resolved`. Use
+`--show new|new-or-worse|all` to choose which current findings appear in the
+human `Findings` section. The default is `all`, so existing report output is
+unchanged unless the display filter is selected.
+
+```powershell
+cargo run -- scan . --baseline baseline.json --show new-or-worse --output human --progress never
+```
+
 ## CLI Reference
 
 Usage:
 
 ```text
+reforge init [PATH] [--force]
+reforge config validate [PATH] [--config CONFIG]
+reforge config show [PATH] [--config CONFIG] [--output human|json|yaml]
 reforge scan [OPTIONS] [PATH]
 ```
+
+`init` writes a default `reforge.toml`. `config validate` and `config show`
+parse discovered or explicit config without scanning source files or reading
+git churn.
 
 | Option | Default | Purpose |
 | --- | --- | --- |
@@ -218,6 +250,10 @@ reforge scan [OPTIONS] [PATH]
 | `--no-gitignore` | `false` | Do not apply git ignore rules during scanning. |
 | `--exclude-tests` | `false` | Exclude test files and test directories from scanning. |
 | `--ignore-path` | none | Additional path to skip; can be repeated. |
+| `--only` | none | Report only these finding kinds, as `kind[,kind...]`. |
+| `--exclude-detector` | none | Exclude these finding kinds, as `kind[,kind...]`. |
+| `--min-priority` | none | Report findings whose final priority is at least this 0-100 value. |
+| `--severity` | none | Report findings at or above `info`, `warning`, or `critical`. |
 | `--min-similar-functions` | `3` | Report similar-function groups at or above this size. |
 | `--min-function-tokens` | `80` | Ignore smaller normalized function bodies. |
 | `--function-similarity` | `0.85` | Minimum normalized token similarity for grouping. |
@@ -233,12 +269,13 @@ reforge scan [OPTIONS] [PATH]
 | `--max-functions-per-file` | `40` | Report over-splitting risk only when this function count and density signals are exceeded. |
 | `--max-functions-per-100-lines` | `12` | Report over-splitting risk only when function density also exceeds this threshold. |
 | `--max-small-function-ratio` | `70` | Report over-splitting risk only when this percentage of functions are small and simple. |
-| `--min-repeated-literal-occurrences` | `4` | Report repeated literals seen at least this many times. |
-| `--min-data-clump-occurrences` | `3` | Report repeated parameter groups seen at least this many times. |
+| `--min-repeated-literal-occurrences` | `12` | Report repeated literals seen at least this many times. |
+| `--min-data-clump-occurrences` | `4` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a specific configuration file. |
-| `--baseline` | none | Read a prior schema 9 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 10 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
+| `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
 | `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |
 | `--churn` | `auto` | Use `auto`, `on`, or `off` for git churn metrics. |
 | `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
@@ -281,6 +318,13 @@ Use a specific configuration file:
 
 ```powershell
 cargo run -- scan . --config reforge.toml --output json --progress never
+```
+
+Suppress a known intentional finding inline:
+
+```rust
+// TODO: generated migration marker reforge:ignore debt_marker tracked in issue 123
+// reforge:ignore-next-line large_file generated fixture snapshot
 ```
 
 ## Troubleshooting
