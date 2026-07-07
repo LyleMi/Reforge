@@ -44,6 +44,7 @@ const REQUIRED_SCHEMA_FIELDS: &[&str] = &[
     "raw_metrics",
     "hotspots",
     "findings",
+    "id",
     "kind",
     "severity",
     "path",

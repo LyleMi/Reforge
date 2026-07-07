@@ -10,8 +10,8 @@ references.
   output, and troubleshoot common failures.
 - [Configuration](configuration.md): `reforge.toml` discovery, supported keys,
   and CLI precedence.
-- [Report Schema](report-schema.md): JSON/YAML schema version `8`, field
-  meanings, and compatibility notes.
+- [Report Schema](report-schema.md): JSON/YAML schema version `9`, SARIF
+  output, field meanings, and compatibility notes.
 
 ## Maintainer Docs
 
@@ -30,6 +30,7 @@ references.
 ```powershell
 cargo run -- scan .
 cargo run -- scan . --output json --progress never
+cargo run -- scan . --output sarif --output-file reforge-report.sarif --progress never
 cargo run -- scan . --churn off --hotspot-model static --output json --progress never
 cargo test
 ```

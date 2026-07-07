@@ -1,3 +1,4 @@
+mod baseline;
 mod cli;
 mod detectors;
 mod lang;
@@ -40,7 +41,7 @@ mod unused_functions {
     pub(crate) use crate::detectors::unused_functions::*;
 }
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 use std::fs::File;
 use std::io::{BufWriter, ErrorKind, IsTerminal, Write};
@@ -68,13 +69,39 @@ struct OutputSettings {
 fn run_scan(args: ScanArgs) -> Result<()> {
     let stderr_is_tty = std::io::stderr().is_terminal();
     let settings = output_settings(&args);
+    let baseline_report = args
+        .ci
+        .baseline
+        .as_ref()
+        .map(|path| baseline::load_baseline(path))
+        .transpose()?;
     let report = scan_with_progress(&args, stderr_is_tty)?;
+    let selected = baseline::selected_findings(
+        &report.findings,
+        baseline_report.as_ref(),
+        args.ci.baseline_mode,
+    );
+    let gate_failures = args
+        .ci
+        .fail_on
+        .map(|threshold| baseline::gate_failures(selected, threshold))
+        .unwrap_or_default();
 
     if args.output_file.is_some() {
-        write_report_file(&args, &report, settings)
+        write_report_file(&args, &report, settings)?;
     } else {
-        print_report(&report, settings)
+        print_report(&report, settings)?;
     }
+
+    if !gate_failures.is_empty() {
+        bail!(
+            "scan failed: {} selected findings met --fail-on {:?}",
+            gate_failures.len(),
+            args.ci.fail_on.expect("gate failures require fail-on")
+        );
+    }
+
+    Ok(())
 }
 
 fn output_settings(args: &ScanArgs) -> OutputSettings {
@@ -116,6 +143,7 @@ fn write_report(writer: impl Write, report: &ScanReport, settings: OutputSetting
         OutputFormat::Human => report::write_human_report(writer, report)?,
         OutputFormat::Html => report::write_html_report(writer, report)?,
         OutputFormat::Json => report::write_json_report(writer, report)?,
+        OutputFormat::Sarif => report::write_sarif_report(writer, report)?,
         OutputFormat::Yaml => report::write_yaml_report(writer, report)?,
     }
 
@@ -130,6 +158,7 @@ fn print_report(report: &ScanReport, settings: OutputSettings) -> Result<()> {
         OutputFormat::Human => handle_output_result(report::print_human_report(report)),
         OutputFormat::Html => handle_output_result(report::print_html_report(report)),
         OutputFormat::Json => handle_output_result(report::print_json_report(report)),
+        OutputFormat::Sarif => handle_output_result(report::print_sarif_report(report)),
         OutputFormat::Yaml => handle_output_result(report::print_yaml_report(report)),
     }
 }

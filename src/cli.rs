@@ -101,6 +101,9 @@ pub struct ScanArgs {
     #[arg(long)]
     pub config: Option<PathBuf>,
 
+    #[command(flatten)]
+    pub ci: CiArgs,
+
     /// Git churn collection mode.
     #[arg(long, value_enum)]
     pub churn: Option<ChurnMode>,
@@ -150,6 +153,21 @@ pub struct FunctionProliferationArgs {
 }
 
 #[derive(Debug, Clone, Args)]
+pub struct CiArgs {
+    /// Compare current findings against a prior JSON/YAML Reforge report.
+    #[arg(long)]
+    pub baseline: Option<PathBuf>,
+
+    /// Which findings are considered when a baseline is present.
+    #[arg(long, value_enum, default_value_t = BaselineMode::NewOrWorse)]
+    pub baseline_mode: BaselineMode,
+
+    /// Exit with a failure when selected findings meet or exceed this severity.
+    #[arg(long, value_enum)]
+    pub fail_on: Option<FailOnSeverity>,
+}
+
+#[derive(Debug, Clone, Args)]
 pub struct ScanFilterArgs {
     /// Include hidden files and directories.
     #[arg(long)]
@@ -177,7 +195,22 @@ pub enum OutputFormat {
     Human,
     Html,
     Json,
+    Sarif,
     Yaml,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum BaselineMode {
+    New,
+    NewOrWorse,
+    All,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum FailOnSeverity {
+    Info,
+    Warning,
+    Critical,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -217,6 +250,7 @@ impl ScanArgs {
                 Some(extension) if extension.eq_ignore_ascii_case("html") => OutputFormat::Html,
                 Some(extension) if extension.eq_ignore_ascii_case("htm") => OutputFormat::Html,
                 Some(extension) if extension.eq_ignore_ascii_case("json") => OutputFormat::Json,
+                Some(extension) if extension.eq_ignore_ascii_case("sarif") => OutputFormat::Sarif,
                 Some(extension)
                     if extension.eq_ignore_ascii_case("yaml")
                         || extension.eq_ignore_ascii_case("yml") =>
@@ -232,6 +266,19 @@ impl ScanArgs {
             .as_ref()
             .and_then(|path| path.extension())
             .and_then(|extension| extension.to_str())
+    }
+}
+
+impl FailOnSeverity {
+    pub fn matches(self, severity: crate::model::Severity) -> bool {
+        match self {
+            Self::Info => true,
+            Self::Warning => matches!(
+                severity,
+                crate::model::Severity::Warning | crate::model::Severity::Critical
+            ),
+            Self::Critical => severity == crate::model::Severity::Critical,
+        }
     }
 }
 
@@ -409,6 +456,15 @@ mod tests {
     }
 
     #[test]
+    fn parses_sarif_output_format() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output", "sarif"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output, Some(OutputFormat::Sarif));
+        assert_eq!(args.output_format(), OutputFormat::Sarif);
+    }
+
+    #[test]
     fn parses_html_output_format() {
         let cli = Cli::parse_from(["reforge", "scan", ".", "--output", "html"]);
 
@@ -471,6 +527,14 @@ mod tests {
 
         let Command::Scan(args) = cli.command;
         assert_eq!(args.output_format(), OutputFormat::Html);
+    }
+
+    #[test]
+    fn infers_sarif_output_format_from_output_file_extension() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--output-file", "report.sarif"]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.output_format(), OutputFormat::Sarif);
     }
 
     #[test]
@@ -558,5 +622,25 @@ mod tests {
         assert_eq!(args.hotspot_model, Some(HotspotModel::Static));
         assert_eq!(args.churn_window_days, Some(90));
         assert_eq!(args.churn_max_commit_lines, Some(1000));
+    }
+
+    #[test]
+    fn parses_baseline_and_failure_gate_options() {
+        let cli = Cli::parse_from([
+            "reforge",
+            "scan",
+            ".",
+            "--baseline",
+            "baseline.json",
+            "--baseline-mode",
+            "new",
+            "--fail-on",
+            "warning",
+        ]);
+
+        let Command::Scan(args) = cli.command;
+        assert_eq!(args.ci.baseline, Some(PathBuf::from("baseline.json")));
+        assert_eq!(args.ci.baseline_mode, BaselineMode::New);
+        assert_eq!(args.ci.fail_on, Some(FailOnSeverity::Warning));
     }
 }

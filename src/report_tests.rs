@@ -245,7 +245,7 @@ fn renders_hotspots_even_when_no_findings() {
 }
 
 #[test]
-fn renders_json_report_schema_v8_with_priority_metadata() {
+fn renders_json_report_schema_v9_with_stable_ids_and_priority_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
@@ -262,12 +262,17 @@ fn renders_json_report_schema_v8_with_priority_metadata() {
     let value: serde_json::Value =
         serde_json::from_str(&serde_json::to_string(&scan_report).unwrap()).unwrap();
 
-    assert_eq!(value["schema_version"], 8);
+    assert_eq!(value["schema_version"], 9);
     assert_eq!(value["summary"]["scanned_files"], 2);
     assert_eq!(value["summary"]["hotspot_model"], "hybrid");
     assert!(value.get("metrics_summary").is_some());
     assert!(value.get("raw_metrics").is_some());
     assert!(value.get("hotspots").is_some());
+    assert!(
+        value["findings"][0]["id"]
+            .as_str()
+            .is_some_and(|id| id.starts_with("rf1-"))
+    );
     assert_eq!(value["findings"][0]["kind"], "similar_functions");
     assert_eq!(value["findings"][0]["metrics"][0]["name"], "group_size");
     assert_eq!(
@@ -331,7 +336,7 @@ fn writes_json_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&output).unwrap()["schema_version"],
-        8
+        9
     );
 }
 
@@ -345,7 +350,70 @@ fn writes_yaml_report_to_writer() {
     assert!(output.ends_with('\n'));
     assert_eq!(
         serde_yaml::from_str::<serde_yaml::Value>(&output).unwrap()["schema_version"],
-        8
+        9
+    );
+}
+
+#[test]
+fn finding_ids_are_stable_for_equivalent_identity_inputs() {
+    let left = make_finding(
+        FindingKind::RepeatedLiteral,
+        "src/a.rs",
+        Some(10),
+        "literal",
+        vec![FindingMetric::threshold("group_size", 4, 3, "occurrences")],
+        vec![RelatedLocation {
+            path: "src/b.rs".to_string(),
+            line: 20,
+            name: Some("beta".to_string()),
+        }],
+    );
+    let right = make_finding(
+        FindingKind::RepeatedLiteral,
+        "src/a.rs",
+        Some(10),
+        "changed wording",
+        vec![FindingMetric::threshold("group_size", 10, 3, "occurrences")],
+        vec![RelatedLocation {
+            path: "src/b.rs".to_string(),
+            line: 20,
+            name: Some("beta".to_string()),
+        }],
+    );
+
+    assert_eq!(left.id, right.id);
+    assert!(left.id.starts_with("rf1-"));
+}
+
+#[test]
+fn renders_sarif_report_with_rules_results_and_fingerprints() {
+    let scan_report = report(vec![make_finding(
+        FindingKind::LargeFile,
+        "src/a.rs",
+        Some(1),
+        "file is large",
+        vec![FindingMetric::threshold("file_lines", 900, 800, "lines")],
+        Vec::new(),
+    )]);
+
+    let value: serde_json::Value =
+        serde_json::from_str(&render_sarif_report(&scan_report)).unwrap();
+
+    assert_eq!(value["version"], "2.1.0");
+    assert_eq!(value["runs"][0]["tool"]["driver"]["name"], "Reforge");
+    assert_eq!(
+        value["runs"][0]["tool"]["driver"]["rules"][0]["id"],
+        "large_file"
+    );
+    assert_eq!(value["runs"][0]["results"][0]["ruleId"], "large_file");
+    assert_eq!(value["runs"][0]["results"][0]["level"], "warning");
+    assert_eq!(
+        value["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]["uri"],
+        "src/a.rs"
+    );
+    assert_eq!(
+        value["runs"][0]["results"][0]["partialFingerprints"]["reforgeFindingId"],
+        scan_report.findings[0].id
     );
 }
 

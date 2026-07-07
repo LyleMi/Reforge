@@ -56,8 +56,8 @@ cargo run -- scan . --output-file reforge-report.json --progress never
 ```
 
 When `--output` is omitted, `--output-file` extensions `.html`, `.htm`,
-`.json`, `.yaml`, and `.yml` select HTML, JSON, or YAML automatically. Other
-extensions default to human output.
+`.json`, `.yaml`, `.yml`, and `.sarif` select HTML, JSON, YAML, or SARIF
+automatically. Other extensions default to human output.
 
 ## What Gets Scanned
 
@@ -86,7 +86,7 @@ production-source-only scan.
 
 ## Output
 
-Reforge supports `human`, `html`, `json`, and `yaml` output.
+Reforge supports `human`, `html`, `json`, `yaml`, and `sarif` output.
 
 Human output is intended for terminal review:
 
@@ -99,6 +99,12 @@ JSON and YAML are intended for CI, automation, and agent-to-agent handoff:
 ```powershell
 cargo run -- scan . --output json --progress never
 cargo run -- scan . --output yaml --output-file reforge-report.yaml --progress never
+```
+
+SARIF output targets SARIF 2.1.0 for CI code-scanning integrations:
+
+```powershell
+cargo run -- scan . --output sarif --output-file reforge-report.sarif --progress never
 ```
 
 HTML output is a static visual report for local review:
@@ -139,6 +145,10 @@ Severity comes from `priority`: `info` is below 35, `warning` is 35 through
 69, and `critical` is 70 or above. Priority is a refactoring priority signal,
 not a claim that the code is defective.
 
+Every finding in JSON, YAML, and SARIF has a stable `id` with an `rf1-` prefix.
+The ID is derived from the finding kind, primary location, related locations,
+and metric names so it can be used for baseline comparison.
+
 `unused_function` findings are conservative dead-code prompts. Reforge reports
 private named free functions only when no same-name reference appears outside
 the function body. Public/exported functions, methods, and common entry-point
@@ -163,6 +173,33 @@ Hotspot models:
 Tune churn collection with `--churn-window-days` and
 `--churn-max-commit-lines`. Commits above the max added+deleted line count are
 ignored so large mechanical changes do not dominate results.
+
+## CI Gates and Baselines
+
+Use `--fail-on info|warning|critical` to make a scan exit nonzero when selected
+findings meet or exceed that severity. Reforge writes the requested report
+before returning the failing exit status.
+
+Without `--baseline`, all current findings are selected:
+
+```powershell
+cargo run -- scan . --output json --progress never --fail-on warning
+```
+
+With `--baseline <PATH>`, Reforge reads a prior schema 9 JSON or YAML report
+and matches findings by stable `id`. Older reports without IDs are rejected;
+regenerate the baseline with the current Reforge.
+
+`--baseline-mode` controls the selected findings:
+
+- `new`: IDs absent from the baseline.
+- `new-or-worse`: new findings plus findings whose priority or severity
+  increased. This is the default.
+- `all`: all current findings.
+
+```powershell
+cargo run -- scan . --baseline baseline.json --baseline-mode new-or-worse --fail-on warning --output json --progress never
+```
 
 ## CLI Reference
 
@@ -200,11 +237,14 @@ reforge scan [OPTIONS] [PATH]
 | `--min-data-clump-occurrences` | `3` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a specific configuration file. |
+| `--baseline` | none | Read a prior schema 9 JSON/YAML report for gate comparison. |
+| `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
+| `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |
 | `--churn` | `auto` | Use `auto`, `on`, or `off` for git churn metrics. |
 | `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
-| `--output` | inferred | Use `human`, `html`, `json`, or `yaml`. |
+| `--output` | inferred | Use `human`, `html`, `json`, `yaml`, or `sarif`. |
 | `--output-file` | stdout | Write the report to a file. |
 | `--progress` | `auto` | Use `auto`, `always`, or `never` for progress output. |
 | `--color` | `auto` | Use `auto`, `always`, or `never` for human-output color. |

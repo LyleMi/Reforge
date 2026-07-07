@@ -44,6 +44,11 @@ fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
         min_data_clump_occurrences: 3,
         include_test_structure: false,
         config: None,
+        ci: crate::cli::CiArgs {
+            baseline: None,
+            baseline_mode: crate::cli::BaselineMode::NewOrWorse,
+            fail_on: None,
+        },
         churn: None,
         hotspot_model: None,
         churn_window_days: None,

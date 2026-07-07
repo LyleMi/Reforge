@@ -1,15 +1,15 @@
 use std::collections::BTreeMap;
 
-use serde::{Serialize, Serializer, ser::SerializeStruct};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
 use crate::cli::{ChurnMode, HotspotModel};
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 8;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 9;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 pub(crate) const METRIC_NESTING_DEPTH: &str = "nesting_depth";
 pub(crate) const METRIC_PUBLIC_ITEMS: &str = "public_items";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingKind {
     LargeFile,
@@ -49,7 +49,7 @@ pub enum FindingKind {
     StaleSchemaDocumentation,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
@@ -57,7 +57,7 @@ pub enum Severity {
     Critical,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MetricDimension {
     Size,
@@ -69,14 +69,14 @@ pub enum MetricDimension {
     Documentation,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelatedLocation {
     pub path: String,
     pub line: usize,
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FindingMetric {
     pub name: String,
     pub value: usize,
@@ -110,8 +110,9 @@ impl FindingMetric {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Finding {
+    pub id: String,
     pub kind: FindingKind,
     pub severity: Severity,
     pub path: String,
@@ -125,7 +126,78 @@ pub struct Finding {
     pub related_locations: Vec<RelatedLocation>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+impl Finding {
+    pub fn refresh_id(&mut self) {
+        self.id = stable_finding_id(self);
+    }
+}
+
+pub fn stable_finding_id(finding: &Finding) -> String {
+    let mut input = String::new();
+    input.push_str("rf1\0");
+    input.push_str(&serialized_finding_kind(finding.kind));
+    input.push('\0');
+    input.push_str(&normalize_identity_path(&finding.path));
+    input.push('\0');
+    input.push_str(&finding.line.unwrap_or(0).to_string());
+
+    let mut metric_names = finding
+        .metrics
+        .iter()
+        .map(|metric| metric.name.as_str())
+        .collect::<Vec<_>>();
+    metric_names.sort_unstable();
+    metric_names.dedup();
+    for name in metric_names {
+        input.push('\0');
+        input.push_str(name);
+    }
+
+    let mut related = finding
+        .related_locations
+        .iter()
+        .map(|location| {
+            format!(
+                "{}:{}:{}",
+                normalize_identity_path(&location.path),
+                location.line,
+                location.name.as_deref().unwrap_or("")
+            )
+        })
+        .collect::<Vec<_>>();
+    related.sort_unstable();
+    for location in related {
+        input.push('\0');
+        input.push_str(&location);
+    }
+
+    format!("rf1-{:016x}", fnv1a64(input.as_bytes()))
+}
+
+pub fn serialized_finding_kind(kind: FindingKind) -> String {
+    serde_json::to_value(kind)
+        .ok()
+        .and_then(|value| value.as_str().map(ToString::to_string))
+        .unwrap_or_else(|| format!("{kind:?}"))
+}
+
+fn normalize_identity_path(path: &str) -> String {
+    path.replace('\\', "/").trim_start_matches("./").to_string()
+}
+
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+
+    let mut hash = FNV_OFFSET;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PriorityFactors {
     pub impact: f64,
     pub intensity: f64,
@@ -140,7 +212,8 @@ impl Serialize for Finding {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("Finding", 11)?;
+        let mut state = serializer.serialize_struct("Finding", 12)?;
+        state.serialize_field("id", &self.id)?;
         state.serialize_field("kind", &self.kind)?;
         state.serialize_field("severity", &self.severity)?;
         state.serialize_field("path", &self.path)?;
@@ -166,7 +239,7 @@ fn serialized_related_locations(finding: &Finding) -> &[RelatedLocation] {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScanSummary {
     pub scanned_files: usize,
     pub finding_count: usize,
@@ -177,14 +250,14 @@ pub struct ScanSummary {
     pub churn: ChurnSummary,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ScanStats {
     pub source_files_scanned: usize,
     pub directories_scanned: usize,
     pub function_candidates: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChurnSummary {
     pub mode: ChurnMode,
     pub enabled: bool,
@@ -194,7 +267,7 @@ pub struct ChurnSummary {
     pub max_commit_lines: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ChurnFileMetric {
     pub commits_touched: usize,
     pub lines_added: usize,
@@ -203,7 +276,7 @@ pub struct ChurnFileMetric {
     pub recent_weighted_churn: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileRawMetric {
     pub path: String,
     pub loc: usize,
@@ -214,7 +287,7 @@ pub struct FileRawMetric {
     pub churn: ChurnFileMetric,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FunctionRawMetric {
     pub path: String,
     pub name: String,
@@ -226,7 +299,7 @@ pub struct FunctionRawMetric {
     pub is_test: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeRawMetric {
     pub path: String,
     pub name: String,
@@ -236,14 +309,14 @@ pub struct TypeRawMetric {
     pub is_test: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct RawMetrics {
     pub files: Vec<FileRawMetric>,
     pub functions: Vec<FunctionRawMetric>,
     pub types: Vec<TypeRawMetric>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MetricPercentiles {
     pub p50: usize,
     pub p75: usize,
@@ -252,7 +325,7 @@ pub struct MetricPercentiles {
     pub max: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MetricsSummary {
     pub files: BTreeMap<String, MetricPercentiles>,
     pub functions: BTreeMap<String, MetricPercentiles>,
@@ -260,7 +333,7 @@ pub struct MetricsSummary {
     pub churn: BTreeMap<String, MetricPercentiles>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HotspotLevel {
     File,
@@ -268,7 +341,7 @@ pub enum HotspotLevel {
     Type,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Hotspot {
     pub level: HotspotLevel,
     pub path: String,
@@ -281,7 +354,7 @@ pub struct Hotspot {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScanReport {
     pub schema_version: u8,
     pub summary: ScanSummary,

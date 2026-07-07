@@ -7,7 +7,7 @@ scores findings, and renders reports.
 ## Module Boundaries
 
 - `src/main.rs`: CLI entrypoint, progress/color/output routing, file writing,
-  and broken-pipe handling.
+  baseline gate evaluation, and broken-pipe handling.
 - `src/cli.rs`: Clap command definitions, scan arguments, output inference,
   progress modes, color modes, churn modes, and hotspot models.
 - `src/scan/mod.rs`: scan orchestration, config discovery, source walking,
@@ -21,7 +21,9 @@ scores findings, and renders reports.
   implementations.
 - `src/scoring/mod.rs`: metric summaries, priority scoring, severity mapping,
   and hotspot ranking.
-- `src/output/mod.rs`: human, HTML, JSON, and YAML rendering.
+- `src/baseline.rs`: schema 9 baseline loading, finding ID comparison, and
+  `--fail-on` gate selection.
+- `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF rendering.
 
 `src/main.rs` re-exports internal modules under compatibility names such as
 `scanner`, `report`, `similar_functions`, and `structural` so existing inline
@@ -44,15 +46,18 @@ into clearer directories.
 9. Rank hotspots with the chosen model.
 10. Finalize finding metrics, priority, confidence, severity, and ranking
     explanations.
-11. Render human, HTML, JSON, or YAML output to stdout or `--output-file`.
+11. Render human, HTML, JSON, YAML, or SARIF output to stdout or
+    `--output-file`.
+12. Apply `--fail-on` to all current findings or to the baseline-selected
+    finding set after the report is written.
 
 ## Data Flow
 
 `ScanArgs` is the input configuration. `scan_report` produces a `ScanReport`
-with schema version `8`. Detectors emit `Finding` values with metrics and
+with schema version `9`. Detectors emit `Finding` values with metrics and
 related locations. Scoring later enriches those findings with dimensions,
-normalized values, percentiles, `priority_factors`, `priority`, `severity`, and
-`rank_explanation`.
+normalized values, percentiles, `priority_factors`, `priority`, `severity`,
+`rank_explanation`, and stable `rf1-` IDs.
 
 Raw metrics remain available in reports so consumers can build their own
 ranking or dashboards without relying only on findings.
@@ -74,11 +79,12 @@ Progress is abstracted behind `ProgressSink`. `NoopProgress` is used when
 progress is disabled. `StderrProgress` writes either dynamic terminal progress
 or coarser line-oriented progress, depending on whether stderr is a TTY.
 
-Human and HTML output are rendered from the same `ScanReport` as JSON and
-YAML. The terminal-oriented renderer lives in `src/output/human.rs`, the
-static visual report renderer lives in `src/output/html.rs`, and
-`src/output/mod.rs` keeps the format entry points and JSON/YAML writers. Color
-is applied only to human output.
+Human, HTML, and SARIF output are rendered from the same `ScanReport` as JSON
+and YAML. The terminal-oriented renderer lives in `src/output/human.rs`, the
+static visual report renderer lives in `src/output/html.rs`, the SARIF 2.1.0
+renderer lives in `src/output/sarif.rs`, and `src/output/mod.rs` keeps the
+format entry points and JSON/YAML writers. Color is applied only to human
+output.
 
 ## Extension Points
 

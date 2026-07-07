@@ -26,6 +26,9 @@ Boolean flags such as `--include-hidden`, `--include-generated`,
 `--include-test-structure` are CLI-only today. They are not read from
 `reforge.toml`.
 
+CI workflow flags such as `--baseline`, `--baseline-mode`, `--fail-on`,
+`--output`, `--output-file`, `--progress`, and `--color` are also CLI-only.
+
 ## Example
 
 ```toml

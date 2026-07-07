@@ -155,6 +155,7 @@ fn build_finding(input: FindingInput) -> Finding {
         .confidence
         .unwrap_or_else(|| default_confidence(input.kind));
     let mut finding = Finding {
+        id: String::new(),
         kind: input.kind,
         severity: Severity::Info,
         path: input.path,
@@ -174,6 +175,7 @@ fn build_finding(input: FindingInput) -> Finding {
         related_locations: input.related_locations,
     };
     refresh_finding_priority(&mut finding, 0.0);
+    finding.refresh_id();
     finding
 }
 
@@ -277,6 +279,7 @@ fn refresh_finding_priority(finding: &mut Finding, change_pressure: f64) {
         &finding.priority_factors,
         &finding.related_locations,
     );
+    finding.refresh_id();
 }
 
 fn priority_factors(

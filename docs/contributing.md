@@ -45,7 +45,7 @@ cargo clippy --all-targets --all-features
 ```
 
 When report formatting or schema behavior changes, include sample human, HTML,
-or JSON output in the pull request description.
+JSON, YAML, or SARIF output in the pull request description.
 
 ## Tests
 
@@ -59,7 +59,7 @@ Add tests for:
 - Config precedence and discovery when configuration changes.
 - Scanner exclusions, thresholds, ordering, and report fields.
 - Detector behavior, including false-positive guards.
-- Output stability for human, HTML, JSON, and YAML report changes.
+- Output stability for human, HTML, JSON, YAML, and SARIF report changes.
 
 Name tests by behavior, such as `parses_output_format` or
 `groups_similar_functions`.
@@ -78,16 +78,16 @@ a feature safe, keep it scoped and covered by tests.
 
 ## Report Compatibility
 
-JSON and YAML reports are external interfaces. When fields are added, removed,
-or renamed:
+JSON, YAML, and SARIF reports are external interfaces. When fields are added,
+removed, or renamed:
 
 - Update `SCAN_REPORT_SCHEMA_VERSION`.
 - Update `docs/report-schema.md`.
 - Update output tests.
 - Mention the compatibility impact in the pull request.
 
-Consumers should rely on `priority`, `confidence`, `priority_factors`, and
-`rank_explanation`; legacy v4 fields are not emitted.
+Consumers should rely on stable finding `id`, `priority`, `confidence`,
+`priority_factors`, and `rank_explanation`; legacy v4 fields are not emitted.
 
 ## Commits and Pull Requests
 
@@ -107,7 +107,7 @@ Pull requests should describe:
 - User-visible effect.
 - Validation commands run.
 - Related issues.
-- Sample human, HTML, or JSON output when report formatting changes.
+- Sample human, HTML, JSON, YAML, or SARIF output when report formatting changes.
 
 Do not commit generated outputs, dependency directories, build artifacts, or
 local scan artifacts.

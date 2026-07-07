@@ -8,8 +8,8 @@
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
   <img alt="MSRV" src="https://img.shields.io/badge/MSRV-1.85-2f855a">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-125%20passing-brightgreen">
-  <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20html%20%7C%20json%20%7C%20yaml-6b46c1">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-133%20passing-brightgreen">
+  <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20html%20%7C%20json%20%7C%20yaml%20%7C%20sarif-6b46c1">
 </p>
 
 Reforge is a Rust CLI for reporting source-tree quality signals. It collects
@@ -59,13 +59,19 @@ To write a report to disk:
 cargo run -- scan . --output-file reforge-report.json --progress never
 ```
 
-The output file extension selects HTML, JSON, or YAML automatically unless
+The output file extension selects HTML, JSON, YAML, or SARIF automatically unless
 `--output` is set explicitly.
 
 Generate a static visual report:
 
 ```powershell
 cargo run -- scan . --output-file reforge-report.html --progress never
+```
+
+Generate SARIF for CI code-scanning upload:
+
+```powershell
+cargo run -- scan . --output sarif --output-file reforge-report.sarif --progress never
 ```
 
 ## Installation
@@ -221,6 +227,25 @@ Write a static HTML report:
 cargo run -- scan . --output html --output-file reforge-report.html --progress never
 ```
 
+Write SARIF:
+
+```powershell
+cargo run -- scan . --output sarif --output-file reforge-report.sarif --progress never
+```
+
+Fail CI on current warning or critical findings:
+
+```powershell
+cargo run -- scan . --output json --progress never --fail-on warning
+```
+
+Compare against a prior schema 9 baseline and fail only on new or worse
+warning/critical findings:
+
+```powershell
+cargo run -- scan . --baseline baseline.json --baseline-mode new-or-worse --fail-on warning --output json --progress never
+```
+
 ## Sample Output
 
 ```text
@@ -256,13 +281,31 @@ signals from the hotspot `Watchlist`, `Signal mix` summarizes finding kinds,
 and each finding includes the ranking reason. HTML output renders the same
 scan as a static visual report with summary cards, risk distribution, file
 heatmap, hotspots, similar-function groups, and prioritized findings. JSON and
-YAML use schema version 8 and include `summary`, `metrics_summary`,
-`raw_metrics`, `hotspots`, and `findings`.
-Findings expose `priority`, `confidence`, `priority_factors`,
+YAML use schema version 9 and include `summary`, `metrics_summary`,
+`raw_metrics`, `hotspots`, and `findings`. SARIF output targets SARIF 2.1.0
+with rules keyed by finding kind and results fingerprinted by Reforge finding
+ID. Findings expose stable `id`, `priority`, `confidence`, `priority_factors`,
 `rank_explanation`, `metrics`, and `related_locations`; legacy v4 fields
 `score`, `score_breakdown`, and `rank_reason` are not emitted. Very large
 similar-function groups include representative `related_locations` so reports
 stay bounded.
+
+## CI Gates and Baselines
+
+`--fail-on info|warning|critical` turns Reforge into a CI gate. Without a
+baseline, the gate evaluates all current findings after writing the requested
+report. With `--baseline <PATH>`, Reforge reads a prior schema 9 JSON or YAML
+report and matches findings by stable `id`.
+
+`--baseline-mode` controls which current findings are selected for the gate:
+
+- `new`: findings whose IDs are absent from the baseline.
+- `new-or-worse`: new findings plus findings whose priority or severity
+  increased. This is the default.
+- `all`: all current findings.
+
+Older reports without stable IDs are rejected as baselines; regenerate the
+baseline with the current Reforge before enabling the gate.
 
 ## Git Churn
 
@@ -339,7 +382,10 @@ ignore-paths = ["vendor", "generated/snapshots"]
 | `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
-| `--output` | inferred | Use `human`, `html`, `json`, or `yaml`. |
+| `--baseline` | none | Read a prior schema 9 JSON/YAML report for gate comparison. |
+| `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
+| `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |
+| `--output` | inferred | Use `human`, `html`, `json`, `yaml`, or `sarif`. |
 | `--output-file` | stdout | Write the report to a file. |
 | `--progress` | `auto` | Use `auto`, `always`, or `never`. |
 | `--color` | `auto` | Use `auto`, `always`, or `never`. |

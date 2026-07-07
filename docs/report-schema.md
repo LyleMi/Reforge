@@ -1,13 +1,14 @@
 # Report Schema
 
-JSON and YAML reports use schema version `8`. The same Rust data model is
-serialized for both formats.
+JSON and YAML reports use schema version `9`. The same Rust data model is
+serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
+that carries the same finding IDs in result fingerprints.
 
 ## Top-Level Shape
 
 ```json
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
@@ -19,7 +20,7 @@ serialized for both formats.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `8`.
+- `schema_version`: report schema version. Current value is `9`.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
@@ -141,6 +142,7 @@ Hotspots are retained when `priority >= 35` and sorted by priority descending.
 Finding fields:
 
 - `kind`: detector-specific finding kind.
+- `id`: stable finding identifier in the form `rf1-<hex>`.
 - `severity`: `info`, `warning`, or `critical`.
 - `path`: primary path.
 - `line`: primary line or `null`.
@@ -183,6 +185,28 @@ Finding fields:
 
 Very large `similar_functions` groups serialize at most 50 related locations
 to keep reports bounded.
+
+Finding IDs are deterministic for the same finding identity. The `rf1-` ID
+uses the finding kind, normalized primary location, primary line, related
+locations, and metric names. It intentionally does not include message text or
+metric values, allowing baseline comparison to recognize an existing finding
+whose priority or severity has changed.
+
+## SARIF Output
+
+`--output sarif` and `.sarif` output files emit SARIF version `2.1.0`.
+The SARIF log contains one run with Reforge as the tool driver. Rules are keyed
+by finding `kind`, and each result contains:
+
+- `ruleId`: finding kind.
+- `ruleIndex`: index into the run's rule table.
+- `level`: `error` for `critical`, `warning` for `warning`, and `note` for
+  `info`.
+- `message.text`: finding message.
+- `locations[].physicalLocation`: primary path and line.
+- `relatedLocations`: related finding locations when present.
+- `partialFingerprints.reforgeFindingId`: stable finding `id`.
+- `properties.id`: stable finding `id`.
 
 ## Finding Kinds
 
@@ -227,9 +251,10 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `8` does not emit the legacy v4 fields `score`, `score_breakdown`, or
+version `9` does not emit the legacy v4 fields `score`, `score_breakdown`, or
 `rank_reason`; use `priority`, `priority_factors`, and `rank_explanation`
-instead.
+instead. Schema version `9` adds stable finding `id`; reports without IDs
+should be regenerated before being used as baselines.
 
 New finding kinds may be added in future schema versions. Consumers should
 handle unknown `kind` values gracefully when possible.
