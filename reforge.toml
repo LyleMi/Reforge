@@ -40,13 +40,13 @@ reason = "duplicate type-shape grouping keeps scoring and related locations toge
 [[suppressions]]
 kind = "complex_function"
 path = "src/detectors/structure/analysis.rs"
-line = 667
+line = 674
 reason = "test-case heuristic intentionally groups language-specific evidence checks"
 
 [[suppressions]]
 kind = "complex_function"
 path = "src/scoring/mod.rs"
-line = 455
+line = 445
 reason = "ranking explanation is a compact mapping from scoring factors to report text"
 
 [[suppressions]]
@@ -88,7 +88,7 @@ reason = "unused-function candidate dispatch is intentionally explicit per langu
 [[suppressions]]
 kind = "deep_nesting"
 path = "src/scoring/hotspots.rs"
-line = 165
+line = 230
 reason = "hotspot percentile risk calculation is kept local for stable ranking behavior"
 
 [[suppressions]]
@@ -126,3 +126,33 @@ kind = "large_file"
 path = "src/detectors/structure/mod.rs"
 line = 1
 reason = "structural detector orchestrates shared AST metrics before deeper module splits"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/scanner_tests.rs"
+line = 1
+reason = "scanner integration tests stay colocated with scan orchestration behavior"
+
+[[suppressions]]
+kind = "large_public_surface"
+path = "src/cli.rs"
+line = 1
+reason = "CLI module intentionally exposes the complete clap argument model"
+
+[[suppressions]]
+kind = "large_public_surface"
+path = "src/detectors/drift/analysis.rs"
+line = 1
+reason = "drift analysis helpers are shared across drift detector implementations"
+
+[[suppressions]]
+kind = "large_public_surface"
+path = "src/detectors/structure/analysis.rs"
+line = 1
+reason = "structure analysis exposes parser helpers used by nested aggregation modules"
+
+[[suppressions]]
+kind = "long_function"
+path = "src/scan/mod.rs"
+line = 90
+reason = "scan_report keeps the scan pipeline phases in one ordered orchestration path"

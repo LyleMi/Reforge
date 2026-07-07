@@ -9,19 +9,9 @@ use crate::model::{
 
 mod hotspots;
 
-pub(crate) use hotspots::rank_hotspots;
+pub(crate) use hotspots::{StaticRiskThresholds, rank_hotspots};
 
 const PERCENTILE_MIN_SAMPLE: usize = 5;
-const DEFAULT_MAX_FILE_LINES: usize = 800;
-const DEFAULT_MAX_DIR_FILES: usize = 40;
-const DEFAULT_MAX_FUNCTION_LINES: usize = 80;
-const DEFAULT_MAX_FUNCTION_COMPLEXITY: usize = 15;
-const DEFAULT_MAX_NESTING_DEPTH: usize = 4;
-const DEFAULT_MAX_FUNCTION_PARAMETERS: usize = 5;
-const DEFAULT_MAX_TYPE_LINES: usize = 250;
-const DEFAULT_MAX_TYPE_MEMBERS: usize = 30;
-const DEFAULT_MAX_IMPORTS: usize = 35;
-const DEFAULT_MAX_PUBLIC_ITEMS: usize = 30;
 const MIN_SCORE: f64 = 0.0;
 const MAX_SCORE: f64 = 100.0;
 

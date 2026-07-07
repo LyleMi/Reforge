@@ -391,7 +391,9 @@ Suppressions may omit `kind` to match every finding kind, and may omit `line`
 to suppress the whole path. Inline comments also suppress specific findings:
 `reforge:ignore [kind[,kind...]] reason`,
 `reforge:ignore-next-line [kind[,kind...]] reason`, and
-`reforge:ignore-file [kind[,kind...]] reason`.
+`reforge:ignore-file [kind[,kind...]] reason`. Suppressions remove matching
+findings from reports and CI gates, but they do not remove hotspot watchlist
+entries derived from raw metrics.
 
 ## CLI Reference
 

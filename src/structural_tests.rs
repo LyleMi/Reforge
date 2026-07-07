@@ -220,6 +220,26 @@ export class BigThing {
 }
 
 #[test]
+fn reports_rust_public_surface() -> Result<()> {
+    let source = r#"
+pub use crate::other::Thing;
+pub const LIMIT: usize = 10;
+pub struct One;
+pub(crate) enum Two { A }
+fn private_helper() {}
+"#;
+
+    let findings = scan_structure(&[source_file("src/lib.rs", source)], &options())?;
+
+    let public_surface = findings
+        .iter()
+        .find(|finding| finding.kind == FindingKind::LargePublicSurface)
+        .expect("public Rust items should be counted");
+    assert_eq!(metric_value(public_surface, METRIC_PUBLIC_ITEMS), Some(4));
+    Ok(())
+}
+
+#[test]
 fn reports_function_proliferation_for_dense_small_functions() -> Result<()> {
     let source = r#"
 fn one() -> i32 { 1 }

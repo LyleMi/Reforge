@@ -48,7 +48,8 @@ cargo run -- config show . --output yaml
 ```
 
 `config validate` and `config show` parse `reforge.toml` but do not collect
-source files, run detectors, or read git churn.
+source files, run detectors, or read git churn. The effective thresholds shown
+by `config show` are used by both threshold findings and static hotspot risk.
 
 ## Precedence
 
@@ -70,6 +71,8 @@ Finding filters such as `--only`, `--exclude-detector`, `--min-priority`, and
 `reforge.toml`.
 
 ## Example
+
+This example shows a tuned project configuration, not the built-in defaults.
 
 ```toml
 max-file-lines = 600
@@ -171,7 +174,9 @@ generated/dependency directory list; it does not override git ignore rules.
 ## Suppressions
 
 Use suppressions for intentional findings that should be absent from reports
-and CI gates. Config suppressions use TOML tables:
+and CI gates. Suppressions remove matching entries from `findings`; they do not
+remove hotspot watchlist entries, because hotspots are ranked from raw metrics.
+Config suppressions use TOML tables:
 
 ```toml
 [[suppressions]]

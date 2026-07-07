@@ -236,7 +236,14 @@ pub(super) fn rust_public_item(node: Node<'_>) -> bool {
             | "const_item"
             | "static_item"
             | "mod_item"
-    ) && node.child_by_field_name("visibility").is_some()
+            | "use_declaration"
+    ) && has_rust_visibility_modifier(node)
+}
+
+fn has_rust_visibility_modifier(node: Node<'_>) -> bool {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .any(|child| child.kind() == "visibility_modifier")
 }
 
 pub(super) fn should_skip_rust_test_module(

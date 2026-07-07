@@ -603,8 +603,18 @@ fn hotspot_models_sort_differently() {
     };
     let summary = summarize_raw_metrics(&raw_metrics);
 
-    let static_hotspots = rank_hotspots(&raw_metrics, &summary, crate::cli::HotspotModel::Static);
-    let churn_hotspots = rank_hotspots(&raw_metrics, &summary, crate::cli::HotspotModel::Churn);
+    let static_hotspots = rank_hotspots(
+        &raw_metrics,
+        &summary,
+        crate::cli::HotspotModel::Static,
+        StaticRiskThresholds::default(),
+    );
+    let churn_hotspots = rank_hotspots(
+        &raw_metrics,
+        &summary,
+        crate::cli::HotspotModel::Churn,
+        StaticRiskThresholds::default(),
+    );
 
     assert_eq!(static_hotspots[0].path, "src/static.rs");
     assert_eq!(churn_hotspots[0].path, "src/churn.rs");
@@ -665,7 +675,12 @@ fn test_metrics_do_not_enter_hotspot_leaderboard() {
     };
     let summary = summarize_raw_metrics(&raw_metrics);
 
-    let hotspots = rank_hotspots(&raw_metrics, &summary, crate::cli::HotspotModel::Static);
+    let hotspots = rank_hotspots(
+        &raw_metrics,
+        &summary,
+        crate::cli::HotspotModel::Static,
+        StaticRiskThresholds::default(),
+    );
 
     assert!(!hotspots.is_empty());
     assert!(
@@ -673,6 +688,42 @@ fn test_metrics_do_not_enter_hotspot_leaderboard() {
             .iter()
             .all(|hotspot| !hotspot.path.contains("tests/"))
     );
+}
+
+#[test]
+fn hotspot_static_risk_uses_effective_scan_thresholds() -> Result<()> {
+    let root = test_root("hotspot-thresholds");
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(root.join("src/lib.rs"), "fn main() {}\n".repeat(900))?;
+
+    let mut default_args = scan_args(root.clone(), false);
+    default_args.churn = Some(crate::cli::ChurnMode::Off);
+    default_args.hotspot_model = Some(crate::cli::HotspotModel::Static);
+    let mut progress = NoopProgress;
+    let default_report = scan_report(&default_args, &mut progress)?;
+
+    let mut loose_args = default_args.clone();
+    loose_args.max_file_lines = 2_000;
+    let mut progress = NoopProgress;
+    let loose_report = scan_report(&loose_args, &mut progress)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert!(
+        default_report
+            .hotspots
+            .iter()
+            .any(|hotspot| hotspot.path.ends_with("src/lib.rs"))
+    );
+    assert!(
+        loose_report
+            .hotspots
+            .iter()
+            .all(|hotspot| !hotspot.path.ends_with("src/lib.rs")),
+        "{:#?}",
+        loose_report.hotspots
+    );
+    Ok(())
 }
 
 #[test]

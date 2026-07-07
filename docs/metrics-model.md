@@ -109,7 +109,9 @@ Hotspots rank files, functions, and types independently from findings. They are
 retained when `priority >= 35`.
 
 Static risk uses threshold excess and percentile risk for size, complexity,
-coupling, duplication, drift, and test-risk signals.
+coupling, duplication, drift, and test-risk signals. Threshold-based static
+risk uses the same effective scan thresholds that findings use after applying
+configuration and CLI overrides.
 
 Churn risk uses project percentiles for:
 

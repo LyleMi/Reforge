@@ -16,7 +16,8 @@ use crate::model::{
     RawMetrics, SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary, TypeRawMetric,
 };
 use crate::scoring::{
-    FindingInput, finalize_scoring, finding, rank_hotspots, summarize_raw_metrics,
+    FindingInput, StaticRiskThresholds, finalize_scoring, finding, rank_hotspots,
+    summarize_raw_metrics,
 };
 use crate::similar_functions::{
     ParsedSourceFile, SimilarFunctionOptions, SimilarFunctionProgress, SourceFile,
@@ -129,6 +130,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         effective_args
             .hotspot_model
             .expect("effective args should set hotspot model"),
+        StaticRiskThresholds::from(&effective_args),
     );
     finalize_scoring(&mut scan.findings, &scan.raw_metrics, &hotspots);
     let similar_function_group_count = apply_post_score_finding_controls(

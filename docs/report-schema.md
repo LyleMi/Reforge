@@ -255,9 +255,9 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `9` does not emit the legacy v4 fields `score`, `score_breakdown`, or
+version `10` does not emit the legacy v4 fields `score`, `score_breakdown`, or
 `rank_reason`; use `priority`, `priority_factors`, and `rank_explanation`
-instead. Schema version `9` adds stable finding `id` and per-finding
+instead. Schema version `10` includes stable finding `id` and per-finding
 `recommendation`; reports without IDs should be regenerated before being used
 as baselines.
 

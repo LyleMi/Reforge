@@ -57,6 +57,10 @@ Structural detectors use Tree-sitter for supported languages.
 Tests are excluded from general structural findings unless
 `--include-test-structure` is passed.
 
+For Rust, `large_public_surface` counts items with visibility modifiers such as
+`pub`, `pub(crate)`, and `pub(super)`, including public re-exports, because each
+one expands the module surface visible to another scope.
+
 ## Unused Functions
 
 `unused_function` builds a conservative project-wide identifier index for
