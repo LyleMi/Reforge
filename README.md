@@ -8,7 +8,7 @@
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
   <img alt="MSRV" src="https://img.shields.io/badge/MSRV-1.85-2f855a">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-133%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-162%20passing-brightgreen">
   <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20html%20%7C%20json%20%7C%20yaml%20%7C%20sarif-6b46c1">
 </p>
 
@@ -24,7 +24,7 @@ or fast-moving codebases before refactoring work starts.
 - Scans Rust, JavaScript, TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP,
   and Ruby source files.
 - Uses Tree-sitter for structural analysis and similar-function detection.
-- Reports human-readable, HTML, JSON, or YAML output with raw metrics,
+- Reports human-readable, HTML, JSON, YAML, or SARIF output with raw metrics,
   percentile summaries, hotspots, and findings.
 - Ranks hotspots with `static`, `churn`, or `hybrid` models.
 - Collects git churn in repositories by default with graceful fallback outside
@@ -97,6 +97,49 @@ Install from this checkout:
 cargo install --path .
 reforge scan D:\path\to\project
 ```
+
+## Agent Skill
+
+Reforge includes an optional agent skill at `skills/reforge-scan` for agents
+that support a skill-folder workflow. The skill teaches an agent how to run
+Reforge, choose stable report formats, interpret findings, and recommend
+scoped refactors from scan evidence.
+
+Install it for Codex on Windows:
+
+```powershell
+.\scripts\install-agent-skill.ps1
+```
+
+Install it for Codex on macOS or Linux:
+
+```bash
+sh scripts/install-agent-skill.sh
+```
+
+Update an existing install by passing `-Force` or `--force`:
+
+```powershell
+.\scripts\install-agent-skill.ps1 -Force
+```
+
+```bash
+sh scripts/install-agent-skill.sh --force
+```
+
+For another agent that consumes the same skill folder shape, pass the directory
+that contains skill folders:
+
+```powershell
+.\scripts\install-agent-skill.ps1 -Agent generic -SkillsDir D:\path\to\agent\skills -Force
+```
+
+```bash
+sh scripts/install-agent-skill.sh --agent generic --skills-dir ~/.agent/skills --force
+```
+
+The scripts install or update the skill only. Add `-InstallCli` or
+`--install-cli` when you also want to run `cargo install --path .`.
 
 ## Documentation
 

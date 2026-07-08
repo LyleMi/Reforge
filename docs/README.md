@@ -10,7 +10,7 @@ TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
 ## User Docs
 
 - [User Guide](user-guide.md): install, run scans, tune CLI options, read
-  output, and troubleshoot common failures.
+  output, install the optional agent skill, and troubleshoot common failures.
 - [Configuration](configuration.md): `reforge.toml` discovery, supported keys,
   suppressions, and CLI precedence.
 - [Report Schema](report-schema.md): JSON/YAML schema version `12`, SARIF
@@ -38,6 +38,7 @@ cargo run -- scan .
 cargo run -- scan . --output json --progress never
 cargo run -- scan . --output sarif --output-file reforge-report.sarif --progress never
 cargo run -- scan . --churn off --hotspot-model static --output json --progress never
+.\scripts\install-agent-skill.ps1
 cargo test
 ```
 

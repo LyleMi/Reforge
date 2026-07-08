@@ -29,6 +29,48 @@ reforge scan D:\path\to\project
 During local development, the examples below use `cargo run -- scan ...`.
 After installation, replace `cargo run -- scan` with `reforge scan`.
 
+## Agent Skill Installation
+
+Reforge ships an optional agent skill in `skills/reforge-scan`. Install it when
+you want an agent to run Reforge, choose report formats, interpret findings, or
+turn scan output into scoped refactoring recommendations.
+
+For Codex on Windows:
+
+```powershell
+.\scripts\install-agent-skill.ps1
+```
+
+For Codex on macOS or Linux:
+
+```bash
+sh scripts/install-agent-skill.sh
+```
+
+To update an existing install, pass `-Force` or `--force`:
+
+```powershell
+.\scripts\install-agent-skill.ps1 -Force
+```
+
+```bash
+sh scripts/install-agent-skill.sh --force
+```
+
+For another agent that consumes the same skill folder shape, pass the directory
+that contains skill folders:
+
+```powershell
+.\scripts\install-agent-skill.ps1 -Agent generic -SkillsDir D:\path\to\agent\skills -Force
+```
+
+```bash
+sh scripts/install-agent-skill.sh --agent generic --skills-dir ~/.agent/skills --force
+```
+
+The install scripts copy only the skill folder. Add `-InstallCli` or
+`--install-cli` to also run `cargo install --path .`.
+
 ## Quick Start
 
 Scan the current repository:
