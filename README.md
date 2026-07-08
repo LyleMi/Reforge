@@ -247,7 +247,7 @@ Fail CI on current warning or critical findings:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-Compare against a prior schema 10 baseline and fail only on new or worse
+Compare against a prior schema 11 baseline and fail only on new or worse
 warning/critical findings:
 
 ```powershell
@@ -296,7 +296,7 @@ signals from the hotspot `Watchlist`, `Signal mix` summarizes finding kinds,
 and each finding includes the ranking reason. HTML output renders the same
 scan as a static visual report with summary cards, risk distribution, file
 heatmap, hotspots, similar-function groups, and prioritized findings. JSON and
-YAML use schema version 10 and include `summary`, `metrics_summary`,
+YAML use schema version 11 and include `summary`, `metrics_summary`,
 `raw_metrics`, `hotspots`, and `findings`. SARIF output targets SARIF 2.1.0
 with rules keyed by finding kind and results fingerprinted by Reforge finding
 ID. Findings expose stable `id`, `priority`, `confidence`, `priority_factors`,
@@ -309,7 +309,7 @@ stay bounded.
 
 `--fail-on info|warning|critical` turns Reforge into a CI gate. Without a
 baseline, the gate evaluates all current findings after writing the requested
-report. With `--baseline <PATH>`, Reforge reads a prior schema 10 JSON or YAML
+report. With `--baseline <PATH>`, Reforge reads a prior schema 11 JSON or YAML
 report and matches findings by stable `id`.
 
 `--baseline-mode` controls which current findings are selected for the gate:
@@ -433,7 +433,7 @@ entries derived from raw metrics.
 | `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
-| `--baseline` | none | Read a prior schema 10 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 11 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
 | `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |

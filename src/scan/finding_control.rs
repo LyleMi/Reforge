@@ -361,6 +361,7 @@ fn known_finding_kinds() -> Vec<String> {
         FindingKind::ComplexFunction,
         FindingKind::DeepNesting,
         FindingKind::ManyParameters,
+        FindingKind::ReadabilityRisk,
         FindingKind::LargeType,
         FindingKind::LargePublicSurface,
         FindingKind::ImportHeavyFile,

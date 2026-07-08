@@ -87,7 +87,8 @@ Severity bands:
 Metrics are assigned one of these dimensions:
 
 - `size`: file, directory, function, type, and unused-function signals.
-- `complexity`: complexity, nesting, and parameter signals.
+- `complexity`: complexity, nesting, parameter, and combined readability-risk
+  signals.
 - `coupling`: imports, public surfaces, and adapter bypass signals.
 - `duplication`: similar functions, repeated literals, repeated error
   patterns, data clumps, and duplicate type shapes.
@@ -98,7 +99,9 @@ Metrics are assigned one of these dimensions:
 
 ## Confidence
 
-Threshold-based structural findings generally use confidence `1.0`.
+Threshold-based structural findings generally use confidence `1.0`. Combined
+readability risk uses confidence `0.90` because the measured evidence is
+objective, but the readability interpretation is still a review prompt.
 Heuristic detectors use lower values when false positives are more likely. For
 example, repeated literals can be weaker in tests or report text, and
 happy-path-only test risk is intentionally conservative.

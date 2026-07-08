@@ -13,7 +13,7 @@ TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
   output, and troubleshoot common failures.
 - [Configuration](configuration.md): `reforge.toml` discovery, supported keys,
   suppressions, and CLI precedence.
-- [Report Schema](report-schema.md): JSON/YAML schema version `9`, SARIF
+- [Report Schema](report-schema.md): JSON/YAML schema version `11`, SARIF
   output, field meanings, and compatibility notes.
 
 ## Maintainer Docs

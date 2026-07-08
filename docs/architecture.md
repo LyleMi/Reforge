@@ -21,7 +21,7 @@ scores findings, and renders reports.
   implementations.
 - `src/scoring/mod.rs`: metric summaries, priority scoring, severity mapping,
   and hotspot ranking.
-- `src/baseline.rs`: schema 10 baseline loading, finding ID comparison, diff
+- `src/baseline.rs`: schema 11 baseline loading, finding ID comparison, diff
   classification, and `--fail-on` gate selection.
 - `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF rendering.
 
@@ -55,7 +55,7 @@ into clearer directories.
 ## Data Flow
 
 `ScanArgs` is the input configuration. `scan_report` produces a `ScanReport`
-with schema version `9`. Detectors emit `Finding` values with metrics and
+with schema version `11`. Detectors emit `Finding` values with metrics and
 related locations. Scoring later enriches those findings with dimensions,
 normalized values, percentiles, `priority_factors`, `priority`, `severity`,
 `rank_explanation`, and stable `rf1-` IDs.

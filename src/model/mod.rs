@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
 use crate::cli::{ChurnMode, HotspotModel};
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 10;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 11;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 pub(crate) const METRIC_NESTING_DEPTH: &str = "nesting_depth";
 pub(crate) const METRIC_PUBLIC_ITEMS: &str = "public_items";
@@ -20,6 +20,7 @@ pub enum FindingKind {
     ComplexFunction,
     DeepNesting,
     ManyParameters,
+    ReadabilityRisk,
     LargeType,
     LargePublicSurface,
     ImportHeavyFile,
@@ -179,6 +180,10 @@ const KIND_RECOMMENDATIONS: &[(FindingKind, &str)] = &[
     (
         FindingKind::ManyParameters,
         "Introduce a small parameter object or split the function by responsibility.",
+    ),
+    (
+        FindingKind::ReadabilityRisk,
+        "Extract named steps or narrower collaborators around the combined size, branching, nesting, or parameter pressure.",
     ),
     (
         FindingKind::LargeType,

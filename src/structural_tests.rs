@@ -78,6 +78,34 @@ pub fn process(a: i32, b: i32, c: i32, d: i32) -> i32 {
 }
 
 #[test]
+fn reports_readability_risk_for_combined_function_signals() -> Result<()> {
+    let source = r#"
+pub fn process(a: i32, b: i32, c: i32, d: i32) -> i32 {
+    if a > 0 {
+        for value in [b, c] {
+            if value > 1 {
+                return value;
+            }
+        }
+    }
+    d
+}
+"#;
+
+    let findings = scan_structure(&[source_file("src/lib.rs", source)], &options())?;
+    let finding = findings
+        .iter()
+        .find(|finding| finding.kind == FindingKind::ReadabilityRisk)
+        .expect("combined function threshold signals should produce readability risk");
+
+    assert_eq!(finding.line, Some(2));
+    assert_eq!(metric_value(finding, "readability_signals"), Some(4));
+    assert_eq!(metric_value(finding, "function_lines"), Some(10));
+    assert!(finding.message.contains("combines 4 readability risks"));
+    Ok(())
+}
+
+#[test]
 fn counts_rust_parameter_patterns_without_type_identifiers() -> Result<()> {
     let source = r#"
 fn collect_named_functions(

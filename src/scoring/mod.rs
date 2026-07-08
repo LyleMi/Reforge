@@ -44,6 +44,7 @@ const IMPACT_SCORES: &[(FindingKind, f64)] = &[
     (FindingKind::LongFunction, 70.0),
     (FindingKind::DeepNesting, 70.0),
     (FindingKind::ManyParameters, 70.0),
+    (FindingKind::ReadabilityRisk, 75.0),
     (FindingKind::LargeType, 70.0),
     (FindingKind::ParallelImplementation, 45.0),
     (FindingKind::StaleCliDocumentation, 75.0),
@@ -89,6 +90,7 @@ const ACTIONABILITY_SCORES: &[(FindingKind, f64)] = &[
     (FindingKind::ComplexFunction, 85.0),
     (FindingKind::DeepNesting, 85.0),
     (FindingKind::ManyParameters, 85.0),
+    (FindingKind::ReadabilityRisk, 80.0),
     (FindingKind::LargeType, 85.0),
     (FindingKind::SimilarFunctions, 85.0),
     (FindingKind::ParallelImplementation, 50.0),
@@ -213,6 +215,7 @@ pub fn default_confidence(kind: FindingKind) -> f64 {
         | FindingKind::StaleCliDocumentation
         | FindingKind::StaleSchemaDocumentation => 0.95,
         FindingKind::DependencyCycle | FindingKind::DependencyHub => 0.90,
+        FindingKind::ReadabilityRisk => 0.90,
         FindingKind::FileNamingDrift
         | FindingKind::DirectoryDrift
         | FindingKind::FunctionProliferation
@@ -392,6 +395,10 @@ pub(crate) fn metric_dimension(kind: FindingKind, metric_name: &str) -> MetricDi
         | FindingKind::LongFunction
         | FindingKind::LargeType
         | FindingKind::UnusedFunction => MetricDimension::Size,
+        FindingKind::ReadabilityRisk => match metric_name {
+            "function_lines" => MetricDimension::Size,
+            _ => MetricDimension::Complexity,
+        },
         FindingKind::ComplexFunction
         | FindingKind::DeepNesting
         | FindingKind::ManyParameters

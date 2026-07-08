@@ -32,6 +32,12 @@ line = 234
 reason = "drift type-shape collection uses nested AST guards to avoid false positives"
 
 [[suppressions]]
+kind = "readability_risk"
+path = "src/detectors/drift/mod.rs"
+line = 234
+reason = "drift type-shape collection intentionally keeps coupled AST evidence in one audited path"
+
+[[suppressions]]
 kind = "complex_function"
 path = "src/detectors/drift/mod.rs"
 line = 509
@@ -46,8 +52,14 @@ reason = "test-case heuristic intentionally groups language-specific evidence ch
 [[suppressions]]
 kind = "complex_function"
 path = "src/scoring/mod.rs"
-line = 445
+line = 452
 reason = "ranking explanation is a compact mapping from scoring factors to report text"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/scoring/mod.rs"
+line = 391
+reason = "metric dimension mapping centralizes finding-kind classification for report consistency"
 
 [[suppressions]]
 kind = "complex_function"
@@ -78,6 +90,12 @@ kind = "deep_nesting"
 path = "src/detectors/structure/analysis/aggregation.rs"
 line = 419
 reason = "directory concept splitting uses nested guards to preserve naming behavior"
+
+[[suppressions]]
+kind = "readability_risk"
+path = "src/detectors/structure/analysis/aggregation.rs"
+line = 419
+reason = "directory concept splitting keeps separator and case transitions in one stable helper"
 
 [[suppressions]]
 kind = "complex_function"

@@ -1,6 +1,6 @@
 # Report Schema
 
-JSON and YAML reports use schema version `10`. The same Rust data model is
+JSON and YAML reports use schema version `11`. The same Rust data model is
 serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 that carries the same finding IDs in result fingerprints.
 
@@ -8,7 +8,7 @@ that carries the same finding IDs in result fingerprints.
 
 ```json
 {
-  "schema_version": 10,
+  "schema_version": 11,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
@@ -20,7 +20,7 @@ that carries the same finding IDs in result fingerprints.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `10`.
+- `schema_version`: report schema version. Current value is `11`.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
@@ -222,6 +222,7 @@ Current `kind` values:
 - `complex_function`
 - `deep_nesting`
 - `many_parameters`
+- `readability_risk`
 - `large_type`
 - `large_public_surface`
 - `import_heavy_file`
@@ -255,9 +256,9 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `10` does not emit the legacy v4 fields `score`, `score_breakdown`, or
+version `11` does not emit the legacy v4 fields `score`, `score_breakdown`, or
 `rank_reason`; use `priority`, `priority_factors`, and `rank_explanation`
-instead. Schema version `10` includes stable finding `id` and per-finding
+instead. Schema version `11` includes stable finding `id` and per-finding
 `recommendation`; reports without IDs should be regenerated before being used
 as baselines.
 

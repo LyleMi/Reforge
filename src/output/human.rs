@@ -697,6 +697,12 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
         MetricFormat::Count("parameters"),
     ),
     display(
+        FindingKind::ReadabilityRisk,
+        "readability risk",
+        DisplayMetric::Named("readability_signals"),
+        MetricFormat::Count("signals"),
+    ),
+    display(
         FindingKind::LargeType,
         "large type",
         DisplayMetric::Named("type_lines"),

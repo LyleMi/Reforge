@@ -44,6 +44,9 @@ Structural detectors use Tree-sitter for supported languages.
   `--max-function-complexity`.
 - `deep_nesting`: nested control-flow depth exceeds `--max-nesting-depth`.
 - `many_parameters`: parameter count exceeds `--max-function-parameters`.
+- `readability_risk`: one function combines at least two function-level
+  readability signals, such as length, complexity, nesting, or parameter
+  pressure.
 - `large_type`: type line span or member count exceeds `--max-type-lines` or
   `--max-type-members`.
 - `large_public_surface`: public/exported item count exceeds

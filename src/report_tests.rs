@@ -313,7 +313,7 @@ fn renders_human_baseline_diff_when_selected_findings_are_empty() {
 }
 
 #[test]
-fn renders_json_report_schema_v10_with_stable_ids_and_priority_metadata() {
+fn renders_json_report_schema_v11_with_stable_ids_and_priority_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
