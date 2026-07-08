@@ -87,9 +87,12 @@ Rust `mod` declarations, Python relative imports, Ruby `require_relative`
 calls, and quoted C/C++ includes that resolve to scanned source files.
 
 - `dependency_cycle`: a resolved strongly connected component spans multiple
-  source files.
+  source files. The finding reports cycle size, internal dependency edge count,
+  and internal edge density.
 - `dependency_hub`: a project with enough resolved graph data has a file with
-  unusually high fan-in or fan-out.
+  unusually high fan-in or fan-out. The finding reports direct fan-in/fan-out,
+  transitive reach, dependency depth, and instability percentage so broad,
+  deep, and mixed-responsibility hubs rank higher.
 
 External packages, unresolved aliases, generated paths skipped by scan filters,
 and ambiguous language-specific module systems are ignored rather than guessed.

@@ -90,6 +90,8 @@ Metrics are assigned one of these dimensions:
 - `complexity`: complexity, nesting, parameter, and combined readability-risk
   signals.
 - `coupling`: imports, public surfaces, and adapter bypass signals.
+  Dependency graph findings also use this dimension for direct fan-in/fan-out,
+  transitive reach, dependency depth, cycle edges, and cycle density.
 - `duplication`: similar functions, repeated literals, repeated error
   patterns, data clumps, and duplicate type shapes.
 - `drift`: naming, directory, parallel implementation, abstraction, config,

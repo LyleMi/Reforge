@@ -111,6 +111,19 @@ impl FindingMetric {
             percentile: None,
         }
     }
+
+    pub fn measurement(name: impl Into<String>, value: usize, unit: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value,
+            threshold: None,
+            unit: unit.into(),
+            excess_ratio: None,
+            dimension: MetricDimension::Size,
+            normalized: None,
+            percentile: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
