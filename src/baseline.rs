@@ -272,6 +272,7 @@ mod tests {
                 churn: BTreeMap::new(),
             },
             raw_metrics: crate::model::RawMetrics::default(),
+            dependency_graph: crate::model::DependencyGraphSnapshot::default(),
             hotspots: Vec::new(),
             findings,
         }

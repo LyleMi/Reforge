@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
 use crate::cli::{ChurnMode, HotspotModel};
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 11;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 12;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 pub(crate) const METRIC_NESTING_DEPTH: &str = "nesting_depth";
 pub(crate) const METRIC_PUBLIC_ITEMS: &str = "public_items";
@@ -501,6 +501,25 @@ pub struct RawMetrics {
     pub types: Vec<TypeRawMetric>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct DependencyGraphSnapshot {
+    pub nodes: Vec<DependencyGraphNode>,
+    pub edges: Vec<DependencyGraphEdge>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DependencyGraphNode {
+    pub path: String,
+    pub fan_in: usize,
+    pub fan_out: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DependencyGraphEdge {
+    pub from: String,
+    pub to: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MetricPercentiles {
     pub p50: usize,
@@ -546,6 +565,7 @@ pub struct ScanReport {
     pub stats: ScanStats,
     pub metrics_summary: MetricsSummary,
     pub raw_metrics: RawMetrics,
+    pub dependency_graph: DependencyGraphSnapshot,
     pub hotspots: Vec<Hotspot>,
     pub findings: Vec<Finding>,
 }

@@ -9,11 +9,12 @@ use ignore::{DirEntry, WalkBuilder};
 
 use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
 use crate::cli::ScanArgs;
-use crate::detectors::dependency_graph::scan_dependency_graph;
+use crate::detectors::dependency_graph::scan_dependency_graph_report;
 use crate::documentation::scan_documentation;
 use crate::model::{
-    ChurnFileMetric, FileRawMetric, Finding, FindingKind, FindingMetric, FunctionRawMetric,
-    RawMetrics, SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary, TypeRawMetric,
+    ChurnFileMetric, DependencyGraphSnapshot, FileRawMetric, Finding, FindingKind, FindingMetric,
+    FunctionRawMetric, RawMetrics, SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary,
+    TypeRawMetric,
 };
 use crate::scoring::{
     FindingInput, StaticRiskThresholds, finalize_scoring, finding, rank_hotspots,
@@ -65,6 +66,7 @@ struct SourceScan {
     parsed_sources: Vec<ParsedSourceFile>,
     structure_sources: Vec<SourceFile>,
     raw_metrics: RawMetrics,
+    dependency_graph: DependencyGraphSnapshot,
     stats: ScanStats,
 }
 
@@ -107,19 +109,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         progress,
         &mut scan,
     )?;
-    {
-        let mut signals = ScanSignalContext {
-            root: &root,
-            args: &effective_args,
-            progress,
-            scan: &mut scan,
-        };
-        signals.scan_structural_signals()?;
-        signals.scan_unused_function_signals();
-        signals.scan_dependency_graph_signals();
-        signals.scan_agent_drift_signals();
-        signals.scan_similarity_signals()?;
-    }
+    run_scan_signals(&root, &effective_args, progress, &mut scan)?;
     scan.findings.extend(scan_documentation(&root)?);
     merge_structure_raw_metrics(&mut scan.raw_metrics, &scan.parsed_sources);
     let churn_summary = collect_churn_metrics(&root, &effective_args, &mut scan.raw_metrics)?;
@@ -164,9 +154,30 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         stats: scan.stats,
         metrics_summary,
         raw_metrics: scan.raw_metrics,
+        dependency_graph: scan.dependency_graph,
         hotspots,
         findings: scan.findings,
     })
+}
+
+fn run_scan_signals(
+    root: &Path,
+    args: &ScanArgs,
+    progress: &mut dyn ProgressSink,
+    scan: &mut SourceScan,
+) -> Result<()> {
+    let mut signals = ScanSignalContext {
+        root,
+        args,
+        progress,
+        scan,
+    };
+    signals.scan_structural_signals()?;
+    signals.scan_unused_function_signals();
+    signals.scan_dependency_graph_signals();
+    signals.scan_agent_drift_signals();
+    signals.scan_similarity_signals()?;
+    Ok(())
 }
 
 fn apply_post_score_finding_controls(
@@ -239,10 +250,9 @@ impl ScanSignalContext<'_> {
             "Analyzing dependency graph in {} files",
             self.scan.structure_sources.len()
         ));
-        self.scan.findings.extend(scan_dependency_graph(
-            &self.scan.structure_sources,
-            self.root,
-        ));
+        let dependency_scan = scan_dependency_graph_report(&self.scan.structure_sources, self.root);
+        self.scan.dependency_graph = dependency_scan.snapshot;
+        self.scan.findings.extend(dependency_scan.findings);
     }
 
     fn scan_agent_drift_signals(&mut self) {

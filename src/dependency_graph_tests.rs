@@ -26,7 +26,8 @@ fn detects_resolved_javascript_cycle() {
         source("project/src/b.ts", "import { a } from './a';\n"),
     ];
 
-    let findings = scan_dependency_graph(&sources, Path::new("project"));
+    let scan = scan_dependency_graph_report(&sources, Path::new("project"));
+    let findings = &scan.findings;
 
     let cycle = findings
         .iter()
@@ -36,6 +37,20 @@ fn detects_resolved_javascript_cycle() {
     assert_eq!(cycle.metrics[0].name, "cycle_files");
     assert_eq!(metric_value(cycle, "cycle_edges"), Some(2));
     assert_eq!(metric_value(cycle, "cycle_density_percent"), Some(100));
+    assert_eq!(scan.snapshot.nodes.len(), 2);
+    assert_eq!(scan.snapshot.edges.len(), 2);
+    assert!(
+        scan.snapshot
+            .nodes
+            .iter()
+            .any(|node| node.path == "project/src/a.ts" && node.fan_in == 1 && node.fan_out == 1)
+    );
+    assert!(
+        scan.snapshot
+            .edges
+            .iter()
+            .any(|edge| edge.from == "project/src/a.ts" && edge.to == "project/src/b.ts")
+    );
 }
 
 #[test]

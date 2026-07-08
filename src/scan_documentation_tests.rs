@@ -105,7 +105,7 @@ fn cli_flags_doc() -> &'static str {
 }
 
 fn schema_fields_doc() -> &'static str {
-    "schema_version summary stats metrics_summary raw_metrics hotspots findings \
+    "schema_version summary stats metrics_summary raw_metrics dependency_graph hotspots findings \
 id kind severity path line metrics priority confidence priority_factors \
 rank_explanation recommendation related_locations"
 }

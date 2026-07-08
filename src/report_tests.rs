@@ -1,5 +1,7 @@
 use super::*;
-use crate::model::{Hotspot, HotspotLevel};
+use crate::model::{
+    DependencyGraphEdge, DependencyGraphNode, DependencyGraphSnapshot, Hotspot, HotspotLevel,
+};
 use crate::scanner::{
     ChurnFileMetric, ChurnSummary, FileRawMetric, FindingInput, FindingMetric, MetricsSummary,
     RawMetrics, RelatedLocation, SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary, finding,
@@ -36,6 +38,7 @@ fn report(findings: Vec<Finding>) -> ScanReport {
             churn: BTreeMap::new(),
         },
         raw_metrics: RawMetrics::default(),
+        dependency_graph: DependencyGraphSnapshot::default(),
         hotspots: Vec::new(),
         findings,
     }
@@ -313,7 +316,7 @@ fn renders_human_baseline_diff_when_selected_findings_are_empty() {
 }
 
 #[test]
-fn renders_json_report_schema_v11_with_stable_ids_and_priority_metadata() {
+fn renders_json_report_schema_v12_with_stable_ids_and_priority_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
@@ -335,6 +338,7 @@ fn renders_json_report_schema_v11_with_stable_ids_and_priority_metadata() {
     assert_eq!(value["summary"]["hotspot_model"], "hybrid");
     assert!(value.get("metrics_summary").is_some());
     assert!(value.get("raw_metrics").is_some());
+    assert!(value.get("dependency_graph").is_some());
     assert!(value.get("hotspots").is_some());
     assert!(
         value["findings"][0]["id"]
@@ -529,6 +533,39 @@ fn renders_html_report_with_visual_sections() {
             recent_weighted_churn: 8,
         },
     });
+    scan_report.dependency_graph = DependencyGraphSnapshot {
+        nodes: vec![
+            DependencyGraphNode {
+                path: "src/a.rs".to_string(),
+                fan_in: 1,
+                fan_out: 2,
+            },
+            DependencyGraphNode {
+                path: "src/b.rs".to_string(),
+                fan_in: 1,
+                fan_out: 1,
+            },
+            DependencyGraphNode {
+                path: "src/c.rs".to_string(),
+                fan_in: 2,
+                fan_out: 0,
+            },
+        ],
+        edges: vec![
+            DependencyGraphEdge {
+                from: "src/a.rs".to_string(),
+                to: "src/b.rs".to_string(),
+            },
+            DependencyGraphEdge {
+                from: "src/a.rs".to_string(),
+                to: "src/c.rs".to_string(),
+            },
+            DependencyGraphEdge {
+                from: "src/b.rs".to_string(),
+                to: "src/c.rs".to_string(),
+            },
+        ],
+    };
     scan_report.summary.hotspot_count = 1;
     scan_report.hotspots.push(Hotspot {
         level: HotspotLevel::Function,
@@ -547,6 +584,10 @@ fn renders_html_report_with_visual_sections() {
     assert!(output.starts_with("<!doctype html>"));
     assert!(output.contains("Refactoring signal console"));
     assert!(output.contains("Signal plane"));
+    assert!(output.contains("Dependency Map"));
+    assert!(output.contains("role=\"img\" aria-label=\"Dependency graph focus map\""));
+    assert!(output.contains("shown nodes"));
+    assert!(output.contains("src/c.rs"));
     assert!(output.contains("File Heatmap"));
     assert!(output.contains("Similar Function Groups"));
     assert!(output.contains("src/a.rs:10 alpha"));

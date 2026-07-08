@@ -21,7 +21,7 @@ scores findings, and renders reports.
   implementations.
 - `src/scoring/mod.rs`: metric summaries, priority scoring, severity mapping,
   and hotspot ranking.
-- `src/baseline.rs`: schema 11 baseline loading, finding ID comparison, diff
+- `src/baseline.rs`: schema 12 baseline loading, finding ID comparison, diff
   classification, and `--fail-on` gate selection.
 - `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF rendering.
 
@@ -39,8 +39,10 @@ into clearer directories.
    hidden/generated controls.
 4. Read each source file, collect line counts, file metrics, TODO/FIXME debt
    markers, and parsed Tree-sitter sources where supported.
-5. Run structural, agent-drift, similar-function, and documentation detectors.
-6. Merge structural raw metrics into the report model.
+5. Run structural, unused-function, dependency-graph, agent-drift,
+   similar-function, and documentation detectors.
+6. Merge structural raw metrics and the resolved dependency graph snapshot into
+   the report model.
 7. Collect git churn when enabled.
 8. Summarize raw metrics into percentiles.
 9. Rank hotspots with the chosen model.
@@ -55,8 +57,9 @@ into clearer directories.
 ## Data Flow
 
 `ScanArgs` is the input configuration. `scan_report` produces a `ScanReport`
-with schema version `11`. Detectors emit `Finding` values with metrics and
-related locations. Scoring later enriches those findings with dimensions,
+with schema version `12`. Detectors emit `Finding` values with metrics and
+related locations. The dependency-graph detector also emits a resolved
+source-file graph snapshot. Scoring later enriches findings with dimensions,
 normalized values, percentiles, `priority_factors`, `priority`, `severity`,
 `rank_explanation`, and stable `rf1-` IDs.
 

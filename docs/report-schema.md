@@ -1,6 +1,6 @@
 # Report Schema
 
-JSON and YAML reports use schema version `11`. The same Rust data model is
+JSON and YAML reports use schema version `12`. The same Rust data model is
 serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 that carries the same finding IDs in result fingerprints.
 
@@ -8,11 +8,12 @@ that carries the same finding IDs in result fingerprints.
 
 ```json
 {
-  "schema_version": 11,
+  "schema_version": 12,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
   "raw_metrics": {},
+  "dependency_graph": {},
   "hotspots": [],
   "findings": []
 }
@@ -20,11 +21,12 @@ that carries the same finding IDs in result fingerprints.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `11`.
+- `schema_version`: report schema version. Current value is `12`.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
 - `raw_metrics`: file, function, type, and churn measurements.
+- `dependency_graph`: resolved source-file dependency graph snapshot.
 - `hotspots`: ranked file, function, and type locations.
 - `findings`: detector findings with priority, confidence, metrics, and
   related locations.
@@ -120,6 +122,23 @@ Churn metrics include `commits_touched`, `lines_added`, `lines_deleted`,
 - `loc`
 - `member_count`
 - `is_test`
+
+## `dependency_graph`
+
+`dependency_graph` records the resolved source-file import graph used by the
+dependency-cycle and dependency-hub detectors. External packages and unresolved
+imports are not included.
+
+`dependency_graph.nodes` entries:
+
+- `path`: source file path.
+- `fan_in`: number of resolved files that import or include this file.
+- `fan_out`: number of resolved files imported or included by this file.
+
+`dependency_graph.edges` entries:
+
+- `from`: importing or including source file.
+- `to`: resolved imported or included source file.
 
 ## `hotspots`
 
@@ -256,10 +275,12 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `11` does not emit the legacy v4 fields `score`, `score_breakdown`, or
+version `12` does not emit the legacy v4 fields `score`, `score_breakdown`, or
 `rank_reason`; use `priority`, `priority_factors`, and `rank_explanation`
-instead. Schema version `11` includes stable finding `id` and per-finding
-`recommendation`; reports without IDs should be regenerated before being used
+instead. Schema version `12` includes stable finding `id`, per-finding
+`recommendation`, and the `dependency_graph` snapshot. Schema version `11`
+included stable finding IDs and recommendations, but did not include
+`dependency_graph`. Reports without IDs should be regenerated before being used
 as baselines.
 
 New finding kinds may be added in future schema versions. Consumers should

@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use crate::model::{Finding, FindingKind, FindingMetric, RelatedLocation};
+use crate::model::{
+    DependencyGraphEdge, DependencyGraphNode, DependencyGraphSnapshot, Finding, FindingKind,
+    FindingMetric, RelatedLocation,
+};
 use crate::scanner::{FindingInput, finding};
 
 use super::similarity::SourceFile;
@@ -46,13 +49,62 @@ impl DependencyGraph {
             node.edges.insert(to);
         }
     }
+
+    fn snapshot(&self) -> DependencyGraphSnapshot {
+        let fan_in = fan_in_counts(self);
+        let mut nodes = self
+            .nodes
+            .values()
+            .map(|node| DependencyGraphNode {
+                path: node.path.clone(),
+                fan_in: fan_in.get(&node.path).copied().unwrap_or(0),
+                fan_out: node.edges.len(),
+            })
+            .collect::<Vec<_>>();
+        nodes.sort_by(|left, right| left.path.cmp(&right.path));
+
+        let mut edges = self
+            .nodes
+            .values()
+            .flat_map(|node| {
+                node.edges.iter().map(|target| DependencyGraphEdge {
+                    from: node.path.clone(),
+                    to: target.clone(),
+                })
+            })
+            .collect::<Vec<_>>();
+        edges.sort_by(|left, right| {
+            left.from
+                .cmp(&right.from)
+                .then_with(|| left.to.cmp(&right.to))
+        });
+
+        DependencyGraphSnapshot { nodes, edges }
+    }
 }
 
+#[cfg(test)]
 pub(crate) fn scan_dependency_graph(sources: &[SourceFile], root: &Path) -> Vec<Finding> {
+    scan_dependency_graph_report(sources, root).findings
+}
+
+pub(crate) fn scan_dependency_graph_report(
+    sources: &[SourceFile],
+    root: &Path,
+) -> DependencyGraphScan {
     let graph = build_dependency_graph(sources, root);
     let mut findings = dependency_cycle_findings(&graph);
     findings.extend(dependency_hub_findings(&graph));
-    findings
+    DependencyGraphScan {
+        snapshot: graph.snapshot(),
+        findings,
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct DependencyGraphScan {
+    pub snapshot: DependencyGraphSnapshot,
+    pub findings: Vec<Finding>,
 }
 
 fn dependency_cycle_findings(graph: &DependencyGraph) -> Vec<Finding> {

@@ -201,7 +201,7 @@ Without `--baseline`, all current findings are selected:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-With `--baseline <PATH>`, Reforge reads a prior schema 11 JSON or YAML report
+With `--baseline <PATH>`, Reforge reads a prior schema 12 JSON or YAML report
 and matches findings by stable `id`. Older reports without IDs are rejected;
 regenerate the baseline with the current Reforge.
 
@@ -273,7 +273,7 @@ git churn.
 | `--min-data-clump-occurrences` | `4` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a specific configuration file. |
-| `--baseline` | none | Read a prior schema 11 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 12 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
 | `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |

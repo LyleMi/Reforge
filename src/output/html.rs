@@ -1,4 +1,5 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::f64::consts::PI;
 use std::io::{self, Write};
 
 use crate::model::{
@@ -11,6 +12,8 @@ const FINDING_PAGE_SIZE: usize = 6;
 const HOTSPOT_PAGE_SIZE: usize = 5;
 const SIMILAR_GROUP_PAGE_SIZE: usize = 4;
 const RELATED_LOCATION_LIMIT: usize = 8;
+const DEPENDENCY_MAP_NODE_LIMIT: usize = 24;
+const DEPENDENCY_MAP_EDGE_LIMIT: usize = 80;
 
 pub fn print_html_report(report: &ScanReport) -> io::Result<()> {
     write_html_report(std::io::stdout().lock(), report)
@@ -49,6 +52,7 @@ impl HtmlRenderContext<'_> {
         self.render_header();
         self.output.push_str("<main>\n");
         self.render_summary();
+        self.render_dependency_map();
         self.render_diagnostics();
         self.render_file_heatmap();
         self.render_hotspots();
@@ -188,6 +192,119 @@ impl HtmlRenderContext<'_> {
         }
         self.output.push_str("</article>\n");
         self.output.push_str("</section>\n");
+    }
+
+    fn render_dependency_map(&mut self) {
+        self.output
+            .push_str("<section class=\"panel dependency-panel\"><div class=\"section-title\"><h2>Dependency Map</h2><span>");
+        self.output.push_str(&escape_html(&format!(
+            "{} nodes · {} edges",
+            self.report.dependency_graph.nodes.len(),
+            self.report.dependency_graph.edges.len()
+        )));
+        self.output.push_str("</span></div>\n");
+
+        let Some(view) = dependency_map_view(self.report) else {
+            self.output.push_str(
+                "<p class=\"empty\">No resolved source-file dependencies were recorded.</p>\n",
+            );
+            self.output.push_str("</section>\n");
+            return;
+        };
+
+        self.output
+            .push_str("<div class=\"dependency-map-layout\">\n");
+        self.render_dependency_map_canvas(&view);
+        self.render_dependency_map_meta(&view);
+        self.output.push_str("</div>\n</section>\n");
+    }
+
+    fn render_dependency_map_canvas(&mut self, view: &DependencyMapView) {
+        self.output.push_str(
+            "<div class=\"dependency-canvas\" role=\"img\" aria-label=\"Dependency graph focus map\"><svg viewBox=\"0 0 840 380\" xmlns=\"http://www.w3.org/2000/svg\">\n<defs><marker id=\"dependency-arrow\" viewBox=\"0 0 10 10\" refX=\"8\" refY=\"5\" markerWidth=\"5\" markerHeight=\"5\" orient=\"auto-start-reverse\"><path d=\"M 0 0 L 10 5 L 0 10 z\"></path></marker></defs>\n",
+        );
+        for edge in &view.edges {
+            self.output.push_str("<line class=\"dependency-edge ");
+            self.output.push_str(edge.class_name);
+            self.output.push_str("\" x1=\"");
+            self.output.push_str(&svg_number(edge.from_x));
+            self.output.push_str("\" y1=\"");
+            self.output.push_str(&svg_number(edge.from_y));
+            self.output.push_str("\" x2=\"");
+            self.output.push_str(&svg_number(edge.to_x));
+            self.output.push_str("\" y2=\"");
+            self.output.push_str(&svg_number(edge.to_y));
+            self.output
+                .push_str("\" marker-end=\"url(#dependency-arrow)\"></line>\n");
+        }
+        for node in &view.nodes {
+            self.output.push_str("<g class=\"dependency-node ");
+            self.output.push_str(node.class_name);
+            self.output.push_str("\" transform=\"translate(");
+            self.output.push_str(&svg_number(node.x));
+            self.output.push(' ');
+            self.output.push_str(&svg_number(node.y));
+            self.output.push_str(")\"><title>");
+            self.output.push_str(&escape_html(&format!(
+                "{} · fan-in {} · fan-out {}",
+                display_path(&node.path),
+                node.fan_in,
+                node.fan_out
+            )));
+            self.output.push_str("</title><circle r=\"");
+            self.output.push_str(&svg_number(node.radius));
+            self.output.push_str("\"></circle><text>");
+            self.output.push_str(&node.index.to_string());
+            self.output.push_str("</text></g>\n");
+        }
+        self.output.push_str("</svg></div>\n");
+    }
+
+    fn render_dependency_map_meta(&mut self, view: &DependencyMapView) {
+        self.output
+            .push_str("<div class=\"dependency-map-meta\">\n");
+        self.output
+            .push_str("<div class=\"dependency-stats\"><span><strong>");
+        self.output.push_str(&view.nodes.len().to_string());
+        self.output
+            .push_str("</strong> shown nodes</span><span><strong>");
+        self.output.push_str(&view.edges.len().to_string());
+        self.output
+            .push_str("</strong> shown edges</span><span><strong>");
+        self.output.push_str(&view.dependency_findings.to_string());
+        self.output
+            .push_str("</strong> graph findings</span></div>\n");
+        self.output
+            .push_str("<ol class=\"dependency-node-list\">\n");
+        for node in &view.nodes {
+            self.output
+                .push_str("<li><span class=\"dependency-node-index ");
+            self.output.push_str(node.class_name);
+            self.output.push_str("\">");
+            self.output.push_str(&node.index.to_string());
+            self.output.push_str("</span><div><strong>");
+            self.output
+                .push_str(&escape_html(&display_path(&node.path)));
+            self.output.push_str("</strong><small>");
+            self.output.push_str(&escape_html(&format!(
+                "{} · fan-in {} · fan-out {} · priority {}",
+                node.reason, node.fan_in, node.fan_out, node.priority
+            )));
+            self.output.push_str("</small></div></li>\n");
+        }
+        self.output.push_str("</ol>\n");
+        if view.clipped_nodes || view.clipped_edges {
+            self.output.push_str("<p class=\"dependency-note\">");
+            self.output.push_str(&escape_html(&format!(
+                "Showing {} of {} nodes and {} of {} selected edges.",
+                view.nodes.len(),
+                view.total_nodes,
+                view.edges.len(),
+                view.selected_edge_count
+            )));
+            self.output.push_str("</p>\n");
+        }
+        self.output.push_str("</div>\n");
     }
 
     fn render_distribution_bar(&mut self, parts: &[(&str, usize)]) {
@@ -421,63 +538,78 @@ impl HtmlRenderContext<'_> {
         self.output.push_str("<div class=\"finding-list\">\n");
         let finding_count = findings.len();
         for finding in findings {
-            let kind_value = serialized_finding_kind(finding.kind);
-            let kind_label = finding_kind_label(finding.kind);
-            let location = finding_location(finding);
-            let summary = finding_summary(finding);
-            let search_text = finding_search_text(finding, &summary, &location, &kind_label);
-            self.output.push_str(
-                "<article class=\"finding-card\" data-page-item=\"findings\" data-search-text=\"",
-            );
-            self.output.push_str(&escape_html(&search_text));
-            self.output.push_str("\" data-filter-severity=\"");
-            self.output.push_str(severity_class(finding.severity));
-            self.output.push_str("\" data-filter-kind=\"");
-            self.output.push_str(&escape_html(&kind_value));
-            self.output.push_str("\" data-sort-priority=\"");
-            self.output.push_str(&finding.priority.to_string());
-            self.output.push_str("\" data-sort-path=\"");
-            self.output.push_str(&escape_html(&location));
-            self.output.push_str("\" data-sort-kind=\"");
-            self.output.push_str(&escape_html(&kind_label));
-            self.output.push_str("\" data-sort-severity=\"");
-            self.output
-                .push_str(&severity_sort_value(finding.severity).to_string());
-            self.output
-                .push_str("\"><div class=\"finding-head\"><span class=\"pill ");
-            self.output.push_str(severity_class(finding.severity));
-            self.output.push_str("\">");
-            self.output.push_str(severity_label(finding.severity));
-            self.output.push_str("</span><strong>");
-            self.output.push_str(&escape_html(&summary));
-            self.output.push_str("</strong><span class=\"priority\">");
-            self.output.push_str(&finding.priority.to_string());
-            self.output.push_str("</span></div><p class=\"location\">");
-            self.output.push_str(&escape_html(&location));
-            self.output.push_str("</p>");
-            if !finding.metrics.is_empty() {
-                self.output.push_str("<div class=\"metric-list\">");
-                for metric in &finding.metrics {
-                    self.output.push_str("<span>");
-                    self.output.push_str(&escape_html(&format_metric(metric)));
-                    self.output.push_str("</span>");
-                }
-                self.output.push_str("</div>");
-            }
-            if !finding.rank_explanation.is_empty() {
-                self.output.push_str("<p class=\"rank\">");
-                self.output
-                    .push_str(&escape_html(&finding.rank_explanation));
-                self.output.push_str("</p>");
-            }
-            self.render_related_locations_detail(finding, "Related locations");
-            self.output.push_str("</article>\n");
+            self.render_finding_card(finding);
         }
         self.output.push_str(
             "<p class=\"empty\" data-filter-empty=\"findings\" hidden>No matching findings.</p>\n",
         );
         self.render_pagination_controls("findings", finding_count, FINDING_PAGE_SIZE);
         self.output.push_str("</div>\n</section>\n");
+    }
+
+    fn render_finding_card(&mut self, finding: &Finding) {
+        let kind_value = serialized_finding_kind(finding.kind);
+        let kind_label = finding_kind_label(finding.kind);
+        let location = finding_location(finding);
+        let summary = finding_summary(finding);
+        let search_text = finding_search_text(finding, &summary, &location, &kind_label);
+
+        self.output.push_str(
+            "<article class=\"finding-card\" data-page-item=\"findings\" data-search-text=\"",
+        );
+        self.output.push_str(&escape_html(&search_text));
+        self.output.push_str("\" data-filter-severity=\"");
+        self.output.push_str(severity_class(finding.severity));
+        self.output.push_str("\" data-filter-kind=\"");
+        self.output.push_str(&escape_html(&kind_value));
+        self.output.push_str("\" data-sort-priority=\"");
+        self.output.push_str(&finding.priority.to_string());
+        self.output.push_str("\" data-sort-path=\"");
+        self.output.push_str(&escape_html(&location));
+        self.output.push_str("\" data-sort-kind=\"");
+        self.output.push_str(&escape_html(&kind_label));
+        self.output.push_str("\" data-sort-severity=\"");
+        self.output
+            .push_str(&severity_sort_value(finding.severity).to_string());
+        self.render_finding_card_body(finding, &summary, &location);
+    }
+
+    fn render_finding_card_body(&mut self, finding: &Finding, summary: &str, location: &str) {
+        self.output
+            .push_str("\"><div class=\"finding-head\"><span class=\"pill ");
+        self.output.push_str(severity_class(finding.severity));
+        self.output.push_str("\">");
+        self.output.push_str(severity_label(finding.severity));
+        self.output.push_str("</span><strong>");
+        self.output.push_str(&escape_html(summary));
+        self.output.push_str("</strong><span class=\"priority\">");
+        self.output.push_str(&finding.priority.to_string());
+        self.output.push_str("</span></div><p class=\"location\">");
+        self.output.push_str(&escape_html(location));
+        self.output.push_str("</p>");
+        self.render_finding_metrics(finding);
+        if !finding.rank_explanation.is_empty() {
+            self.output.push_str("<p class=\"rank\">");
+            self.output
+                .push_str(&escape_html(&finding.rank_explanation));
+            self.output.push_str("</p>");
+        }
+        self.render_related_locations_detail(finding, "Related locations");
+        self.output.push_str("</article>\n");
+    }
+
+    fn render_finding_metrics(&mut self, finding: &Finding) {
+        if finding.metrics.is_empty() {
+            return;
+        }
+
+        self.output.push_str("<div class=\"metric-list\">");
+        for metric in &finding.metrics {
+            self.output.push_str("<span>");
+            self.output.push_str(&escape_html(&format_metric(metric)));
+            self.output.push_str("</span>");
+        }
+        self.output.push_str("</div>");
     }
 
     fn render_finding_controls(&mut self) {
@@ -577,6 +709,58 @@ struct FileOverview {
     hotspot_priority: u8,
 }
 
+#[derive(Debug)]
+struct DependencyMapView {
+    nodes: Vec<DependencyMapNode>,
+    edges: Vec<DependencyMapEdge>,
+    total_nodes: usize,
+    dependency_findings: usize,
+    selected_edge_count: usize,
+    clipped_nodes: bool,
+    clipped_edges: bool,
+}
+
+#[derive(Debug)]
+struct DependencyMapNode {
+    index: usize,
+    path: String,
+    fan_in: usize,
+    fan_out: usize,
+    priority: u8,
+    reason: String,
+    class_name: &'static str,
+    x: f64,
+    y: f64,
+    radius: f64,
+}
+
+#[derive(Debug)]
+struct DependencyMapEdge {
+    from_x: f64,
+    from_y: f64,
+    to_x: f64,
+    to_y: f64,
+    class_name: &'static str,
+}
+
+#[derive(Debug)]
+struct DependencyNodeCandidate {
+    path: String,
+    fan_in: usize,
+    fan_out: usize,
+    priority: u8,
+    is_cycle: bool,
+    is_hub: bool,
+}
+
+#[derive(Debug, Default)]
+struct DependencySignalContext {
+    priority_by_path: BTreeMap<String, u8>,
+    cycle_paths: BTreeSet<String>,
+    hub_paths: BTreeSet<String>,
+    dependency_findings: usize,
+}
+
 fn ranked_file_overviews(report: &ScanReport) -> Vec<FileOverview> {
     let mut finding_counts = BTreeMap::<&str, usize>::new();
     let mut finding_priorities = BTreeMap::<&str, u8>::new();
@@ -642,6 +826,289 @@ fn ranked_file_overviews(report: &ScanReport) -> Vec<FileOverview> {
             .then_with(|| left.path.cmp(&right.path))
     });
     files
+}
+
+fn dependency_map_view(report: &ScanReport) -> Option<DependencyMapView> {
+    if report.dependency_graph.nodes.is_empty() {
+        return None;
+    }
+
+    let context = dependency_signal_context(&report.findings);
+    let candidates = dependency_node_candidates(report, &context);
+    let selected_paths = selected_dependency_paths(&candidates);
+    let selected_candidates = selected_dependency_candidates(candidates, &selected_paths);
+    let nodes = layout_dependency_nodes(selected_candidates);
+    let node_positions = nodes
+        .iter()
+        .map(|node| (node.path.clone(), (node.index, node.x, node.y)))
+        .collect::<BTreeMap<_, _>>();
+    let edges = selected_dependency_edges(report, &selected_paths, &context);
+    let selected_edge_count = edges.len();
+    let rendered_edges = renderable_dependency_edges(edges, &node_positions, &context);
+
+    Some(DependencyMapView {
+        clipped_nodes: report.dependency_graph.nodes.len() > DEPENDENCY_MAP_NODE_LIMIT,
+        clipped_edges: selected_edge_count > DEPENDENCY_MAP_EDGE_LIMIT,
+        total_nodes: report.dependency_graph.nodes.len(),
+        dependency_findings: context.dependency_findings,
+        selected_edge_count,
+        nodes,
+        edges: rendered_edges,
+    })
+}
+
+fn dependency_signal_context(findings: &[Finding]) -> DependencySignalContext {
+    let mut context = DependencySignalContext::default();
+    for finding in findings {
+        match finding.kind {
+            FindingKind::DependencyCycle => record_dependency_cycle(&mut context, finding),
+            FindingKind::DependencyHub => record_dependency_hub(&mut context, finding),
+            _ => {}
+        }
+    }
+    context
+}
+
+fn record_dependency_cycle(context: &mut DependencySignalContext, finding: &Finding) {
+    context.dependency_findings += 1;
+    context.cycle_paths.insert(finding.path.clone());
+    record_dependency_priority(
+        &mut context.priority_by_path,
+        &finding.path,
+        finding.priority,
+    );
+    for location in &finding.related_locations {
+        context.cycle_paths.insert(location.path.clone());
+        record_dependency_priority(
+            &mut context.priority_by_path,
+            &location.path,
+            finding.priority,
+        );
+    }
+}
+
+fn record_dependency_hub(context: &mut DependencySignalContext, finding: &Finding) {
+    context.dependency_findings += 1;
+    context.hub_paths.insert(finding.path.clone());
+    record_dependency_priority(
+        &mut context.priority_by_path,
+        &finding.path,
+        finding.priority,
+    );
+}
+
+fn record_dependency_priority(priorities: &mut BTreeMap<String, u8>, path: &str, priority: u8) {
+    priorities
+        .entry(path.to_string())
+        .and_modify(|current| *current = (*current).max(priority))
+        .or_insert(priority);
+}
+
+fn dependency_node_candidates(
+    report: &ScanReport,
+    context: &DependencySignalContext,
+) -> Vec<DependencyNodeCandidate> {
+    let mut candidates = report
+        .dependency_graph
+        .nodes
+        .iter()
+        .map(|node| DependencyNodeCandidate {
+            path: node.path.clone(),
+            fan_in: node.fan_in,
+            fan_out: node.fan_out,
+            priority: context
+                .priority_by_path
+                .get(&node.path)
+                .copied()
+                .unwrap_or(0),
+            is_cycle: context.cycle_paths.contains(&node.path),
+            is_hub: context.hub_paths.contains(&node.path),
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(compare_dependency_candidates);
+    candidates
+}
+
+fn selected_dependency_paths(candidates: &[DependencyNodeCandidate]) -> BTreeSet<String> {
+    candidates
+        .iter()
+        .take(DEPENDENCY_MAP_NODE_LIMIT)
+        .map(|candidate| candidate.path.clone())
+        .collect()
+}
+
+fn selected_dependency_candidates(
+    candidates: Vec<DependencyNodeCandidate>,
+    selected_paths: &BTreeSet<String>,
+) -> Vec<DependencyNodeCandidate> {
+    candidates
+        .into_iter()
+        .filter(|candidate| selected_paths.contains(&candidate.path))
+        .collect()
+}
+
+fn selected_dependency_edges<'a>(
+    report: &'a ScanReport,
+    selected_paths: &BTreeSet<String>,
+    context: &DependencySignalContext,
+) -> Vec<&'a crate::model::DependencyGraphEdge> {
+    let mut edges = report
+        .dependency_graph
+        .edges
+        .iter()
+        .filter(|edge| selected_paths.contains(&edge.from) && selected_paths.contains(&edge.to))
+        .collect::<Vec<_>>();
+    edges.sort_by(|left, right| {
+        dependency_edge_priority(right, context)
+            .cmp(&dependency_edge_priority(left, context))
+            .then_with(|| left.from.cmp(&right.from))
+            .then_with(|| left.to.cmp(&right.to))
+    });
+    edges
+}
+
+fn renderable_dependency_edges(
+    edges: Vec<&crate::model::DependencyGraphEdge>,
+    node_positions: &BTreeMap<String, (usize, f64, f64)>,
+    context: &DependencySignalContext,
+) -> Vec<DependencyMapEdge> {
+    edges
+        .into_iter()
+        .take(DEPENDENCY_MAP_EDGE_LIMIT)
+        .filter_map(|edge| {
+            let (_, from_x, from_y) = node_positions.get(&edge.from).copied()?;
+            let (_, to_x, to_y) = node_positions.get(&edge.to).copied()?;
+            Some(DependencyMapEdge {
+                from_x,
+                from_y,
+                to_x,
+                to_y,
+                class_name: dependency_edge_class(edge, context),
+            })
+        })
+        .collect()
+}
+
+fn compare_dependency_candidates(
+    left: &DependencyNodeCandidate,
+    right: &DependencyNodeCandidate,
+) -> std::cmp::Ordering {
+    right
+        .priority
+        .cmp(&left.priority)
+        .then_with(|| right.is_cycle.cmp(&left.is_cycle))
+        .then_with(|| right.is_hub.cmp(&left.is_hub))
+        .then_with(|| right.degree().cmp(&left.degree()))
+        .then_with(|| right.fan_in.cmp(&left.fan_in))
+        .then_with(|| right.fan_out.cmp(&left.fan_out))
+        .then_with(|| left.path.cmp(&right.path))
+}
+
+impl DependencyNodeCandidate {
+    fn degree(&self) -> usize {
+        self.fan_in + self.fan_out
+    }
+}
+
+fn layout_dependency_nodes(candidates: Vec<DependencyNodeCandidate>) -> Vec<DependencyMapNode> {
+    let total = candidates.len().max(1);
+    candidates
+        .into_iter()
+        .enumerate()
+        .map(|(index, candidate)| {
+            let angle = if total == 1 {
+                0.0
+            } else {
+                -PI / 2.0 + (2.0 * PI * index as f64 / total as f64)
+            };
+            let x = if total == 1 {
+                420.0
+            } else {
+                420.0 + 310.0 * angle.cos()
+            };
+            let y = if total == 1 {
+                190.0
+            } else {
+                190.0 + 132.0 * angle.sin()
+            };
+            let degree = candidate.degree();
+            let class_name = dependency_node_class(&candidate);
+            let reason = dependency_node_reason(&candidate);
+            let emphasis = if candidate.is_cycle {
+                2.4
+            } else if candidate.is_hub {
+                1.8
+            } else {
+                0.0
+            };
+
+            DependencyMapNode {
+                index: index + 1,
+                path: candidate.path,
+                fan_in: candidate.fan_in,
+                fan_out: candidate.fan_out,
+                priority: candidate.priority,
+                reason,
+                class_name,
+                x,
+                y,
+                radius: 8.5 + degree.min(12) as f64 * 0.7 + emphasis,
+            }
+        })
+        .collect()
+}
+
+fn dependency_node_class(candidate: &DependencyNodeCandidate) -> &'static str {
+    if candidate.is_cycle {
+        "cycle"
+    } else if candidate.is_hub {
+        "hub"
+    } else {
+        "normal"
+    }
+}
+
+fn dependency_node_reason(candidate: &DependencyNodeCandidate) -> String {
+    if candidate.is_cycle {
+        "cycle member".to_string()
+    } else if candidate.is_hub {
+        "hub candidate".to_string()
+    } else {
+        format!("degree {}", candidate.degree())
+    }
+}
+
+fn dependency_edge_priority(
+    edge: &crate::model::DependencyGraphEdge,
+    context: &DependencySignalContext,
+) -> u16 {
+    let endpoint_priority = context
+        .priority_by_path
+        .get(&edge.from)
+        .copied()
+        .unwrap_or(0)
+        .max(context.priority_by_path.get(&edge.to).copied().unwrap_or(0))
+        as u16;
+    let cycle_bonus = (context.cycle_paths.contains(&edge.from)
+        && context.cycle_paths.contains(&edge.to)) as u16
+        * 200;
+    let hub_bonus = (context.hub_paths.contains(&edge.from) || context.hub_paths.contains(&edge.to))
+        as u16
+        * 80;
+    cycle_bonus + hub_bonus + endpoint_priority
+}
+
+fn dependency_edge_class(
+    edge: &crate::model::DependencyGraphEdge,
+    context: &DependencySignalContext,
+) -> &'static str {
+    if context.cycle_paths.contains(&edge.from) && context.cycle_paths.contains(&edge.to) {
+        "cycle-edge"
+    } else if context.hub_paths.contains(&edge.from) || context.hub_paths.contains(&edge.to) {
+        "hub-edge"
+    } else {
+        "normal-edge"
+    }
 }
 
 fn churn_total(file: &FileRawMetric) -> usize {
@@ -763,6 +1230,10 @@ fn format_duration(duration_ms: u128) -> String {
     } else {
         format!("{:.2} s", duration_ms as f64 / 1_000.0)
     }
+}
+
+fn svg_number(value: f64) -> String {
+    format!("{value:.1}")
 }
 
 fn hotspot_model_label(model: crate::cli::HotspotModel) -> &'static str {
