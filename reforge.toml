@@ -1,5 +1,8 @@
 churn = "auto"
 hotspot-model = "hybrid"
+ignore-paths = [
+  "assets/report-app.js",
+]
 
 [[suppressions]]
 kind = "complex_function"
@@ -114,18 +117,6 @@ kind = "large_type"
 path = "src/cli.rs"
 line = 97
 reason = "ScanArgs mirrors the public CLI surface and is intentionally explicit"
-
-[[suppressions]]
-kind = "long_function"
-path = "src/output/html.rs"
-line = 395
-reason = "HTML finding renderer keeps static report markup in one cohesive pass"
-
-[[suppressions]]
-kind = "large_file"
-path = "src/output/html.rs"
-line = 1
-reason = "static HTML renderer stays self-contained to produce dependency-free reports"
 
 [[suppressions]]
 kind = "large_file"

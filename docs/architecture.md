@@ -23,7 +23,7 @@ scores findings, and renders reports.
   and hotspot ranking.
 - `src/baseline.rs`: schema 12 baseline loading, finding ID comparison, diff
   classification, and `--fail-on` gate selection.
-- `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF rendering.
+- `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF output entry points.
 
 `src/main.rs` re-exports internal modules under compatibility names such as
 `scanner`, `report`, `similar_functions`, and `structural` so existing inline
@@ -83,12 +83,45 @@ Progress is abstracted behind `ProgressSink`. `NoopProgress` is used when
 progress is disabled. `StderrProgress` writes either dynamic terminal progress
 or coarser line-oriented progress, depending on whether stderr is a TTY.
 
-Human, HTML, and SARIF output are rendered from the same `ScanReport` as JSON
-and YAML. The terminal-oriented renderer lives in `src/output/human.rs`, the
-static visual report renderer lives in `src/output/html.rs`, the SARIF 2.1.0
-renderer lives in `src/output/sarif.rs`, and `src/output/mod.rs` keeps the
+Human, HTML, and SARIF output are produced from the same `ScanReport` as JSON
+and YAML. The terminal-oriented renderer lives in `src/output/human.rs`, SARIF
+2.1.0 output lives in `src/output/sarif.rs`, and `src/output/mod.rs` keeps the
 format entry points and JSON/YAML writers. Color is applied only to human
 output.
+
+## HTML Report App
+
+`--output html` and output-file extensions `.html` or `.htm` produce a single
+offline HTML artifact. The active HTML implementation is the React +
+TypeScript report app.
+
+The data and packaging flow is:
+
+1. The Rust scanner builds a schema 12 `ScanReport`.
+2. The HTML output path serializes that report as JSON.
+3. Reforge writes an HTML shell containing the serialized report data.
+4. The shell inlines the compiled React bundle and CSS.
+5. The browser runs the embedded app locally with no network or server
+   dependency.
+
+Frontend source lives under `web/report-app`. Build the app there when the
+visual report changes:
+
+```powershell
+cd web\report-app
+npm ci
+npm run build
+```
+
+The build is expected to refresh the checked-in report assets:
+
+- `assets/report-app.js`
+- `assets/report-app.css`
+
+Keep those generated assets in sync with frontend source changes so Rust can
+embed the current app into the offline report. Update `docs/report-schema.md`
+when the `ScanReport` shape changes; the report app should read the documented
+schema rather than private scanner internals.
 
 ## Extension Points
 
@@ -118,4 +151,6 @@ To change report shape:
 1. Update `SCAN_REPORT_SCHEMA_VERSION`.
 2. Update serializable model types.
 3. Update `docs/report-schema.md`.
-4. Add or update report tests that pin important fields.
+4. Update the React report app when the visual report depends on the changed
+   fields.
+5. Add or update report tests that pin important fields.

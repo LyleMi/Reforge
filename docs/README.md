@@ -15,6 +15,8 @@ TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
   suppressions, and CLI precedence.
 - [Report Schema](report-schema.md): JSON/YAML schema version `12`, SARIF
   output, field meanings, and compatibility notes.
+- [HTML Report App](report-app.md): React report architecture, single-file
+  HTML output, and frontend build flow.
 
 ## Maintainer Docs
 
@@ -23,7 +25,7 @@ TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
 - [Detectors](detectors.md): every detector family, the signals it emits, and
   the thresholds or heuristics it uses.
 - [Architecture](architecture.md): scan pipeline, module boundaries, data flow,
-  parser integration, and extension points.
+  parser integration, HTML report app architecture, and extension points.
 - [Contributing](contributing.md): local development workflow, test
   expectations, style, and pull request guidance.
 - [Release](release.md): validation and packaging checklist for maintainers.

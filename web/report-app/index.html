@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reforge report app</title>
+  </head>
+  <body>
+    <script id="reforge-report-data" type="application/json">
+      {
+        "schema_version": 12,
+        "summary": {
+          "scanned_files": 0,
+          "finding_count": 0,
+          "hotspot_count": 0,
+          "similar_function_group_count": 0,
+          "duration_ms": 0,
+          "hotspot_model": "hybrid",
+          "churn": {
+            "mode": "auto",
+            "enabled": false,
+            "status": "not collected",
+            "reason": null,
+            "window_days": 30,
+            "max_commit_lines": 20000
+          }
+        },
+        "stats": {
+          "source_files_scanned": 0,
+          "directories_scanned": 0,
+          "function_candidates": 0
+        },
+        "metrics_summary": { "files": {}, "functions": {}, "types": {}, "churn": {} },
+        "raw_metrics": { "files": [], "functions": [], "types": [] },
+        "dependency_graph": { "nodes": [], "edges": [] },
+        "hotspots": [],
+        "findings": []
+      }
+    </script>
+    <div id="reforge-report-root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

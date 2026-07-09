@@ -63,7 +63,7 @@ cargo run -- scan . --output-file reforge-report.json --progress never
 The output file extension selects HTML, JSON, YAML, or SARIF automatically unless
 `--output` is set explicitly.
 
-Generate a static visual report:
+Generate a static offline HTML report:
 
 ```powershell
 cargo run -- scan . --output-file reforge-report.html --progress never
@@ -146,7 +146,7 @@ The scripts install or update the skill only. Add `-InstallCli` or
 The full documentation set lives in [docs/](docs/README.md), including the
 [user guide](docs/user-guide.md), [configuration reference](docs/configuration.md),
 [report schema](docs/report-schema.md), [metrics model](docs/metrics-model.md),
-[detector reference](docs/detectors.md), and
+[detector reference](docs/detectors.md), [HTML report app](docs/report-app.md), and
 [architecture notes](docs/architecture.md).
 
 ## What Reforge Detects
@@ -272,7 +272,7 @@ Write YAML:
 cargo run -- scan . --output yaml --output-file reforge-report.yaml --progress never
 ```
 
-Write a static HTML report:
+Write a static offline HTML report:
 
 ```powershell
 cargo run -- scan . --output html --output-file reforge-report.html --progress never
@@ -337,9 +337,11 @@ Watchlist
 Human output is organized for terminal triage: `Result` separates threshold
 signals from the hotspot `Watchlist`, `Signal mix` summarizes finding kinds,
 and each finding includes the ranking reason. HTML output renders the same
-scan as a static visual report with summary cards, risk distribution, file
-heatmap, dependency map, hotspots, similar-function groups, and prioritized
-findings. JSON and YAML use schema version 12 and include `summary`,
+scan with the React + TypeScript report app, packaged as a single offline
+`.html` artifact with the scan data, HTML shell, styles, and inline app bundle.
+The visual report includes summary cards, risk distribution, file heatmap,
+dependency map, hotspots, similar-function groups, and prioritized findings.
+JSON and YAML use schema version 12 and include `summary`,
 `metrics_summary`, `raw_metrics`, `dependency_graph`, `hotspots`, and
 `findings`. SARIF output targets SARIF 2.1.0
 with rules keyed by finding kind and results fingerprinted by Reforge finding

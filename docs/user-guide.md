@@ -160,7 +160,9 @@ SARIF output targets SARIF 2.1.0 for CI code-scanning integrations:
 cargo run -- scan . --output sarif --output-file reforge-report.sarif --progress never
 ```
 
-HTML output is a static visual report for local review:
+HTML output is a React-powered visual report for local review. It is still
+written as a single offline HTML artifact, so it can be opened directly in a
+browser without a server:
 
 ```powershell
 cargo run -- scan . --output html --output-file reforge-report.html --progress never
@@ -181,9 +183,11 @@ Human output is organized for quick terminal triage:
 - `Findings`: actionable threshold signals sorted by priority.
 - `Watchlist`: hotspot locations ranked by static risk, churn risk, or both.
 
-HTML output renders the same report as summary cards, a severity distribution
-bar, problem-dimension counts, a file heatmap, hotspot watchlist,
-similar-function groups, and prioritized findings.
+HTML output renders the same report through the React + TypeScript report app
+as summary cards, a severity distribution bar, problem-dimension counts, a file
+heatmap, hotspot watchlist, similar-function groups, and prioritized findings.
+When `--output` is omitted, `.html` and `.htm` output-file extensions select
+the same HTML report format automatically.
 
 Reports contain four main layers:
 

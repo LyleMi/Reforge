@@ -498,7 +498,7 @@ fn renders_sarif_report_with_rules_results_and_fingerprints() {
 }
 
 #[test]
-fn renders_html_report_with_visual_sections() {
+fn renders_html_report_with_react_shell_and_embedded_report_data() {
     let mut scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
@@ -582,44 +582,53 @@ fn renders_html_report_with_visual_sections() {
     let output = render_html_report(&scan_report);
 
     assert!(output.starts_with("<!doctype html>"));
-    assert!(output.contains("Refactoring signal console"));
-    assert!(output.contains("Signal plane"));
-    assert!(output.contains("Dependency Map"));
-    assert!(output.contains("role=\"img\" aria-label=\"Dependency graph focus map\""));
-    assert!(output.contains("shown nodes"));
+    assert!(output.contains("<title>Reforge scan report</title>"));
+    assert!(output.contains("id=\"reforge-report-root\""));
+    assert!(output.contains("id=\"reforge-report-data\" type=\"application/json\""));
+    assert!(output.contains("<script type=\"module\">"));
+    assert!(output.contains("createRoot"));
+    assert!(output.contains("\"schema_version\":12"));
+    assert!(output.contains("\"dependency_graph\""));
+    assert!(output.contains("\"hotspots\""));
+    assert!(output.contains("\"raw_metrics\""));
     assert!(output.contains("src/c.rs"));
-    assert!(output.contains("File Heatmap"));
-    assert!(output.contains("Similar Function Groups"));
-    assert!(output.contains("src/a.rs:10 alpha"));
-    assert!(output.contains("similar functions"));
-    assert!(output.contains("data-search-group=\"findings\""));
-    assert!(output.contains("data-search-group=\"hotspots\""));
-    assert!(output.contains("data-filter-field=\"severity\""));
-    assert!(output.contains("data-filter-field=\"kind\""));
-    assert!(output.contains("data-filter-field=\"level\""));
-    assert!(output.contains("data-sort-group=\"findings\""));
-    assert!(output.contains("data-filter-kind=\"similar_functions\""));
-    assert!(output.contains("data-filter-severity=\"warning\""));
-    assert!(output.contains("data-filter-level=\"function\""));
-    assert!(output.contains(&format!(
-        "data-sort-priority=\"{}\"",
-        scan_report.findings[0].priority
-    )));
-    assert!(output.contains("<details class=\"detail-block\"><summary>Related locations (2)"));
-    assert!(output.contains("data-filter-empty=\"findings\""));
-    assert!(output.contains("data-filter-empty=\"hotspots\""));
+    assert!(output.contains("similar_functions"));
+    assert!(output.contains("repeated edits and high static risk"));
 }
 
 #[test]
-fn html_report_paginates_long_sections_without_omitting_items() {
+fn html_report_embeds_all_findings_for_client_side_rendering() {
     let findings = (0..12)
         .map(|index| large_file(&format!("src/file_{index}.rs"), 1_200 + index))
         .collect::<Vec<_>>();
 
     let output = render_html_report(&report(findings));
 
-    assert!(output.contains("data-page-controls=\"findings\""));
-    assert!(output.contains("data-page-size=\"6\""));
-    assert!(output.contains("src/file_11.rs:1"));
+    assert!(output.contains("src/file_0.rs"));
+    assert!(output.contains("src/file_11.rs"));
     assert!(!output.contains("more findings omitted"));
+}
+
+#[test]
+fn html_report_embedded_assets_do_not_close_raw_text_elements() {
+    let output = render_html_report(&report(Vec::new()));
+
+    assert_eq!(output.matches("</style>").count(), 1);
+    assert_eq!(output.matches("</script>").count(), 2);
+}
+
+#[test]
+fn html_report_escapes_json_before_embedding_it_in_script_data() {
+    let output = render_html_report(&report(vec![make_finding(
+        FindingKind::LargeFile,
+        "src/</script><div>.rs",
+        Some(1),
+        "file contains </script> marker",
+        vec![FindingMetric::threshold("file_lines", 900, 800, "lines")],
+        Vec::new(),
+    )]));
+
+    assert!(output.contains("src/\\u003c/script\\u003e\\u003cdiv\\u003e.rs"));
+    assert!(!output.contains("src/</script><div>.rs"));
+    assert!(!output.contains("file contains </script> marker"));
 }
