@@ -22,6 +22,8 @@ TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
 
 - [Metrics Model](metrics-model.md): raw metrics, percentile summaries,
   priority scoring, confidence, severity, and hotspot ranking.
+- [Calibration Samples](calibration-samples.md): anonymized, non-normative
+  sample scan results used to sanity-check thresholds and report volume.
 - [Detectors](detectors.md): every detector family, the signals it emits, and
   the thresholds or heuristics it uses.
 - [Architecture](architecture.md): scan pipeline, module boundaries, data flow,
