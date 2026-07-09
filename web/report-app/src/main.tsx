@@ -666,7 +666,7 @@ function ReportApp({ report }: { report: ScanReport }) {
       <header className="report-header">
         <div>
           <span className="eyebrow">Reforge schema {report.schema_version ?? "unknown"}</span>
-          <h1>Refactoring signal console</h1>
+          <h1>Reforge scan report</h1>
           <p>
             {formatNumber(number(summary.scanned_files, number(stats.source_files_scanned)))} files scanned in {formatDuration(number(summary.duration_ms))}; churn is {summary.churn?.enabled ? "enabled" : "disabled"}.
           </p>
