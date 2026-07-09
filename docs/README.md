@@ -1,8 +1,9 @@
 # Reforge Documentation
 
-Reforge is a Rust CLI for detecting refactoring signals across source trees.
-This documentation expands the root README into stable user and maintainer
-references.
+Reforge is a Rust CLI for detecting maintainability and refactoring signals
+across source trees. It is not a quality score, health score, bug detector, or
+defect probability model. This documentation expands the root README into
+stable user and maintainer references.
 
 Tree-sitter structural and similar-function analysis covers Rust, JavaScript,
 TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
@@ -10,18 +11,20 @@ TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
 ## User Docs
 
 - [User Guide](user-guide.md): install, run scans, tune CLI options, read
-  output, install the optional agent skill, and troubleshoot common failures.
+  output, calibrate CI gates, install the optional agent skill, and
+  troubleshoot common failures.
 - [Configuration](configuration.md): `reforge.toml` discovery, supported keys,
   suppressions, and CLI precedence.
-- [Report Schema](report-schema.md): JSON/YAML schema version `12`, SARIF
-  output, field meanings, and compatibility notes.
+- [Report Schema](report-schema.md): JSON/YAML schema version `13`, SARIF
+  output, field meanings, suppression summary context, and compatibility
+  notes.
 - [HTML Report App](report-app.md): React report architecture, single-file
   HTML output, and frontend build flow.
 
 ## Maintainer Docs
 
 - [Metrics Model](metrics-model.md): raw metrics, percentile summaries,
-  priority scoring, confidence, severity, and hotspot ranking.
+  priority scoring, confidence, severity, hotspot ranking, and calibration.
 - [Calibration Samples](calibration-samples.md): anonymized, non-normative
   sample scan results used to sanity-check thresholds and report volume.
 - [Detectors](detectors.md): every detector family, the signals it emits, and

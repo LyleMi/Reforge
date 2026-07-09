@@ -7,7 +7,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use crate::cli::{FindingControlArgs, ScanArgs};
 #[cfg(test)]
 use crate::model::Severity;
-use crate::model::{Finding, FindingKind, serialized_finding_kind};
+use crate::model::{Finding, FindingKind, SuppressionSummary, serialized_finding_kind};
 
 use super::config::ConfigSuppression;
 
@@ -18,12 +18,26 @@ pub(super) fn apply_finding_controls(
     root: &Path,
     args: &ScanArgs,
     config_suppressions: &[ConfigSuppression],
-) -> Result<()> {
+) -> Result<SuppressionSummary> {
     let filters = FindingFilters::from_args(&args.finding_controls)?;
     let suppressions = Suppressions::load(root, findings, config_suppressions)?;
+    let mut summary = SuppressionSummary::default();
+    let mut retained = Vec::with_capacity(findings.len());
 
-    findings.retain(|finding| filters.matches(finding) && !suppressions.matches(finding));
-    Ok(())
+    for finding in findings.drain(..) {
+        if !filters.matches(&finding) {
+            continue;
+        }
+
+        if suppressions.matches(&finding) {
+            summary.record(&finding);
+        } else {
+            retained.push(finding);
+        }
+    }
+
+    *findings = retained;
+    Ok(summary)
 }
 
 #[derive(Debug, Default)]

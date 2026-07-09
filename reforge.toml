@@ -144,6 +144,12 @@ reason = "scanner integration tests stay colocated with scan orchestration behav
 
 [[suppressions]]
 kind = "large_public_surface"
+path = "src/model/mod.rs"
+line = 1
+reason = "report schema model intentionally centralizes serialized public fields"
+
+[[suppressions]]
+kind = "large_public_surface"
 path = "src/cli.rs"
 line = 1
 reason = "CLI module intentionally exposes the complete clap argument model"

@@ -176,6 +176,9 @@ generated/dependency directory list; it does not override git ignore rules.
 Use suppressions for intentional findings that should be absent from reports
 and CI gates. Suppressions remove matching entries from `findings`; they do not
 remove hotspot watchlist entries, because hotspots are ranked from raw metrics.
+Suppression summary context should stay visible in reviews so a report with
+zero findings is read as zero unsuppressed findings, not as proof that no
+maintainability signals were measured.
 Config suppressions use TOML tables:
 
 ```toml

@@ -3,6 +3,10 @@
 This guide covers installing Reforge, running scans, choosing output formats,
 tuning thresholds, and troubleshooting common problems.
 
+Reforge reports maintainability and refactoring signals. It does not produce a
+quality score, health score, bug probability, or proof that code is safe to
+change.
+
 ## Installation
 
 Reforge requires Rust 1.85 or newer.
@@ -177,7 +181,7 @@ to control ANSI color in human output.
 Human output is organized for quick terminal triage:
 
 - `Result`: total threshold signals, severity counts, hotspot watchlist size,
-  and similar-function group count.
+  suppression summary when present, and similar-function group count.
 - `Scan details`: source files, directories, and function candidates scanned.
 - `Signal mix`: finding counts by detector kind, shown when findings exist.
 - `Findings`: actionable threshold signals sorted by priority.
@@ -189,18 +193,25 @@ heatmap, hotspot watchlist, similar-function groups, and prioritized findings.
 When `--output` is omitted, `.html` and `.htm` output-file extensions select
 the same HTML report format automatically.
 
-Reports contain four main layers:
+Reports contain four main data layers plus suppression audit context:
 
 - `raw_metrics`: file, function, type, and churn measurements.
 - `metrics_summary`: percentile summaries for the scanned project.
 - `hotspots`: file, function, and type locations ranked by static risk, churn
   risk, or both.
+- `suppression_summary`: counts of findings removed by suppressions.
 - `findings`: actionable refactoring signals derived from thresholds and
   detectors.
 
 Severity comes from `priority`: `info` is below 35, `warning` is 35 through
 69, and `critical` is 70 or above. Priority is a refactoring priority signal,
 not a claim that the code is defective.
+
+`findings=0` means no findings remain after scoring, filters, and
+suppressions. It does not prove code quality, rule out bugs, or mean the
+hotspot watchlist and raw metrics are empty. When suppressions are used, keep
+the suppression summary visible so reviewers can distinguish zero
+unsuppressed findings from zero observed signals.
 
 Every finding in JSON, YAML, and SARIF has a stable `id` with an `rf1-` prefix.
 The ID is derived from the finding kind, primary location, related locations,
@@ -235,11 +246,19 @@ Tune churn collection with `--churn-window-days` and
 `--churn-max-commit-lines`. Commits above the max added+deleted line count are
 ignored so large mechanical changes do not dominate results.
 
+Hotspots are a watchlist, not findings. Use them to choose where to inspect or
+plan refactoring work; do not treat hotspot presence alone as a hard CI gate.
+
 ## CI Gates and Baselines
 
 Use `--fail-on info|warning|critical` to make a scan exit nonzero when selected
 findings meet or exceed that severity. Reforge writes the requested report
 before returning the failing exit status.
+
+CI gates evaluate selected findings only. They do not fail on raw metrics,
+metric summaries, or hotspot watchlist entries by themselves. Suppressed
+findings are excluded from gate selection, so suppression summary context
+matters when a blocking gate reports zero findings.
 
 Without `--baseline`, all current findings are selected:
 
@@ -247,7 +266,7 @@ Without `--baseline`, all current findings are selected:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-With `--baseline <PATH>`, Reforge reads a prior schema 12 JSON or YAML report
+With `--baseline <PATH>`, Reforge reads a prior schema 13 JSON or YAML report
 and matches findings by stable `id`. Older reports without IDs are rejected;
 regenerate the baseline with the current Reforge.
 
@@ -271,6 +290,13 @@ unchanged unless the display filter is selected.
 ```powershell
 cargo run -- scan . --baseline baseline.json --show new-or-worse --output human --progress never
 ```
+
+Before making a gate blocking, calibrate it on several real projects. Run the
+same JSON settings across representative repositories, compare high-priority
+findings with maintainers' refactoring backlog, tune thresholds only for
+repeatable noise or blind spots, and validate the settings on a holdout
+project. Prefer `--baseline-mode new-or-worse` for pull request gates so
+unchanged legacy findings stay visible without blocking every change.
 
 ## CLI Reference
 
@@ -319,7 +345,7 @@ git churn.
 | `--min-data-clump-occurrences` | `4` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a specific configuration file. |
-| `--baseline` | none | Read a prior schema 12 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 13 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
 | `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |

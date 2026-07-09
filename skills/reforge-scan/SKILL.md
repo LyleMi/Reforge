@@ -25,7 +25,7 @@ cargo run --manifest-path <reforge-repo>/Cargo.toml -- scan <target-repo> --outp
 4. If no installed binary or source checkout is available, ask the user to install the CLI or provide a Reforge checkout path before scanning.
 5. Read the report and group findings by user impact, blast radius, and confidence. Treat high-severity threshold findings and large repeated groups as stronger signals than one-off info findings.
 6. Recommend scoped refactors. Prefer local, behavior-preserving cleanup unless the report shows cross-module duplication or drift.
-7. If making code changes, run the relevant project tests after edits. Reforge findings are signals, not proof that a refactor is safe.
+7. If making code changes, run the relevant project tests after edits. Reforge findings are maintainability and refactoring signals, not proof that a refactor is safe, that code is low quality, or that a bug exists.
 
 ## Running Reforge
 
@@ -107,6 +107,7 @@ reforge scan . --baseline baseline.json --baseline-mode new-or-worse --fail-on w
 - Keep tests out of similar-function analysis by default. Add `--include-test-similarity` when repeated test setup or test helper extraction is the goal.
 - Keep tests out of general structural analysis by default. Add `--include-test-structure` when structural issues in tests are in scope.
 - Use `--baseline` with `--baseline-mode new-or-worse` and `--fail-on warning` for pull request gates that should not fail on unchanged legacy findings.
+- Treat hotspots as a watchlist, not a hard CI gate. `--fail-on` evaluates selected findings, not raw metrics or hotspot entries by themselves.
 - Lower `--max-file-lines`, `--max-function-lines`, or `--max-function-complexity` for mature codebases with strict maintainability budgets.
 - Raise similarity strictness with `--function-similarity 0.9` when noisy duplication reports would slow the user down.
 - Tune `--min-repeated-literal-occurrences` and `--min-data-clump-occurrences` when repeated literals, repeated error handling, data clumps, or test setup duplication are too noisy or too sparse.
@@ -130,19 +131,21 @@ cargo run -- scan . --output json --output-file reforge-self-report.json --progr
 
 ## Interpreting Findings
 
-Reports contain `raw_metrics`, `metrics_summary`, `hotspots`, and `findings`. Human output sorts findings by descending `priority`; JSON and YAML expose `priority`, `confidence`, `priority_factors`, and `rank_explanation` for downstream ranking.
+Reports contain `raw_metrics`, `metrics_summary`, `hotspots`, `suppression_summary`, and `findings`. Human output sorts findings by descending `priority`; JSON and YAML expose `priority`, `confidence`, `priority_factors`, and `rank_explanation` for downstream ranking. `priority` is refactoring priority, not defect probability, a quality grade, or a health score.
 
 Prioritize findings in this order:
 
 1. Critical findings that exceed thresholds by a wide margin.
-2. High-priority hotspots, especially when static risk and churn risk point to the same file, function, or type.
-3. Structural hotspots such as long functions, high complexity, deep nesting, many parameters, large types, import-heavy files, and large public surfaces.
-4. Repeated drift patterns that cross files or modules, especially shadowed abstractions, duplicate data shapes, adapter boundary bypasses, and parallel implementations.
-5. Similar functions with enough body tokens to indicate real duplication.
-6. Repeated literals, repeated error patterns, data clumps, and test setup duplication when they cluster around the same subsystem.
-7. Large directories, directory drift, mixed naming styles, and TODO/FIXME clusters as navigation and ownership signals.
-8. Info-level findings as backlog candidates unless they cluster around the same subsystem.
+2. Repeated drift patterns that cross files or modules, especially shadowed abstractions, duplicate data shapes, adapter boundary bypasses, and parallel implementations.
+3. Similar functions with enough body tokens to indicate real duplication.
+4. Repeated literals, repeated error patterns, data clumps, and test setup duplication when they cluster around the same subsystem.
+5. Large directories, directory drift, mixed naming styles, and TODO/FIXME clusters as navigation and ownership signals.
+6. Info-level findings as backlog candidates unless they cluster around the same subsystem.
+
+Use hotspots after findings as watchlist context, especially when static risk and churn risk point to the same file, function, or type. Do not report hotspots as CI failures unless a separate project policy explicitly says so.
+
+`findings=0` means no unsuppressed findings remain after scoring, filtering, and suppressions. It does not prove code quality or rule out bugs. If suppressions are used, include suppression summary context so reviewers can see that the result means zero unsuppressed findings.
 
 Use `priority`, `confidence`, `priority_factors`, `rank_explanation`, and related locations when explaining why a finding matters. Avoid claiming Reforge found bugs; describe findings as maintainability or refactoring signals.
 
-When reporting results, include the command used, output file path if any, churn status, hotspot model, top findings, and suggested next actions.
+When reporting results, include the command used, output file path if any, churn status, hotspot model, suppression summary when nonzero, top findings, and suggested next actions.

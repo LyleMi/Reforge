@@ -653,6 +653,13 @@ function ReportApp({ report }: { report: ScanReport }) {
   const similarGroups = useMemo(() => groupSimilarFindings(findings), [findings]);
   const summary = report.summary ?? {};
   const stats = report.stats ?? {};
+  const suppression = report.suppression_summary ?? {};
+  const suppressedCount = number(suppression.suppressed_count);
+  const highestSuppressedPriority = suppression.highest_suppressed_priority;
+  const suppressionMeta =
+    typeof highestSuppressedPriority === "number" && Number.isFinite(highestSuppressedPriority)
+      ? `highest p${highestSuppressedPriority}`
+      : "accepted";
 
   return (
     <main className="report-shell">
@@ -672,6 +679,11 @@ function ReportApp({ report }: { report: ScanReport }) {
 
       <section className="summary-grid" aria-label="Report summary">
         <SummaryCard label="Hotspots" value={formatNumber(hotspots.length)} meta={text(summary.hotspot_model, "model")} />
+        <SummaryCard
+          label="Suppressed"
+          value={formatNumber(suppressedCount)}
+          meta={suppressionMeta}
+        />
         <SummaryCard label="Similar groups" value={formatNumber(similarGroups.length)} meta="duplication" />
         <SummaryCard label="Functions" value={formatNumber(number(stats.function_candidates))} meta="candidates" />
         <SummaryCard label="Directories" value={formatNumber(number(stats.directories_scanned))} meta="scanned" />

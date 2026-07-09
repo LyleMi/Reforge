@@ -245,7 +245,7 @@ pub struct CiArgs {
     #[arg(long, value_enum, default_value_t = BaselineShow::All)]
     pub show: BaselineShow,
 
-    /// Exit with a failure when selected findings meet or exceed this severity.
+    /// Exit with a failure when selected unsuppressed findings meet or exceed this severity.
     #[arg(long, value_enum)]
     pub fail_on: Option<FailOnSeverity>,
 }

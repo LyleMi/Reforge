@@ -14,7 +14,7 @@ use crate::documentation::scan_documentation;
 use crate::model::{
     ChurnFileMetric, DependencyGraphSnapshot, FileRawMetric, Finding, FindingKind, FindingMetric,
     FunctionRawMetric, RawMetrics, SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary,
-    TypeRawMetric,
+    SuppressionSummary, TypeRawMetric,
 };
 use crate::scoring::{
     FindingInput, StaticRiskThresholds, finalize_scoring, finding, rank_hotspots,
@@ -123,7 +123,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         StaticRiskThresholds::from(&effective_args),
     );
     finalize_scoring(&mut scan.findings, &scan.raw_metrics, &hotspots);
-    let similar_function_group_count = apply_post_score_finding_controls(
+    let post_score_controls = apply_post_score_finding_controls(
         &mut scan,
         &root,
         &effective_args,
@@ -134,7 +134,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         scanned_files: scan.stats.source_files_scanned,
         finding_count: scan.findings.len(),
         hotspot_count: hotspots.len(),
-        similar_function_group_count,
+        similar_function_group_count: post_score_controls.similar_function_group_count,
         duration_ms: started_at.elapsed().as_millis(),
         hotspot_model: effective_args
             .hotspot_model
@@ -156,6 +156,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         raw_metrics: scan.raw_metrics,
         dependency_graph: scan.dependency_graph,
         hotspots,
+        suppression_summary: post_score_controls.suppression_summary,
         findings: scan.findings,
     })
 }
@@ -180,18 +181,28 @@ fn run_scan_signals(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PostScoreControls {
+    similar_function_group_count: usize,
+    suppression_summary: SuppressionSummary,
+}
+
 fn apply_post_score_finding_controls(
     scan: &mut SourceScan,
     root: &Path,
     args: &ScanArgs,
     suppressions: &[ConfigSuppression],
-) -> Result<usize> {
-    apply_finding_controls(&mut scan.findings, root, args, suppressions)?;
-    Ok(scan
+) -> Result<PostScoreControls> {
+    let suppression_summary = apply_finding_controls(&mut scan.findings, root, args, suppressions)?;
+    let similar_function_group_count = scan
         .findings
         .iter()
         .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
-        .count())
+        .count();
+    Ok(PostScoreControls {
+        similar_function_group_count,
+        suppression_summary,
+    })
 }
 
 fn merge_structure_raw_metrics(raw_metrics: &mut RawMetrics, parsed_sources: &[ParsedSourceFile]) {

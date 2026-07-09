@@ -21,7 +21,7 @@ scores findings, and renders reports.
   implementations.
 - `src/scoring/mod.rs`: metric summaries, priority scoring, severity mapping,
   and hotspot ranking.
-- `src/baseline.rs`: schema 12 baseline loading, finding ID comparison, diff
+- `src/baseline.rs`: schema 13 baseline loading, finding ID comparison, diff
   classification, and `--fail-on` gate selection.
 - `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF output entry points.
 
@@ -48,16 +48,19 @@ into clearer directories.
 9. Rank hotspots with the chosen model.
 10. Finalize finding metrics, priority, confidence, severity, and ranking
     explanations.
-11. Render human, HTML, JSON, YAML, or SARIF output to stdout or
+11. Apply finding filters and suppressions, recording `suppression_summary`
+    for findings removed by suppressions.
+12. Render human, HTML, JSON, YAML, or SARIF output to stdout or
     `--output-file`.
-12. Apply `--fail-on` to all current findings or to the baseline-selected
-    finding set after the report is written. Human output can also render
-    baseline diff counts and `--show`-selected current findings.
+13. Apply `--fail-on` to all current unsuppressed findings or to the
+    baseline-selected finding set after the report is written. Human output
+    can also render baseline diff counts and `--show`-selected current
+    findings.
 
 ## Data Flow
 
 `ScanArgs` is the input configuration. `scan_report` produces a `ScanReport`
-with schema version `12`. Detectors emit `Finding` values with metrics and
+with schema version `13`. Detectors emit `Finding` values with metrics and
 related locations. The dependency-graph detector also emits a resolved
 source-file graph snapshot. Scoring later enriches findings with dimensions,
 normalized values, percentiles, `priority_factors`, `priority`, `severity`,
@@ -97,7 +100,7 @@ TypeScript report app.
 
 The data and packaging flow is:
 
-1. The Rust scanner builds a schema 12 `ScanReport`.
+1. The Rust scanner builds a schema 13 `ScanReport`.
 2. The HTML output path serializes that report as JSON.
 3. Reforge writes an HTML shell containing the serialized report data.
 4. The shell inlines the compiled React bundle and CSS.

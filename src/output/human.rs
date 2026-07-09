@@ -165,6 +165,9 @@ impl ReportRenderContext<'_, '_, '_> {
             "Watchlist",
             format!("{} hotspots", self.report.summary.hotspot_count),
         );
+        if self.report.suppression_summary.suppressed_count > 0 {
+            self.render_summary_row("Suppressed", render_suppression_summary(self.report));
+        }
         self.render_summary_row(
             "Similar groups",
             self.report.summary.similar_function_group_count,
@@ -472,6 +475,31 @@ fn render_metric_summary(finding: &Finding) -> Option<String> {
             .collect::<Vec<_>>()
             .join(", "),
     )
+}
+
+fn render_suppression_summary(report: &ScanReport) -> String {
+    let summary = &report.suppression_summary;
+    let mut value = format!("{} findings", summary.suppressed_count);
+    if let Some(priority) = summary.highest_suppressed_priority {
+        value.push_str(&format!(" (highest p={priority})"));
+    }
+
+    value.push_str(&format!(
+        "; critical {} | warning {} | info {}",
+        suppressed_severity_count(report, Severity::Critical),
+        suppressed_severity_count(report, Severity::Warning),
+        suppressed_severity_count(report, Severity::Info)
+    ));
+    value
+}
+
+fn suppressed_severity_count(report: &ScanReport, severity: Severity) -> usize {
+    report
+        .suppression_summary
+        .suppressed_by_severity
+        .get(&severity)
+        .copied()
+        .unwrap_or(0)
 }
 
 fn concise_finding_message(finding: &Finding) -> String {

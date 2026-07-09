@@ -106,6 +106,13 @@ export type ScanStats = {
   function_candidates?: number;
 };
 
+export type SuppressionSummary = {
+  suppressed_count?: number;
+  suppressed_by_kind?: Record<string, number>;
+  suppressed_by_severity?: Record<string, number>;
+  highest_suppressed_priority?: number | null;
+};
+
 type MetricScope = "files" | "functions" | "types" | "churn";
 type RawMetricScope = "functions" | "types";
 
@@ -128,5 +135,6 @@ export type ScanReport = {
   raw_metrics?: RawMetrics;
   dependency_graph?: DependencyGraph;
   hotspots?: Hotspot[];
+  suppression_summary?: SuppressionSummary;
   findings?: Finding[];
 };

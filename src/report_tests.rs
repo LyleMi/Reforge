@@ -4,8 +4,8 @@ use crate::model::{
 };
 use crate::scanner::{
     ChurnFileMetric, ChurnSummary, FileRawMetric, FindingInput, FindingMetric, MetricsSummary,
-    RawMetrics, RelatedLocation, SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary, finding,
-    scored_finding, severity_for_priority,
+    RawMetrics, RelatedLocation, SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary,
+    SuppressionSummary, finding, scored_finding, severity_for_priority,
 };
 
 fn report(findings: Vec<Finding>) -> ScanReport {
@@ -40,6 +40,7 @@ fn report(findings: Vec<Finding>) -> ScanReport {
         raw_metrics: RawMetrics::default(),
         dependency_graph: DependencyGraphSnapshot::default(),
         hotspots: Vec::new(),
+        suppression_summary: SuppressionSummary::default(),
         findings,
     }
 }
@@ -248,6 +249,28 @@ fn renders_hotspots_even_when_no_findings() {
 }
 
 #[test]
+fn renders_suppression_summary_when_findings_are_suppressed() {
+    let mut scan_report = report(Vec::new());
+    scan_report.suppression_summary.suppressed_count = 2;
+    scan_report
+        .suppression_summary
+        .suppressed_by_severity
+        .insert(Severity::Warning, 1);
+    scan_report
+        .suppression_summary
+        .suppressed_by_severity
+        .insert(Severity::Info, 1);
+    scan_report.suppression_summary.highest_suppressed_priority = Some(58);
+
+    let output = render_human_report(&scan_report);
+
+    assert!(output.contains(
+        "Suppressed           2 findings (highest p=58); critical 0 | warning 1 | info 1"
+    ));
+    assert!(output.contains("No threshold signals found."));
+}
+
+#[test]
 fn renders_human_baseline_diff_summary_and_selected_findings() {
     let same = large_file("src/same.rs", 900);
     let mut old_worse = large_file("src/worse.rs", 900);
@@ -316,7 +339,7 @@ fn renders_human_baseline_diff_when_selected_findings_are_empty() {
 }
 
 #[test]
-fn renders_json_report_schema_v12_with_stable_ids_and_priority_metadata() {
+fn renders_json_report_schema_v13_with_stable_ids_and_priority_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
@@ -340,6 +363,7 @@ fn renders_json_report_schema_v12_with_stable_ids_and_priority_metadata() {
     assert!(value.get("raw_metrics").is_some());
     assert!(value.get("dependency_graph").is_some());
     assert!(value.get("hotspots").is_some());
+    assert!(value.get("suppression_summary").is_some());
     assert!(
         value["findings"][0]["id"]
             .as_str()
@@ -587,9 +611,13 @@ fn renders_html_report_with_react_shell_and_embedded_report_data() {
     assert!(output.contains("id=\"reforge-report-data\" type=\"application/json\""));
     assert!(output.contains("<script type=\"module\">"));
     assert!(output.contains("createRoot"));
-    assert!(output.contains("\"schema_version\":12"));
+    assert!(output.contains(&format!(
+        "\"schema_version\":{}",
+        SCAN_REPORT_SCHEMA_VERSION
+    )));
     assert!(output.contains("\"dependency_graph\""));
     assert!(output.contains("\"hotspots\""));
+    assert!(output.contains("\"suppression_summary\""));
     assert!(output.contains("\"raw_metrics\""));
     assert!(output.contains("src/c.rs"));
     assert!(output.contains("similar_functions"));

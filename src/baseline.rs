@@ -274,6 +274,7 @@ mod tests {
             raw_metrics: crate::model::RawMetrics::default(),
             dependency_graph: crate::model::DependencyGraphSnapshot::default(),
             hotspots: Vec::new(),
+            suppression_summary: crate::model::SuppressionSummary::default(),
             findings,
         }
     }

@@ -502,6 +502,108 @@ fn cli_ignore_paths_are_added_to_config_ignore_paths() -> Result<()> {
 }
 
 #[test]
+fn suppression_summary_counts_reportable_suppressed_findings() -> Result<()> {
+    let root = test_root("suppression-summary");
+    let debt_marker = ["TO", "DO"].concat();
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(
+        root.join("reforge.toml"),
+        "\
+[[suppressions]]
+kind = \"debt_marker\"
+path = \"src/main.rs\"
+line = 1
+reason = \"tracked elsewhere\"
+",
+    )?;
+    fs::write(
+        root.join("src/main.rs"),
+        format!(
+            "\
+// {debt_marker}: config suppressed
+// reforge:ignore-next-line debt_marker accepted generated marker
+// {debt_marker}: inline suppressed
+// {debt_marker}: reported
+"
+        ),
+    )?;
+
+    let mut progress = NoopProgress;
+    let report = scan_report(&scan_args(root.clone(), false), &mut progress)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert_eq!(report.findings.len(), 1);
+    assert_eq!(report.findings[0].line, Some(4));
+    assert_eq!(report.suppression_summary.suppressed_count, 2);
+    assert_eq!(
+        report
+            .suppression_summary
+            .suppressed_by_kind
+            .get(&FindingKind::DebtMarker),
+        Some(&2)
+    );
+    assert_eq!(
+        report
+            .suppression_summary
+            .suppressed_by_severity
+            .get(&Severity::Info),
+        Some(&2)
+    );
+    assert!(
+        report
+            .suppression_summary
+            .highest_suppressed_priority
+            .is_some()
+    );
+    Ok(())
+}
+
+#[test]
+fn ci_gate_uses_unsuppressed_findings_not_hotspots_or_suppressed_findings() -> Result<()> {
+    let root = test_root("suppressed-gate");
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(
+        root.join("reforge.toml"),
+        "\
+[[suppressions]]
+kind = \"large_file\"
+path = \"src/large.rs\"
+line = 1
+reason = \"legacy file tracked separately\"
+",
+    )?;
+    fs::write(root.join("src/large.rs"), "// filler\n".repeat(900))?;
+
+    let mut args = scan_args(root.clone(), false);
+    args.churn = Some(crate::cli::ChurnMode::Off);
+    args.hotspot_model = Some(crate::cli::HotspotModel::Static);
+    let mut progress = NoopProgress;
+    let report = scan_report(&args, &mut progress)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert!(report.findings.is_empty());
+    assert_eq!(report.suppression_summary.suppressed_count, 1);
+    assert_eq!(
+        report
+            .suppression_summary
+            .suppressed_by_severity
+            .get(&Severity::Warning),
+        Some(&1)
+    );
+    assert!(!report.hotspots.is_empty());
+    assert!(
+        crate::baseline::gate_failures(
+            report.findings.iter(),
+            crate::cli::FailOnSeverity::Warning,
+        )
+        .is_empty()
+    );
+    Ok(())
+}
+
+#[test]
 fn gitignore_paths_are_skipped_by_default() -> Result<()> {
     let root = test_root("gitignore-paths");
     fs::create_dir_all(root.join("src"))?;

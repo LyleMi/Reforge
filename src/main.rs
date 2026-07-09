@@ -208,7 +208,7 @@ fn run_scan(args: ScanArgs) -> Result<()> {
 
     if !gate_failures.is_empty() {
         bail!(
-            "scan failed: {} selected findings met --fail-on {:?}",
+            "scan failed: {} selected unsuppressed findings met --fail-on {:?}",
             gate_failures.len(),
             args.ci.fail_on.expect("gate failures require fail-on")
         );

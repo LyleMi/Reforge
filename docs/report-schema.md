@@ -1,6 +1,6 @@
 # Report Schema
 
-JSON and YAML reports use schema version `12`. The same Rust data model is
+JSON and YAML reports use schema version `13`. The same Rust data model is
 serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 that carries the same finding IDs in result fingerprints.
 
@@ -8,36 +8,44 @@ that carries the same finding IDs in result fingerprints.
 
 ```json
 {
-  "schema_version": 12,
+  "schema_version": 13,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
   "raw_metrics": {},
   "dependency_graph": {},
   "hotspots": [],
+  "suppression_summary": {},
   "findings": []
 }
 ```
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `12`.
+- `schema_version`: report schema version. Current value is `13`.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
 - `raw_metrics`: file, function, type, and churn measurements.
 - `dependency_graph`: resolved source-file dependency graph snapshot.
 - `hotspots`: ranked file, function, and type locations.
+- `suppression_summary`: aggregate counts for findings removed by
+  suppressions.
 - `findings`: detector findings with priority, confidence, metrics, and
   related locations.
+
+Reports contain maintainability and refactoring signals. They are not a
+quality score, health score, bug detector, or defect probability model.
+`findings` is the post-scoring, post-filter, post-suppression list; an empty
+list does not mean raw metrics, hotspots, or suppressed signals were absent.
 
 ## `summary`
 
 Fields:
 
 - `scanned_files`: number of source files scanned.
-- `finding_count`: number of findings emitted.
-- `hotspot_count`: number of hotspots emitted.
+- `finding_count`: number of findings emitted after filters and suppressions.
+- `hotspot_count`: number of hotspots emitted for the watchlist.
 - `similar_function_group_count`: number of similar-function findings.
 - `duration_ms`: scan duration in milliseconds.
 - `hotspot_model`: `static`, `churn`, or `hybrid`.
@@ -155,6 +163,8 @@ Hotspot fields:
 - `reason`: short explanation of the ranking model and dominant risk.
 
 Hotspots are retained when `priority >= 35` and sorted by priority descending.
+They are watchlist entries, not detector findings, and should not be treated as
+hard CI gate failures by themselves.
 
 ## `findings`
 
@@ -211,6 +221,30 @@ uses the finding kind, normalized primary location, primary line, related
 locations, and metric names. It intentionally does not include message text or
 metric values, allowing baseline comparison to recognize an existing finding
 whose priority or severity has changed.
+
+`findings=0` means no unsuppressed findings were emitted. Consumers should
+avoid presenting that as proof that the scanned code is healthy or bug-free.
+
+## `suppression_summary`
+
+Fields:
+
+- `suppressed_count`: number of findings removed by suppressions.
+- `suppressed_by_kind`: map of finding kind to suppressed count.
+- `suppressed_by_severity`: map of severity to suppressed count.
+- `highest_suppressed_priority`: highest suppressed finding priority, or
+  `null` when no findings were suppressed.
+
+Suppressions remove matching entries from `findings` before report emission
+and CI gate selection. The suppression summary is report context, not a
+finding: its purpose is to show that findings were intentionally removed and
+whether an empty finding list means zero unsuppressed findings rather than zero
+observed signals.
+
+Schema version `13` does not serialize suppressed finding bodies in
+`findings`. Consumers should render `suppression_summary` near
+`summary.finding_count` and avoid counting suppressed findings as gate
+failures.
 
 ## SARIF Output
 
@@ -275,13 +309,15 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `12` does not emit the legacy v4 fields `score`, `score_breakdown`, or
+version `13` does not emit the legacy v4 fields `score`, `score_breakdown`, or
 `rank_reason`; use `priority`, `priority_factors`, and `rank_explanation`
-instead. Schema version `12` includes stable finding `id`, per-finding
-`recommendation`, and the `dependency_graph` snapshot. Schema version `11`
-included stable finding IDs and recommendations, but did not include
-`dependency_graph`. Reports without IDs should be regenerated before being used
-as baselines.
+instead. Schema version `13` includes stable finding `id`, per-finding
+`recommendation`, the `dependency_graph` snapshot, and `suppression_summary`.
+Schema version `12` included stable finding IDs, recommendations, and
+`dependency_graph`, but did not include suppression summary context. Schema
+version `11` included stable finding IDs and recommendations, but did not
+include `dependency_graph`. Reports without IDs should be regenerated before
+being used as baselines.
 
 New finding kinds may be added in future schema versions. Consumers should
 handle unknown `kind` values gracefully when possible.

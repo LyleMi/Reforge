@@ -12,12 +12,14 @@
   <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20html%20%7C%20json%20%7C%20yaml%20%7C%20sarif-6b46c1">
 </p>
 
-Reforge is a Rust CLI for reporting source-tree quality signals. It collects
-raw file, function, type, and optional git churn metrics first, then derives
-hotspots and findings from that project-wide model.
+Reforge is a Rust CLI for reporting source-tree maintainability and
+refactoring signals. It collects raw file, function, type, and optional git
+churn metrics first, then derives hotspots and findings from that
+project-wide model.
 
 It is designed for quick local audits, CI-friendly reports, and reviewing large
-or fast-moving codebases before refactoring work starts.
+or fast-moving codebases before refactoring work starts. It is not a quality
+score, health score, bug detector, or defect probability model.
 
 ## Highlights
 
@@ -151,7 +153,7 @@ The full documentation set lives in [docs/](docs/README.md), including the
 
 ## What Reforge Detects
 
-Reforge reports quality data in four layers:
+Reforge reports maintainability and refactoring data in four layers:
 
 - `raw_metrics`: file, function, type, and churn measurements for the scanned
   tree.
@@ -168,6 +170,12 @@ Finding priority is calculated from weighted impact, metric intensity,
 cross-file spread, churn pressure, actionability, and detector confidence.
 Hotspots do not overwrite finding priority; matching function/type churn is a
 small ranking signal, while file-level churn is capped for line-level findings.
+
+`findings=0` means no findings remain after scoring, filtering, and
+suppressions. It does not prove code quality, rule out bugs, or mean raw
+metrics and hotspots are empty. Hotspots are a watchlist for review and
+planning; they are not finding failures and should not be treated as a hard CI
+gate by themselves.
 
 Core scan signals:
 
@@ -290,7 +298,7 @@ Fail CI on current warning or critical findings:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-Compare against a prior schema 12 baseline and fail only on new or worse
+Compare against a prior schema 13 baseline and fail only on new or worse
 warning/critical findings:
 
 ```powershell
@@ -341,9 +349,9 @@ scan with the React + TypeScript report app, packaged as a single offline
 `.html` artifact with the scan data, HTML shell, styles, and inline app bundle.
 The visual report includes summary cards, risk distribution, file heatmap,
 dependency map, hotspots, similar-function groups, and prioritized findings.
-JSON and YAML use schema version 12 and include `summary`,
-`metrics_summary`, `raw_metrics`, `dependency_graph`, `hotspots`, and
-`findings`. SARIF output targets SARIF 2.1.0
+JSON and YAML use schema version 13 and include `summary`,
+`metrics_summary`, `raw_metrics`, `dependency_graph`, `hotspots`,
+`suppression_summary`, and `findings`. SARIF output targets SARIF 2.1.0
 with rules keyed by finding kind and results fingerprinted by Reforge finding
 ID. Findings expose stable `id`, `priority`, `confidence`, `priority_factors`,
 `rank_explanation`, `metrics`, and `related_locations`; legacy v4 fields
@@ -351,12 +359,18 @@ ID. Findings expose stable `id`, `priority`, `confidence`, `priority_factors`,
 similar-function groups include representative `related_locations` so reports
 stay bounded.
 
+When findings are suppressed, human output includes a `Suppressed` summary row
+with the suppressed count, severity mix, and highest suppressed priority. JSON
+and YAML expose the same audit context in `suppression_summary`.
+
 ## CI Gates and Baselines
 
-`--fail-on info|warning|critical` turns Reforge into a CI gate. Without a
-baseline, the gate evaluates all current findings after writing the requested
-report. With `--baseline <PATH>`, Reforge reads a prior schema 12 JSON or YAML
-report and matches findings by stable `id`.
+`--fail-on info|warning|critical` turns selected findings into a CI gate.
+Without a baseline, the gate evaluates all current findings after writing the
+requested report. With `--baseline <PATH>`, Reforge reads a prior schema 13
+JSON or YAML report and matches findings by stable `id`. The gate does not
+fail on hotspots alone; keep hotspot output as a watchlist for follow-up
+review, dashboards, or backlog planning.
 
 `--baseline-mode` controls which current findings are selected for the gate:
 
@@ -374,6 +388,12 @@ report view. This display option does not change `--baseline-mode` or
 
 Older reports without stable IDs are rejected as baselines; regenerate the
 baseline with the current Reforge before enabling the gate.
+
+Calibrate CI gates on several real repositories before making them blocking.
+Capture stable JSON with the same churn and hotspot settings, compare the top
+findings with maintainers' refactoring priorities, tune thresholds only when a
+detector is consistently too noisy or too quiet, then enable a baseline gate
+such as `--baseline-mode new-or-worse --fail-on warning`.
 
 ## Git Churn
 
@@ -439,7 +459,9 @@ to suppress the whole path. Inline comments also suppress specific findings:
 `reforge:ignore-next-line [kind[,kind...]] reason`, and
 `reforge:ignore-file [kind[,kind...]] reason`. Suppressions remove matching
 findings from reports and CI gates, but they do not remove hotspot watchlist
-entries derived from raw metrics.
+entries derived from raw metrics. Keep suppression summary information visible
+when reviewing reports so `findings=0` is understood as zero unsuppressed
+findings, not as proof that no maintainability signals were observed.
 
 ## CLI Reference
 
@@ -479,7 +501,7 @@ entries derived from raw metrics.
 | `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
-| `--baseline` | none | Read a prior schema 12 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 13 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
 | `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |

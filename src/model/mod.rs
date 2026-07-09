@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
 use crate::cli::{ChurnMode, HotspotModel};
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 12;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 13;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 pub(crate) const METRIC_NESTING_DEPTH: &str = "nesting_depth";
 pub(crate) const METRIC_PUBLIC_ITEMS: &str = "public_items";
@@ -558,6 +558,30 @@ pub struct Hotspot {
     pub reason: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SuppressionSummary {
+    pub suppressed_count: usize,
+    pub suppressed_by_kind: BTreeMap<FindingKind, usize>,
+    pub suppressed_by_severity: BTreeMap<Severity, usize>,
+    pub highest_suppressed_priority: Option<u8>,
+}
+
+impl SuppressionSummary {
+    pub fn record(&mut self, finding: &Finding) {
+        self.suppressed_count += 1;
+        *self.suppressed_by_kind.entry(finding.kind).or_insert(0) += 1;
+        *self
+            .suppressed_by_severity
+            .entry(finding.severity)
+            .or_insert(0) += 1;
+        self.highest_suppressed_priority = Some(
+            self.highest_suppressed_priority
+                .unwrap_or(0)
+                .max(finding.priority),
+        );
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScanReport {
     pub schema_version: u8,
@@ -567,5 +591,6 @@ pub struct ScanReport {
     pub raw_metrics: RawMetrics,
     pub dependency_graph: DependencyGraphSnapshot,
     pub hotspots: Vec<Hotspot>,
+    pub suppression_summary: SuppressionSummary,
     pub findings: Vec<Finding>,
 }

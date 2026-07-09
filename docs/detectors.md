@@ -2,7 +2,8 @@
 
 Reforge emits refactoring signals from threshold checks, Tree-sitter analysis,
 git churn, and heuristic drift detectors. Findings are signals for review; they
-are not automatic proof that code must be changed.
+are not automatic proof that code must be changed, that code is low quality, or
+that a bug exists.
 
 ## File and Directory Signals
 
@@ -169,6 +170,11 @@ Prefer findings with high priority, high confidence, cross-file spread, and
 clear related locations. Treat low-confidence heuristic findings as prompts for
 inspection, not automatic refactor instructions.
 
+`findings=0` means no findings remain after scoring, filters, and
+suppressions. It does not prove that the scanned code is healthy, bug-free, or
+free of maintainability pressure. Check hotspot watchlists, raw metrics, and
+suppression summary context when explaining an empty finding list.
+
 ## Filtering and Suppression
 
 Finding-kind controls use the snake-case detector names above. `--only` keeps
@@ -181,3 +187,8 @@ Intentional findings can be suppressed in source comments with
 Each directive accepts an optional comma-separated kind list followed by a
 reason. Long-lived suppressions can also be recorded in `reforge.toml` with
 `[[suppressions]]` entries.
+
+Suppressions remove matching findings from reports and CI gate selection, but
+they do not remove raw metrics or hotspot watchlist entries. Suppression
+summary information exists to preserve that audit context and prevent zero
+unsuppressed findings from being read as zero observed signals.
