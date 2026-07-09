@@ -47,6 +47,12 @@ To tighten structural checks:
 reforge scan . --progress never --max-function-lines 60 --max-function-complexity 10 --max-nesting-depth 3
 ```
 
+To use built-in threshold defaults before per-threshold overrides:
+
+```bash
+reforge scan . --preset strict --progress never
+```
+
 For quick human review:
 
 ```bash
@@ -101,6 +107,7 @@ reforge scan . --baseline baseline.json --baseline-mode new-or-worse --fail-on w
 - Use `--churn off --hotspot-model static` for reproducible CI snapshots or when comparing output across machines.
 - Use `--config <path>` when the repository has a `reforge.toml`, or rely on default discovery from the scan root upward.
 - Use `reforge init`, `reforge config validate`, and `reforge config show` when the task is to create, check, or inspect configuration without scanning source files.
+- Use `--preset strict`, `--preset balanced`, or `--preset relaxed` to start from built-in threshold sets. Threshold precedence is CLI per-threshold flags, CLI `--preset`, `reforge.toml` per-threshold values, `reforge.toml` `preset`, then built-in `balanced`.
 - Keep generated and dependency directories excluded by default. Add `--include-generated` only when the user explicitly wants generated output scanned.
 - Keep hidden files excluded by default. Add `--include-hidden` only when dotfiles or hidden source trees are in scope.
 - Keep tests scanned by default. Add `--exclude-tests` when the user wants production-source-only results or when test fixture volume would drown out application signals.

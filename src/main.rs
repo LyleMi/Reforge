@@ -42,7 +42,6 @@ mod unused_functions {
 }
 
 use anyhow::{Context, Result, bail};
-use clap::Parser;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, ErrorKind, IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -55,7 +54,7 @@ use crate::model::ScanReport;
 use crate::scan::{NoopProgress, StderrProgress};
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = Cli::parse_with_explicit_overrides();
 
     match cli.command {
         Command::Init(args) => run_init(args)?,

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::parser::ValueSource;
+use clap::{ArgMatches, Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_MAX_FILE_LINES: usize = 800;
@@ -23,6 +24,159 @@ pub const DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES: usize = 12;
 pub const DEFAULT_MIN_DATA_CLUMP_OCCURRENCES: usize = 4;
 pub const DEFAULT_CHURN_WINDOW_DAYS: usize = 180;
 pub const DEFAULT_CHURN_MAX_COMMIT_LINES: usize = 2_000;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ThresholdSettings {
+    pub file: FileThresholdSettings,
+    pub similarity: SimilarityThresholdSettings,
+    pub structure: StructureThresholdSettings,
+    pub repetition: RepetitionThresholdSettings,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileThresholdSettings {
+    pub max_file_lines: usize,
+    pub max_dir_files: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SimilarityThresholdSettings {
+    pub min_similar_functions: usize,
+    pub min_function_tokens: usize,
+    pub function_similarity: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StructureThresholdSettings {
+    pub max_function_lines: usize,
+    pub max_function_complexity: usize,
+    pub max_nesting_depth: usize,
+    pub max_function_parameters: usize,
+    pub max_type_lines: usize,
+    pub max_type_members: usize,
+    pub max_imports: usize,
+    pub max_public_items: usize,
+    pub max_functions_per_file: usize,
+    pub max_functions_per_100_lines: usize,
+    pub max_small_function_ratio: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RepetitionThresholdSettings {
+    pub min_repeated_literal_occurrences: usize,
+    pub min_data_clump_occurrences: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct ThresholdOverrideFlags {
+    pub max_file_lines: bool,
+    pub max_dir_files: bool,
+    pub min_similar_functions: bool,
+    pub min_function_tokens: bool,
+    pub function_similarity: bool,
+    pub max_function_lines: bool,
+    pub max_function_complexity: bool,
+    pub max_nesting_depth: bool,
+    pub max_function_parameters: bool,
+    pub max_type_lines: bool,
+    pub max_type_members: bool,
+    pub max_imports: bool,
+    pub max_public_items: bool,
+    pub max_functions_per_file: bool,
+    pub max_functions_per_100_lines: bool,
+    pub max_small_function_ratio: bool,
+    pub min_repeated_literal_occurrences: bool,
+    pub min_data_clump_occurrences: bool,
+}
+
+impl ThresholdSettings {
+    pub const BALANCED: Self = Self {
+        file: FileThresholdSettings {
+            max_file_lines: DEFAULT_MAX_FILE_LINES,
+            max_dir_files: DEFAULT_MAX_DIR_FILES,
+        },
+        similarity: SimilarityThresholdSettings {
+            min_similar_functions: DEFAULT_MIN_SIMILAR_FUNCTIONS,
+            min_function_tokens: DEFAULT_MIN_FUNCTION_TOKENS,
+            function_similarity: DEFAULT_FUNCTION_SIMILARITY,
+        },
+        structure: StructureThresholdSettings {
+            max_function_lines: DEFAULT_MAX_FUNCTION_LINES,
+            max_function_complexity: DEFAULT_MAX_FUNCTION_COMPLEXITY,
+            max_nesting_depth: DEFAULT_MAX_NESTING_DEPTH,
+            max_function_parameters: DEFAULT_MAX_FUNCTION_PARAMETERS,
+            max_type_lines: DEFAULT_MAX_TYPE_LINES,
+            max_type_members: DEFAULT_MAX_TYPE_MEMBERS,
+            max_imports: DEFAULT_MAX_IMPORTS,
+            max_public_items: DEFAULT_MAX_PUBLIC_ITEMS,
+            max_functions_per_file: DEFAULT_MAX_FUNCTIONS_PER_FILE,
+            max_functions_per_100_lines: DEFAULT_MAX_FUNCTIONS_PER_100_LINES,
+            max_small_function_ratio: DEFAULT_MAX_SMALL_FUNCTION_RATIO,
+        },
+        repetition: RepetitionThresholdSettings {
+            min_repeated_literal_occurrences: DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES,
+            min_data_clump_occurrences: DEFAULT_MIN_DATA_CLUMP_OCCURRENCES,
+        },
+    };
+
+    pub const STRICT: Self = Self {
+        file: FileThresholdSettings {
+            max_file_lines: 600,
+            max_dir_files: 30,
+        },
+        similarity: SimilarityThresholdSettings {
+            min_similar_functions: 2,
+            min_function_tokens: 60,
+            function_similarity: 0.88,
+        },
+        structure: StructureThresholdSettings {
+            max_function_lines: 60,
+            max_function_complexity: 12,
+            max_nesting_depth: 3,
+            max_function_parameters: 4,
+            max_type_lines: 200,
+            max_type_members: 25,
+            max_imports: 25,
+            max_public_items: 20,
+            max_functions_per_file: 35,
+            max_functions_per_100_lines: 10,
+            max_small_function_ratio: 65,
+        },
+        repetition: RepetitionThresholdSettings {
+            min_repeated_literal_occurrences: 8,
+            min_data_clump_occurrences: 3,
+        },
+    };
+
+    pub const RELAXED: Self = Self {
+        file: FileThresholdSettings {
+            max_file_lines: 1_200,
+            max_dir_files: 60,
+        },
+        similarity: SimilarityThresholdSettings {
+            min_similar_functions: 4,
+            min_function_tokens: 120,
+            function_similarity: 0.90,
+        },
+        structure: StructureThresholdSettings {
+            max_function_lines: 120,
+            max_function_complexity: 20,
+            max_nesting_depth: 5,
+            max_function_parameters: 6,
+            max_type_lines: 400,
+            max_type_members: 45,
+            max_imports: 50,
+            max_public_items: 45,
+            max_functions_per_file: 60,
+            max_functions_per_100_lines: 18,
+            max_small_function_ratio: 80,
+        },
+        repetition: RepetitionThresholdSettings {
+            min_repeated_literal_occurrences: 20,
+            min_data_clump_occurrences: 6,
+        },
+    };
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "reforge")]
@@ -98,6 +252,13 @@ pub struct ScanArgs {
     /// Directory or file to scan.
     #[arg(default_value = ".")]
     pub path: PathBuf,
+
+    #[arg(skip)]
+    pub(crate) threshold_overrides: ThresholdOverrideFlags,
+
+    /// Built-in threshold preset to use before per-threshold overrides.
+    #[arg(long, value_enum)]
+    pub preset: Option<ThresholdPreset>,
 
     /// Report files whose total line count is above this threshold.
     #[arg(long, default_value_t = DEFAULT_MAX_FILE_LINES)]
@@ -350,6 +511,15 @@ pub enum ColorMode {
     Never,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThresholdPreset {
+    Strict,
+    #[default]
+    Balanced,
+    Relaxed,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChurnMode {
@@ -368,27 +538,32 @@ pub enum HotspotModel {
 
 impl ScanArgs {
     pub fn defaults_for_path(path: PathBuf) -> Self {
+        let thresholds = ThresholdSettings::BALANCED;
         Self {
             path,
-            max_file_lines: DEFAULT_MAX_FILE_LINES,
-            max_dir_files: DEFAULT_MAX_DIR_FILES,
+            threshold_overrides: ThresholdOverrideFlags::default(),
+            preset: None,
+            max_file_lines: thresholds.file.max_file_lines,
+            max_dir_files: thresholds.file.max_dir_files,
             filters: ScanFilterArgs::default(),
             finding_controls: FindingControlArgs::default(),
-            min_similar_functions: DEFAULT_MIN_SIMILAR_FUNCTIONS,
-            min_function_tokens: DEFAULT_MIN_FUNCTION_TOKENS,
-            function_similarity: DEFAULT_FUNCTION_SIMILARITY,
+            min_similar_functions: thresholds.similarity.min_similar_functions,
+            min_function_tokens: thresholds.similarity.min_function_tokens,
+            function_similarity: thresholds.similarity.function_similarity,
             include_test_similarity: false,
-            max_function_lines: DEFAULT_MAX_FUNCTION_LINES,
-            max_function_complexity: DEFAULT_MAX_FUNCTION_COMPLEXITY,
-            max_nesting_depth: DEFAULT_MAX_NESTING_DEPTH,
-            max_function_parameters: DEFAULT_MAX_FUNCTION_PARAMETERS,
-            max_type_lines: DEFAULT_MAX_TYPE_LINES,
-            max_type_members: DEFAULT_MAX_TYPE_MEMBERS,
-            max_imports: DEFAULT_MAX_IMPORTS,
-            max_public_items: DEFAULT_MAX_PUBLIC_ITEMS,
+            max_function_lines: thresholds.structure.max_function_lines,
+            max_function_complexity: thresholds.structure.max_function_complexity,
+            max_nesting_depth: thresholds.structure.max_nesting_depth,
+            max_function_parameters: thresholds.structure.max_function_parameters,
+            max_type_lines: thresholds.structure.max_type_lines,
+            max_type_members: thresholds.structure.max_type_members,
+            max_imports: thresholds.structure.max_imports,
+            max_public_items: thresholds.structure.max_public_items,
             function_proliferation: FunctionProliferationArgs::default(),
-            min_repeated_literal_occurrences: DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES,
-            min_data_clump_occurrences: DEFAULT_MIN_DATA_CLUMP_OCCURRENCES,
+            min_repeated_literal_occurrences: thresholds
+                .repetition
+                .min_repeated_literal_occurrences,
+            min_data_clump_occurrences: thresholds.repetition.min_data_clump_occurrences,
             include_test_structure: false,
             config: None,
             ci: CiArgs::default(),
@@ -428,6 +603,33 @@ impl ScanArgs {
     }
 }
 
+impl Cli {
+    pub fn parse_with_explicit_overrides() -> Self {
+        let matches = Self::command().get_matches();
+        Self::from_arg_matches_with_explicit_overrides(&matches)
+    }
+
+    #[cfg(test)]
+    pub fn parse_from_with_explicit_overrides<I, T>(itr: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+    {
+        let matches = Self::command().get_matches_from(itr);
+        Self::from_arg_matches_with_explicit_overrides(&matches)
+    }
+
+    fn from_arg_matches_with_explicit_overrides(matches: &ArgMatches) -> Self {
+        let mut cli = Self::from_arg_matches(matches).unwrap_or_else(|error| error.exit());
+        if let Command::Scan(args) = &mut cli.command
+            && let Some(("scan", scan_matches)) = matches.subcommand()
+        {
+            args.threshold_overrides = ThresholdOverrideFlags::from_arg_matches(scan_matches);
+        }
+        cli
+    }
+}
+
 impl Default for ScanArgs {
     fn default() -> Self {
         Self::defaults_for_path(PathBuf::from("."))
@@ -436,10 +638,11 @@ impl Default for ScanArgs {
 
 impl Default for FunctionProliferationArgs {
     fn default() -> Self {
+        let thresholds = ThresholdSettings::BALANCED;
         Self {
-            max_functions_per_file: DEFAULT_MAX_FUNCTIONS_PER_FILE,
-            max_functions_per_100_lines: DEFAULT_MAX_FUNCTIONS_PER_100_LINES,
-            max_small_function_ratio: DEFAULT_MAX_SMALL_FUNCTION_RATIO,
+            max_functions_per_file: thresholds.structure.max_functions_per_file,
+            max_functions_per_100_lines: thresholds.structure.max_functions_per_100_lines,
+            max_small_function_ratio: thresholds.structure.max_small_function_ratio,
         }
     }
 }
@@ -466,6 +669,54 @@ impl FailOnSeverity {
             Self::Critical => severity == crate::model::Severity::Critical,
         }
     }
+}
+
+impl ThresholdPreset {
+    pub fn thresholds(self) -> ThresholdSettings {
+        match self {
+            Self::Strict => ThresholdSettings::STRICT,
+            Self::Balanced => ThresholdSettings::BALANCED,
+            Self::Relaxed => ThresholdSettings::RELAXED,
+        }
+    }
+}
+
+impl ThresholdOverrideFlags {
+    fn from_arg_matches(matches: &ArgMatches) -> Self {
+        Self {
+            max_file_lines: was_command_line_value(matches, "max_file_lines"),
+            max_dir_files: was_command_line_value(matches, "max_dir_files"),
+            min_similar_functions: was_command_line_value(matches, "min_similar_functions"),
+            min_function_tokens: was_command_line_value(matches, "min_function_tokens"),
+            function_similarity: was_command_line_value(matches, "function_similarity"),
+            max_function_lines: was_command_line_value(matches, "max_function_lines"),
+            max_function_complexity: was_command_line_value(matches, "max_function_complexity"),
+            max_nesting_depth: was_command_line_value(matches, "max_nesting_depth"),
+            max_function_parameters: was_command_line_value(matches, "max_function_parameters"),
+            max_type_lines: was_command_line_value(matches, "max_type_lines"),
+            max_type_members: was_command_line_value(matches, "max_type_members"),
+            max_imports: was_command_line_value(matches, "max_imports"),
+            max_public_items: was_command_line_value(matches, "max_public_items"),
+            max_functions_per_file: was_command_line_value(matches, "max_functions_per_file"),
+            max_functions_per_100_lines: was_command_line_value(
+                matches,
+                "max_functions_per_100_lines",
+            ),
+            max_small_function_ratio: was_command_line_value(matches, "max_small_function_ratio"),
+            min_repeated_literal_occurrences: was_command_line_value(
+                matches,
+                "min_repeated_literal_occurrences",
+            ),
+            min_data_clump_occurrences: was_command_line_value(
+                matches,
+                "min_data_clump_occurrences",
+            ),
+        }
+    }
+}
+
+fn was_command_line_value(matches: &ArgMatches, id: &str) -> bool {
+    matches.value_source(id) == Some(ValueSource::CommandLine)
 }
 
 impl FindingSeverity {
@@ -565,6 +816,14 @@ mod tests {
     }
 
     #[test]
+    fn parses_threshold_preset() {
+        let cli = Cli::parse_from(["reforge", "scan", ".", "--preset", "strict"]);
+
+        let args = scan_args_from(cli);
+        assert_eq!(args.preset, Some(ThresholdPreset::Strict));
+    }
+
+    #[test]
     fn parses_similar_function_thresholds() {
         let cli = Cli::parse_from([
             "reforge",
@@ -659,6 +918,7 @@ mod tests {
         let cli = Cli::parse_from(["reforge", "scan", "."]);
 
         let args = scan_args_from(cli);
+        assert_eq!(args.preset, None);
         assert_eq!(args.max_function_lines, 80);
         assert_eq!(args.max_function_complexity, 15);
         assert_eq!(args.max_nesting_depth, 4);

@@ -116,8 +116,8 @@ watchlist behavior without exposing sample-specific paths.
   defaults based on these two large CLI samples.
 - Review a stratified sample of high-priority findings with maintainers to
   estimate false-positive rates by detector kind.
-- Consider documenting presets rather than changing global defaults: for
-  example `balanced`, `strict`, `legacy`, and `production-only`.
+- Calibrate the documented `strict`, `balanced`, and `relaxed` presets against
+  smaller libraries and service applications before changing their thresholds.
 - For large repositories, consider a calibration mode or docs recipe that uses
   `--exclude-tests` and higher `--min-function-tokens` when the goal is
   structural threshold calibration rather than duplication analysis.

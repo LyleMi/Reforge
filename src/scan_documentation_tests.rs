@@ -14,6 +14,8 @@ fn test_root(name: &str) -> std::path::PathBuf {
 fn scan_args(path: std::path::PathBuf) -> ScanArgs {
     ScanArgs {
         path,
+        threshold_overrides: crate::cli::ThresholdOverrideFlags::default(),
+        preset: None,
         max_file_lines: 800,
         max_dir_files: 40,
         filters: crate::cli::ScanFilterArgs {
@@ -91,7 +93,7 @@ fn write_project_marker(root: &Path) -> Result<()> {
 }
 
 fn cli_flags_doc() -> &'static str {
-    "--max-file-lines --max-dir-files --include-hidden --include-generated \
+    "--preset --max-file-lines --max-dir-files --include-hidden --include-generated \
 --no-gitignore --exclude-tests --ignore-path --min-similar-functions --min-function-tokens --function-similarity \
 --only --exclude-detector --min-priority --severity \
 --include-test-similarity --max-function-lines --max-function-complexity \

@@ -8,7 +8,7 @@
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
   <img alt="MSRV" src="https://img.shields.io/badge/MSRV-1.85-2f855a">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-162%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-174%20passing-brightgreen">
   <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20html%20%7C%20json%20%7C%20yaml%20%7C%20sarif-6b46c1">
 </p>
 
@@ -222,6 +222,12 @@ Scan another project with a stricter file-size threshold:
 cargo run -- scan D:\path\to\project --max-file-lines 600
 ```
 
+Use a built-in threshold preset:
+
+```powershell
+cargo run -- scan . --preset strict
+```
+
 Include generated and dependency directories:
 
 ```powershell
@@ -418,8 +424,9 @@ Hotspot models:
 ## Configuration
 
 When `--config` is not provided, Reforge looks for `reforge.toml` from the scan
-root upward. CLI values override config values; existing threshold defaults use
-config values when the CLI option is not changed.
+root upward. Threshold precedence is CLI per-threshold values, CLI `--preset`,
+config per-threshold values, config `preset`, then the built-in `balanced`
+preset.
 
 Create, validate, and inspect config without scanning:
 
@@ -433,6 +440,7 @@ cargo run -- config show . --output json
 exact file when `[PATH]` ends with `.toml`. Existing files require `--force`.
 
 ```toml
+preset = "balanced"
 max-file-lines = 600
 max-function-complexity = 12
 max-imports = 25
@@ -467,6 +475,7 @@ findings, not as proof that no maintainability signals were observed.
 
 | Option | Default | Purpose |
 | --- | --- | --- |
+| `--preset` | `balanced` | Use `strict`, `balanced`, or `relaxed` threshold defaults before per-threshold overrides. |
 | `--max-file-lines` | `800` | Report files above this line count. |
 | `--max-dir-files` | `40` | Report directories above this direct source-file count. |
 | `--include-hidden` | `false` | Include hidden files and directories. |

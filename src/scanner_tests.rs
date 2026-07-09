@@ -14,6 +14,8 @@ fn test_root(name: &str) -> std::path::PathBuf {
 fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
     ScanArgs {
         path,
+        threshold_overrides: crate::cli::ThresholdOverrideFlags::default(),
+        preset: None,
         max_file_lines: 800,
         max_dir_files: 40,
         filters: crate::cli::ScanFilterArgs {

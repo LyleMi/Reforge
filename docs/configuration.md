@@ -53,9 +53,12 @@ by `config show` are used by both threshold findings and static hotspot risk.
 
 ## Precedence
 
-Reforge applies configuration as defaults. A threshold from `reforge.toml` is
-used only when the CLI value is still the built-in default. Explicit CLI values
-win.
+Reforge applies presets and configuration as defaults. Threshold precedence is:
+CLI per-threshold values, CLI `--preset`, `reforge.toml` per-threshold values,
+`reforge.toml` `preset`, then the built-in `balanced` preset. A per-threshold
+override is detected when its value differs from the built-in `balanced`
+default, so a generated config can switch presets without deleting every
+balanced threshold entry.
 
 Boolean flags such as `--include-hidden`, `--include-generated`,
 `--no-gitignore`, `--exclude-tests`, `--include-test-similarity`, and
@@ -75,6 +78,7 @@ Finding filters such as `--only`, `--exclude-detector`, `--min-priority`, and
 This example shows a tuned project configuration, not the built-in defaults.
 
 ```toml
+preset = "strict"
 max-file-lines = 600
 max-dir-files = 35
 max-function-lines = 60
@@ -120,6 +124,7 @@ reason = "legacy migration tracked separately"
 
 | Key | Default | Equivalent CLI option |
 | --- | --- | --- |
+| `preset` | `balanced` | `--preset` |
 | `max-file-lines` | `800` | `--max-file-lines` |
 | `max-dir-files` | `40` | `--max-dir-files` |
 | `min-similar-functions` | `3` | `--min-similar-functions` |
@@ -145,8 +150,8 @@ reason = "legacy migration tracked separately"
 | `ignore-paths` | `[]` | `--ignore-path` |
 | `suppressions` | `[]` | none |
 
-`churn` accepts `auto`, `on`, or `off`. `hotspot-model` accepts `static`,
-`churn`, or `hybrid`.
+`preset` accepts `strict`, `balanced`, or `relaxed`. `churn` accepts `auto`,
+`on`, or `off`. `hotspot-model` accepts `static`, `churn`, or `hybrid`.
 
 ## Ignored Paths
 

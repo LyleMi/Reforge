@@ -315,6 +315,7 @@ git churn.
 
 | Option | Default | Purpose |
 | --- | --- | --- |
+| `--preset` | `balanced` | Use `strict`, `balanced`, or `relaxed` threshold defaults before per-threshold overrides. |
 | `--max-file-lines` | `800` | Report files above this total line count. |
 | `--max-dir-files` | `40` | Report directories above this direct source-file count. |
 | `--include-hidden` | `false` | Include hidden files and directories. |
@@ -365,6 +366,12 @@ Scan another project with stricter size thresholds:
 
 ```powershell
 cargo run -- scan D:\path\to\project --max-file-lines 600 --max-function-lines 60
+```
+
+Use a built-in threshold preset:
+
+```powershell
+cargo run -- scan . --preset strict
 ```
 
 Tune similar-function detection:

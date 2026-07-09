@@ -115,7 +115,7 @@ reason = "hotspot percentile risk calculation is kept local for stable ranking b
 [[suppressions]]
 kind = "large_type"
 path = "src/cli.rs"
-line = 97
+line = 251
 reason = "ScanArgs mirrors the public CLI surface and is intentionally explicit"
 
 [[suppressions]]

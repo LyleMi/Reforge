@@ -33,6 +33,7 @@ mod churn;
 mod config;
 mod finding_control;
 mod progress;
+mod thresholds;
 
 use churn::collect_churn_metrics;
 pub(crate) use config::{

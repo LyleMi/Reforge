@@ -5,14 +5,14 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::cli::{
-    ChurnMode, DEFAULT_CHURN_MAX_COMMIT_LINES, DEFAULT_CHURN_WINDOW_DAYS,
-    DEFAULT_FUNCTION_SIMILARITY, DEFAULT_MAX_DIR_FILES, DEFAULT_MAX_FILE_LINES,
-    DEFAULT_MAX_FUNCTION_COMPLEXITY, DEFAULT_MAX_FUNCTION_LINES, DEFAULT_MAX_FUNCTION_PARAMETERS,
-    DEFAULT_MAX_FUNCTIONS_PER_100_LINES, DEFAULT_MAX_FUNCTIONS_PER_FILE, DEFAULT_MAX_IMPORTS,
-    DEFAULT_MAX_NESTING_DEPTH, DEFAULT_MAX_PUBLIC_ITEMS, DEFAULT_MAX_SMALL_FUNCTION_RATIO,
-    DEFAULT_MAX_TYPE_LINES, DEFAULT_MAX_TYPE_MEMBERS, DEFAULT_MIN_DATA_CLUMP_OCCURRENCES,
-    DEFAULT_MIN_FUNCTION_TOKENS, DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES,
-    DEFAULT_MIN_SIMILAR_FUNCTIONS, HotspotModel, ScanArgs,
+    ChurnMode, DEFAULT_CHURN_MAX_COMMIT_LINES, DEFAULT_CHURN_WINDOW_DAYS, HotspotModel, ScanArgs,
+    ThresholdPreset,
+};
+
+use super::thresholds::{
+    ConfigFileThresholdDefaults, ConfigRepetitionThresholdDefaults,
+    ConfigSimilarityThresholdDefaults, ConfigStructureThresholdDefaults, ConfigThresholdDefaults,
+    apply_threshold_defaults,
 };
 
 pub(crate) const CONFIG_FILE_NAME: &str = "reforge.toml";
@@ -20,6 +20,7 @@ pub(crate) const CONFIG_FILE_NAME: &str = "reforge.toml";
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 struct ReforgeConfig {
+    preset: Option<ThresholdPreset>,
     max_file_lines: Option<usize>,
     max_dir_files: Option<usize>,
     min_similar_functions: Option<usize>,
@@ -63,6 +64,7 @@ pub(super) struct EffectiveScanConfig {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) struct EffectiveConfigOutput {
+    preset: ThresholdPreset,
     max_file_lines: usize,
     max_dir_files: usize,
     include_hidden: bool,
@@ -97,6 +99,7 @@ pub(crate) struct EffectiveConfigOutput {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ReforgeConfigTemplate {
+    preset: ThresholdPreset,
     max_file_lines: usize,
     max_dir_files: usize,
     min_similar_functions: usize,
@@ -122,6 +125,40 @@ struct ReforgeConfigTemplate {
     ignore_paths: Vec<String>,
 }
 
+impl From<&ReforgeConfig> for ConfigThresholdDefaults {
+    fn from(config: &ReforgeConfig) -> Self {
+        Self {
+            preset: config.preset,
+            file: ConfigFileThresholdDefaults {
+                max_file_lines: config.max_file_lines,
+                max_dir_files: config.max_dir_files,
+            },
+            similarity: ConfigSimilarityThresholdDefaults {
+                min_similar_functions: config.min_similar_functions,
+                min_function_tokens: config.min_function_tokens,
+                function_similarity: config.function_similarity,
+            },
+            structure: ConfigStructureThresholdDefaults {
+                max_function_lines: config.max_function_lines,
+                max_function_complexity: config.max_function_complexity,
+                max_nesting_depth: config.max_nesting_depth,
+                max_function_parameters: config.max_function_parameters,
+                max_type_lines: config.max_type_lines,
+                max_type_members: config.max_type_members,
+                max_imports: config.max_imports,
+                max_public_items: config.max_public_items,
+                max_functions_per_file: config.max_functions_per_file,
+                max_functions_per_100_lines: config.max_functions_per_100_lines,
+                max_small_function_ratio: config.max_small_function_ratio,
+            },
+            repetition: ConfigRepetitionThresholdDefaults {
+                min_repeated_literal_occurrences: config.min_repeated_literal_occurrences,
+                min_data_clump_occurrences: config.min_data_clump_occurrences,
+            },
+        }
+    }
+}
+
 pub(crate) fn effective_scan_config(args: &ScanArgs, root: &Path) -> Result<EffectiveScanConfig> {
     let mut effective = args.clone();
     let config = load_config(args, root)?;
@@ -130,9 +167,7 @@ pub(crate) fn effective_scan_config(args: &ScanArgs, root: &Path) -> Result<Effe
         .map(|config| config.suppressions.clone())
         .unwrap_or_default();
 
-    if let Some(config) = config {
-        apply_config_defaults(&mut effective, &config);
-    }
+    apply_config_defaults(&mut effective, args, config.as_ref());
 
     effective.churn = Some(
         args.churn
@@ -233,115 +268,12 @@ fn discover_config_path(root: &Path) -> Option<PathBuf> {
     }
 }
 
-fn apply_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
-    apply_file_config_defaults(args, config);
-    apply_similarity_config_defaults(args, config);
-    apply_structure_config_defaults(args, config);
-    apply_repetition_config_defaults(args, config);
-    apply_churn_config_defaults(args, config);
-    apply_ignore_path_defaults(args, config);
-}
-
-fn apply_file_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
-    apply_usize_default(
-        &mut args.max_file_lines,
-        DEFAULT_MAX_FILE_LINES,
-        config.max_file_lines,
-    );
-    apply_usize_default(
-        &mut args.max_dir_files,
-        DEFAULT_MAX_DIR_FILES,
-        config.max_dir_files,
-    );
-}
-
-fn apply_similarity_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
-    apply_usize_default(
-        &mut args.min_similar_functions,
-        DEFAULT_MIN_SIMILAR_FUNCTIONS,
-        config.min_similar_functions,
-    );
-    apply_usize_default(
-        &mut args.min_function_tokens,
-        DEFAULT_MIN_FUNCTION_TOKENS,
-        config.min_function_tokens,
-    );
-    if (args.function_similarity - DEFAULT_FUNCTION_SIMILARITY).abs() < f64::EPSILON
-        && let Some(value) = config.function_similarity
-    {
-        args.function_similarity = value;
+fn apply_config_defaults(args: &mut ScanArgs, cli_args: &ScanArgs, config: Option<&ReforgeConfig>) {
+    apply_threshold_defaults(args, cli_args, config.map(ConfigThresholdDefaults::from));
+    if let Some(config) = config {
+        apply_churn_config_defaults(args, config);
+        apply_ignore_path_defaults(args, config);
     }
-}
-
-fn apply_structure_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
-    apply_usize_default(
-        &mut args.max_function_lines,
-        DEFAULT_MAX_FUNCTION_LINES,
-        config.max_function_lines,
-    );
-    apply_usize_default(
-        &mut args.max_function_complexity,
-        DEFAULT_MAX_FUNCTION_COMPLEXITY,
-        config.max_function_complexity,
-    );
-    apply_usize_default(
-        &mut args.max_nesting_depth,
-        DEFAULT_MAX_NESTING_DEPTH,
-        config.max_nesting_depth,
-    );
-    apply_usize_default(
-        &mut args.max_function_parameters,
-        DEFAULT_MAX_FUNCTION_PARAMETERS,
-        config.max_function_parameters,
-    );
-    apply_usize_default(
-        &mut args.max_type_lines,
-        DEFAULT_MAX_TYPE_LINES,
-        config.max_type_lines,
-    );
-    apply_usize_default(
-        &mut args.max_type_members,
-        DEFAULT_MAX_TYPE_MEMBERS,
-        config.max_type_members,
-    );
-    apply_usize_default(
-        &mut args.max_imports,
-        DEFAULT_MAX_IMPORTS,
-        config.max_imports,
-    );
-    apply_usize_default(
-        &mut args.max_public_items,
-        DEFAULT_MAX_PUBLIC_ITEMS,
-        config.max_public_items,
-    );
-    apply_usize_default(
-        &mut args.function_proliferation.max_functions_per_file,
-        DEFAULT_MAX_FUNCTIONS_PER_FILE,
-        config.max_functions_per_file,
-    );
-    apply_usize_default(
-        &mut args.function_proliferation.max_functions_per_100_lines,
-        DEFAULT_MAX_FUNCTIONS_PER_100_LINES,
-        config.max_functions_per_100_lines,
-    );
-    apply_usize_default(
-        &mut args.function_proliferation.max_small_function_ratio,
-        DEFAULT_MAX_SMALL_FUNCTION_RATIO,
-        config.max_small_function_ratio,
-    );
-}
-
-fn apply_repetition_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
-    apply_usize_default(
-        &mut args.min_repeated_literal_occurrences,
-        DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES,
-        config.min_repeated_literal_occurrences,
-    );
-    apply_usize_default(
-        &mut args.min_data_clump_occurrences,
-        DEFAULT_MIN_DATA_CLUMP_OCCURRENCES,
-        config.min_data_clump_occurrences,
-    );
 }
 
 fn apply_churn_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
@@ -367,17 +299,10 @@ fn apply_ignore_path_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
     args.filters.ignore_paths = ignore_paths;
 }
 
-fn apply_usize_default(target: &mut usize, default: usize, configured: Option<usize>) {
-    if *target == default
-        && let Some(value) = configured
-    {
-        *target = value;
-    }
-}
-
 impl From<&ScanArgs> for EffectiveConfigOutput {
     fn from(args: &ScanArgs) -> Self {
         Self {
+            preset: args.preset.unwrap_or_default(),
             max_file_lines: args.max_file_lines,
             max_dir_files: args.max_dir_files,
             include_hidden: args.filters.include_hidden,
@@ -420,6 +345,7 @@ impl From<&ScanArgs> for EffectiveConfigOutput {
 impl From<&ScanArgs> for ReforgeConfigTemplate {
     fn from(args: &ScanArgs) -> Self {
         Self {
+            preset: args.preset.unwrap_or_default(),
             max_file_lines: args.max_file_lines,
             max_dir_files: args.max_dir_files,
             min_similar_functions: args.min_similar_functions,
@@ -450,6 +376,7 @@ impl From<&ScanArgs> for ReforgeConfigTemplate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::{Cli, Command, ThresholdSettings};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn test_root(name: &str) -> PathBuf {
@@ -465,17 +392,54 @@ mod tests {
         let config = default_config_toml()?;
         let parsed: ReforgeConfig = toml::from_str(&config)?;
 
-        assert_eq!(parsed.max_file_lines, Some(DEFAULT_MAX_FILE_LINES));
+        assert_eq!(parsed.preset, Some(ThresholdPreset::Balanced));
+        assert_eq!(
+            parsed.max_file_lines,
+            Some(ThresholdSettings::BALANCED.file.max_file_lines)
+        );
         assert_eq!(
             parsed.min_repeated_literal_occurrences,
-            Some(DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES)
+            Some(
+                ThresholdSettings::BALANCED
+                    .repetition
+                    .min_repeated_literal_occurrences
+            )
         );
         assert_eq!(
             parsed.min_data_clump_occurrences,
-            Some(DEFAULT_MIN_DATA_CLUMP_OCCURRENCES)
+            Some(
+                ThresholdSettings::BALANCED
+                    .repetition
+                    .min_data_clump_occurrences
+            )
         );
         assert_eq!(parsed.churn, Some(ChurnMode::Auto));
         assert_eq!(parsed.hotspot_model, Some(HotspotModel::Hybrid));
+        Ok(())
+    }
+
+    #[test]
+    fn generated_config_preset_can_change_without_deleting_balanced_thresholds() -> Result<()> {
+        let root = test_root("generated-config-preset");
+        fs::create_dir_all(&root)?;
+        let config =
+            default_config_toml()?.replacen("preset = \"balanced\"", "preset = \"strict\"", 1);
+        fs::write(root.join(CONFIG_FILE_NAME), config)?;
+        let args = ScanArgs::defaults_for_path(root.clone());
+
+        let output = effective_config_output(&args, &root)?;
+
+        fs::remove_dir_all(root)?;
+
+        assert_eq!(output.preset, ThresholdPreset::Strict);
+        assert_eq!(
+            output.max_file_lines,
+            ThresholdSettings::STRICT.file.max_file_lines
+        );
+        assert_eq!(
+            output.max_function_lines,
+            ThresholdSettings::STRICT.structure.max_function_lines
+        );
         Ok(())
     }
 
@@ -513,6 +477,138 @@ mod tests {
         assert_eq!(output.churn, ChurnMode::Off);
         assert_eq!(output.hotspot_model, HotspotModel::Static);
         assert_eq!(output.ignore_paths, ["vendor"]);
+        Ok(())
+    }
+
+    #[test]
+    fn effective_config_output_applies_config_preset() -> Result<()> {
+        let root = test_root("config-preset");
+        fs::create_dir_all(&root)?;
+        fs::write(root.join(CONFIG_FILE_NAME), "preset = \"strict\"\n")?;
+        let args = ScanArgs::defaults_for_path(root.clone());
+
+        let output = effective_config_output(&args, &root)?;
+
+        fs::remove_dir_all(root)?;
+
+        assert_eq!(output.preset, ThresholdPreset::Strict);
+        assert_eq!(
+            output.max_file_lines,
+            ThresholdSettings::STRICT.file.max_file_lines
+        );
+        assert_eq!(
+            output.max_function_lines,
+            ThresholdSettings::STRICT.structure.max_function_lines
+        );
+        assert_eq!(
+            output.min_similar_functions,
+            ThresholdSettings::STRICT.similarity.min_similar_functions
+        );
+        assert_eq!(
+            output.function_similarity,
+            ThresholdSettings::STRICT.similarity.function_similarity
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn config_threshold_overrides_config_preset() -> Result<()> {
+        let root = test_root("config-threshold-over-preset");
+        fs::create_dir_all(&root)?;
+        fs::write(
+            root.join(CONFIG_FILE_NAME),
+            "preset = \"strict\"\nmax-file-lines = 700\n",
+        )?;
+        let args = ScanArgs::defaults_for_path(root.clone());
+
+        let output = effective_config_output(&args, &root)?;
+
+        fs::remove_dir_all(root)?;
+
+        assert_eq!(output.preset, ThresholdPreset::Strict);
+        assert_eq!(output.max_file_lines, 700);
+        assert_eq!(
+            output.max_function_lines,
+            ThresholdSettings::STRICT.structure.max_function_lines
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cli_preset_overrides_config_thresholds() -> Result<()> {
+        let root = test_root("cli-preset-over-config");
+        fs::create_dir_all(&root)?;
+        fs::write(
+            root.join(CONFIG_FILE_NAME),
+            "preset = \"strict\"\nmax-file-lines = 700\n",
+        )?;
+        let mut args = ScanArgs::defaults_for_path(root.clone());
+        args.preset = Some(ThresholdPreset::Relaxed);
+
+        let output = effective_config_output(&args, &root)?;
+
+        fs::remove_dir_all(root)?;
+
+        assert_eq!(output.preset, ThresholdPreset::Relaxed);
+        assert_eq!(
+            output.max_file_lines,
+            ThresholdSettings::RELAXED.file.max_file_lines
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cli_threshold_overrides_cli_preset() -> Result<()> {
+        let root = test_root("cli-threshold-over-preset");
+        fs::create_dir_all(&root)?;
+        let mut args = ScanArgs::defaults_for_path(root.clone());
+        args.preset = Some(ThresholdPreset::Strict);
+        args.max_file_lines = 700;
+
+        let output = effective_config_output(&args, &root)?;
+
+        fs::remove_dir_all(root)?;
+
+        assert_eq!(output.preset, ThresholdPreset::Strict);
+        assert_eq!(output.max_file_lines, 700);
+        assert_eq!(
+            output.max_function_lines,
+            ThresholdSettings::STRICT.structure.max_function_lines
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_cli_balanced_threshold_overrides_cli_preset() -> Result<()> {
+        let root = test_root("cli-balanced-threshold-over-preset");
+        fs::create_dir_all(&root)?;
+        let root_arg = root.display().to_string();
+        let cli = Cli::parse_from_with_explicit_overrides([
+            "reforge",
+            "scan",
+            &root_arg,
+            "--preset",
+            "strict",
+            "--max-file-lines",
+            "800",
+        ]);
+        let Command::Scan(args) = cli.command else {
+            panic!("expected scan command");
+        };
+
+        let output = effective_config_output(&args, &root)?;
+
+        fs::remove_dir_all(root)?;
+
+        assert_eq!(output.preset, ThresholdPreset::Strict);
+        assert_eq!(
+            output.max_file_lines,
+            ThresholdSettings::BALANCED.file.max_file_lines
+        );
+        assert_eq!(
+            output.max_function_lines,
+            ThresholdSettings::STRICT.structure.max_function_lines
+        );
         Ok(())
     }
 }
