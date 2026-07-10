@@ -11,6 +11,13 @@ change.
 
 Reforge requires Rust 1.85 or newer.
 
+Tagged releases publish platform archives on the
+[GitHub Releases page](https://github.com/LyleMi/Reforge/releases). When a
+release is available, extract its archive, then move `reforge` or `reforge.exe`
+to a directory on `PATH`. The Windows archive is a ZIP; Linux and macOS
+archives are compressed tar files. Each archive also contains the README and
+license.
+
 Build a debug binary from this checkout:
 
 ```powershell
@@ -103,7 +110,9 @@ cargo run -- scan . --output-file reforge-report.json --progress never
 
 When `--output` is omitted, `--output-file` extensions `.html`, `.htm`,
 `.json`, `.yaml`, `.yml`, and `.sarif` select HTML, JSON, YAML, or SARIF
-automatically. Other extensions default to human output.
+automatically. Other extensions default to human output. Missing parent
+directories in the output path are created automatically, so a path such as
+`reports/current/reforge-report.html` does not need to exist before the scan.
 
 ## What Gets Scanned
 
@@ -111,7 +120,7 @@ The scanner accepts either a directory or a single file as `[PATH]`. It scans
 source files with these extensions:
 
 - Broad source-file discovery: `c`, `cc`, `cpp`, `cs`, `go`, `java`, `js`,
-  `jsx`, `kt`, `py`, `rb`, `rs`, `ts`, and `tsx`.
+  `jsx`, `kt`, `php`, `py`, `rb`, `rs`, `ts`, and `tsx`.
 - Tree-sitter structural analysis: Rust, JavaScript, TypeScript/TSX, Python,
   Go, Java, C#, Kotlin, PHP, and Ruby.
 
@@ -188,8 +197,9 @@ Human output is organized for quick terminal triage:
 - `Watchlist`: hotspot locations ranked by static risk, churn risk, or both.
 
 HTML output renders the same report through the React + TypeScript report app
-as summary cards, a severity distribution bar, problem-dimension counts, a file
-heatmap, hotspot watchlist, similar-function groups, and prioritized findings.
+as summary cards, a severity distribution bar, problem-dimension counts, the
+File Overview, hotspot watchlist, similar-function groups, and prioritized
+findings.
 When `--output` is omitted, `.html` and `.htm` output-file extensions select
 the same HTML report format automatically.
 
@@ -235,12 +245,17 @@ fail if it is unavailable. Use `--churn off` to skip git entirely.
 
 Hotspot models:
 
-- `--hotspot-model static`: rank by static size, complexity, coupling,
-  duplication, drift, and test-risk signals.
-- `--hotspot-model churn`: rank primarily by commits touched, changed lines,
-  authors, and weighted churn.
-- `--hotspot-model hybrid`: default ranking, combining static risk at 65% and
-  churn risk at 35%.
+- `--hotspot-model static`: rank by the strongest 0-100 structural risk for
+  each location. File risk considers lines, imports, public items, direct
+  directory file count, and file-LOC percentile; function risk considers
+  lines, complexity, nesting, parameters, and function-LOC percentile; type
+  risk considers lines, members, and type-LOC percentile.
+- `--hotspot-model churn`: rank by the strongest 0-100 project-percentile
+  signal from commits touched and recent weighted churn, with author-count
+  percentile weighted at 70%. Function and type locations inherit file churn
+  only when their static risk is at least 35.
+- `--hotspot-model hybrid`: default ranking, combining `static_risk * 0.65`
+  and `churn_risk * 0.35`, then rounding priority to an integer.
 
 Tune churn collection with `--churn-window-days` and
 `--churn-max-commit-lines`. Commits above the max added+deleted line count are

@@ -325,7 +325,7 @@ h2 {
 }
 
 .risk-track,
-.risk-meter {
+.priority-meter {
   overflow: hidden;
   height: 10px;
   background: var(--rail);
@@ -334,7 +334,7 @@ h2 {
 }
 
 .risk-track i,
-.risk-meter i {
+.priority-meter i {
   display: block;
   height: 100%;
   border-radius: inherit;
@@ -373,7 +373,7 @@ h2 {
   background: var(--blue);
 }
 
-.risk-meter i {
+.priority-meter i {
   background: linear-gradient(90deg, var(--cyan), var(--blue));
 }
 
@@ -421,7 +421,7 @@ h2 {
 }
 
 .file-row {
-  grid-template-columns: minmax(0, 1.6fr) minmax(120px, 0.6fr) 56px;
+  grid-template-columns: minmax(0, 1.6fr) minmax(120px, 0.6fr) 78px;
   padding: 10px 12px;
 }
 

@@ -47,6 +47,59 @@ cargo clippy --all-targets --all-features
 When report formatting or schema behavior changes, include sample human, HTML,
 JSON, YAML, or SARIF output in the pull request description.
 
+## Report App Development
+
+The React report app requires Node.js `^20.19.0` or `>=22.12.0` and npm; CI uses
+Node.js 22. Vite 8 is installed from the locked frontend dependencies, so use
+the package scripts instead of a global Vite installation:
+
+```powershell
+cd web\report-app
+npm ci
+npm run test
+npm run build
+```
+
+The build refreshes `assets/report-app.js` and `assets/report-app.css`. Rust
+embeds those files in offline HTML reports, so commit both generated assets
+with the frontend source change.
+
+## Documentation Site
+
+The documentation site uses mdBook 0.5.4. Install that exact version before
+building or serving the site locally:
+
+```powershell
+cargo install mdbook --version 0.5.4 --locked
+```
+
+On Windows, generate the current self-scan sample and serve the site with:
+
+```powershell
+.\scripts\serve-docs.ps1
+```
+
+Build static files into `target/docs-site` without starting a server:
+
+```powershell
+.\scripts\build-docs.ps1
+```
+
+On macOS or Linux, use the matching shell scripts:
+
+```bash
+sh scripts/serve-docs.sh
+sh scripts/build-docs.sh
+```
+
+The published documentation root is
+`https://lylemi.github.io/Reforge/`; the generated self-scan is published at
+`https://lylemi.github.io/Reforge/sample/`. Repository administrators must set
+`Settings > Pages > Build and deployment > Source` to `GitHub Actions` before
+the Pages workflow can deploy for the first time. Keep the `github-pages`
+environment restricted to the `main` branch; the workflow also enforces that
+branch boundary for manual runs.
+
 ## Tests
 
 Unit tests live next to the modules they exercise under `#[cfg(test)]` or in
@@ -110,4 +163,6 @@ Pull requests should describe:
 - Sample human, HTML, JSON, YAML, or SARIF output when report formatting changes.
 
 Do not commit generated outputs, dependency directories, build artifacts, or
-local scan artifacts.
+local scan artifacts. The checked-in `assets/report-app.js` and
+`assets/report-app.css` bundles are the sole generated-output exception because
+the Rust HTML renderer embeds them.

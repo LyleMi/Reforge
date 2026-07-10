@@ -247,9 +247,20 @@ fn write_report_file(
         .output_file
         .as_ref()
         .expect("output file should be present before writing");
-    let file = File::create(output_file)
-        .with_context(|| format!("failed to create output file {}", output_file.display()))?;
+    let file = create_report_file(output_file)?;
     write_report(BufWriter::new(file), report, baseline_diff, settings)
+}
+
+fn create_report_file(output_file: &Path) -> Result<File> {
+    if let Some(parent) = output_file.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create output directory {}", parent.display()))?;
+    }
+
+    File::create(output_file)
+        .with_context(|| format!("failed to create output file {}", output_file.display()))
 }
 
 fn write_report(
@@ -331,5 +342,30 @@ where
                 Err(error)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
+
+    #[test]
+    fn creates_missing_output_file_parent_directories() -> Result<()> {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("reforge-output-file-{suffix}"));
+        let output_file = root.join("nested/reports/report.json");
+
+        let mut file = create_report_file(&output_file)?;
+        file.write_all(b"{}")?;
+        drop(file);
+
+        assert_eq!(std::fs::read_to_string(&output_file)?, "{}");
+        std::fs::remove_dir_all(root)?;
+        Ok(())
     }
 }

@@ -118,20 +118,35 @@ happy-path-only test risk is intentionally conservative.
 Hotspots rank files, functions, and types independently from findings. They are
 retained when `priority >= 35`.
 
-Static risk uses threshold excess and percentile risk for size, complexity,
-coupling, duplication, drift, and test-risk signals. Threshold-based static
-risk uses the same effective scan thresholds that findings use after applying
-configuration and CLI overrides.
+`static_risk` and `churn_risk` are floating-point scores from 0 through 100.
+Hotspot `priority` applies the selected model, rounds the result to an integer,
+and clamps it to the same 0-100 range.
 
-Churn risk uses project percentiles for:
+Static risk is the strongest applicable structural signal for the location,
+not a blend of every detector dimension:
+
+- File risk considers the file-LOC threshold, import threshold at 80% weight,
+  public-item threshold at 80%, direct directory file-count threshold at 65%,
+  and file-LOC percentile at 35%.
+- Function risk considers line and complexity thresholds, nesting at 85%,
+  parameter count at 75%, and function-LOC percentile at 35%.
+- Type risk considers line and member-count thresholds plus type-LOC
+  percentile at 35%.
+
+Threshold-based inputs use the same effective scan thresholds as findings
+after configuration and CLI overrides. Reforge takes the maximum weighted
+input and clamps it to 0-100.
+
+Churn risk likewise takes the strongest of these project-percentile inputs:
 
 - `commits_touched`
 - `recent_weighted_churn`
-- `authors_count`
+- `authors_count` at 70% weight
 
 Function and type churn is inherited from file churn only when the scoped item
-already has meaningful static risk. File-level churn pressure is capped for
-line-level findings unless there is an exact function/type hotspot match.
+has `static_risk >= 35`; otherwise its `churn_risk` is zero. File-level churn
+pressure is capped for line-level findings unless there is an exact
+function/type hotspot match.
 
 Hotspot models:
 

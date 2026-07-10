@@ -6,6 +6,9 @@ rust-version = "1.85"
 description = "Detect refactoring signals across source trees"
 license = "Apache-2.0"
 readme = "README.md"
+repository = "https://github.com/LyleMi/Reforge"
+homepage = "https://lylemi.github.io/Reforge/"
+documentation = "https://lylemi.github.io/Reforge/"
 keywords = ["analysis", "cli", "refactoring", "tree-sitter"]
 categories = ["command-line-utilities", "development-tools"]
 

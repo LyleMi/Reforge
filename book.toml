@@ -1,0 +1,28 @@
+[book]
+title = "Reforge"
+description = "Documentation for the Reforge refactoring-signal CLI"
+authors = ["Reforge contributors"]
+language = "en"
+src = "docs"
+
+[build]
+build-dir = "target/docs-site"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+no-section-label = true
+git-repository-url = "https://github.com/LyleMi/Reforge"
+edit-url-template = "https://github.com/LyleMi/Reforge/edit/main/{path}"
+site-url = "/Reforge/"
+additional-css = ["docs/theme/reforge.css"]
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 30
+use-boolean-and = true

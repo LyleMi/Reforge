@@ -630,6 +630,7 @@ fn is_supported_source(path: &Path) -> bool {
                 | "js"
                 | "jsx"
                 | "kt"
+                | "php"
                 | "py"
                 | "rb"
                 | "rs"

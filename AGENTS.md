@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Reforge is a Rust 2024 CLI crate for detecting refactoring signals in source trees. Core code lives in `src/`: `main.rs` wires CLI parsing to scanning and reporting, `cli.rs` defines Clap arguments, `scanner.rs` walks projects and builds findings, `similar_functions.rs` contains Tree-sitter based similarity analysis, and `report.rs` renders human and JSON output. Unit tests are colocated in each module under `#[cfg(test)]`; there is currently no separate `tests/` directory. Build output belongs in `target/` and should not be committed.
+Reforge is a Rust 2024 CLI crate for detecting refactoring signals in source trees. Core code lives in `src/`: `main.rs` wires CLI parsing to scanning and reporting, `cli.rs` defines Clap arguments, `scan/` handles project walking and scan orchestration, `detectors/` owns structural, similarity, dependency, drift, and documentation analysis, `lang/` contains Tree-sitter adapters, `model/` defines report data, `scoring/` ranks findings and hotspots, and `output/` renders human, HTML, JSON, YAML, and SARIF output. Unit tests are colocated under `#[cfg(test)]` or in module-specific test files included from the owning module; there is currently no separate `tests/` directory. Frontend source lives in `web/report-app`. Its generated `assets/report-app.js` and `assets/report-app.css` bundles are intentionally committed because the Rust HTML renderer embeds them. Other build output belongs in `target/` and should not be committed.
 
 ## Build, Test, and Development Commands
 
@@ -15,7 +15,7 @@ Reforge is a Rust 2024 CLI crate for detecting refactoring signals in source tre
 
 ## Coding Style & Naming Conventions
 
-Use idiomatic Rust formatted by `cargo fmt`; keep four-space indentation and avoid manual alignment churn. Prefer small modules with clear ownership boundaries matching the existing `cli`, `scanner`, `report`, and `similar_functions` split. Use `snake_case` for functions, variables, modules, and test names; use `PascalCase` for structs, enums, and traits. Keep CLI flags long, descriptive, and kebab-case, for example `--max-file-lines` and `--function-similarity`.
+Use idiomatic Rust formatted by `cargo fmt`; keep four-space indentation and avoid manual alignment churn. Prefer small modules with clear ownership boundaries matching the existing `cli`, `scan`, `detectors`, `lang`, `model`, `scoring`, and `output` split. Use `snake_case` for functions, variables, modules, and test names; use `PascalCase` for structs, enums, and traits. Keep CLI flags long, descriptive, and kebab-case, for example `--max-file-lines` and `--function-similarity`.
 
 ## Testing Guidelines
 
@@ -27,4 +27,4 @@ Use Conventional Commits for all commit messages, formatted as `<type>(optional-
 
 ## Security & Configuration Tips
 
-Do not commit generated outputs, dependency directories, or local scan artifacts. Preserve the default behavior that skips common generated directories such as `target`, `node_modules`, `dist`, and `build` unless a change explicitly targets generated-file scanning.
+Do not commit generated outputs, dependency directories, or local scan artifacts, except for `assets/report-app.js` and `assets/report-app.css`. Regenerate and commit those two embedded report assets whenever their `web/report-app` source changes. Preserve the default behavior that skips common generated directories such as `target`, `node_modules`, `dist`, and `build` unless a change explicitly targets generated-file scanning.

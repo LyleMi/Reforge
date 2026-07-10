@@ -158,11 +158,13 @@ Hotspot fields:
 - `name`: function/type name, otherwise `null`.
 - `priority`: 0 through 100 ranking score.
 - `severity`: `info`, `warning`, or `critical`.
-- `static_risk`: static risk score.
-- `churn_risk`: churn risk score.
+- `static_risk`: floating-point structural risk score from 0 through 100.
+- `churn_risk`: floating-point git-churn risk score from 0 through 100.
 - `reason`: short explanation of the ranking model and dominant risk.
 
-Hotspots are retained when `priority >= 35` and sorted by priority descending.
+The selected hotspot model converts those components into integer `priority`
+from 0 through 100. Hotspots are retained when `priority >= 35` and sorted by
+priority descending.
 They are watchlist entries, not detector findings, and should not be treated as
 hard CI gate failures by themselves.
 

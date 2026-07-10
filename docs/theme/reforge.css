@@ -1,0 +1,258 @@
+:root {
+  --content-max-width: 980px;
+  --sidebar-width: 290px;
+  --page-padding: 18px;
+  --reforge-ink: #10203d;
+  --reforge-blue: #1e5fbf;
+  --reforge-cyan: #087f9c;
+  --reforge-green: #16705d;
+  --reforge-amber: #9a5a08;
+  --reforge-line: #cbd8e8;
+}
+
+.light {
+  --bg: #f7f9fc;
+  --fg: var(--reforge-ink);
+  --sidebar-bg: #edf3f9;
+  --sidebar-fg: #243653;
+  --sidebar-non-existant: #73809a;
+  --sidebar-active: var(--reforge-blue);
+  --sidebar-spacer: var(--reforge-line);
+  --scrollbar: #9fb1c9;
+  --icons: #405777;
+  --icons-hover: var(--reforge-blue);
+  --links: #1556ad;
+  --inline-code-color: #7a2d48;
+  --theme-popup-bg: #ffffff;
+  --quote-bg: #edf7f4;
+  --quote-border: var(--reforge-green);
+  --table-border-color: var(--reforge-line);
+  --table-header-bg: #e8f0f8;
+  --table-alternate-bg: #f1f5fa;
+  --searchbar-border-color: var(--reforge-line);
+  --searchbar-bg: #ffffff;
+  --searchbar-fg: var(--reforge-ink);
+  --searchresults-header-fg: #5d6d87;
+  --searchresults-border-color: var(--reforge-line);
+}
+
+.navy,
+.coal,
+.ayu {
+  --reforge-ink: #edf3ff;
+  --reforge-blue: #62a9ff;
+  --reforge-cyan: #4fc3dc;
+  --reforge-green: #65cbb0;
+  --reforge-amber: #f0b35e;
+  --reforge-line: #40506b;
+}
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+  letter-spacing: 0;
+}
+
+body {
+  font-family: "Aptos", "Segoe UI", system-ui, sans-serif;
+}
+
+code,
+pre,
+.hljs {
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+}
+
+.sidebar {
+  border-right: 1px solid var(--reforge-line);
+}
+
+.sidebar .sidebar-scrollbox {
+  padding: 24px 22px 36px;
+}
+
+.chapter li.chapter-item {
+  margin-top: 4px;
+}
+
+.chapter li.part-title {
+  margin: 24px 0 8px;
+  color: #64738b;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.content main {
+  min-width: 0;
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+}
+
+.content main h1,
+.content main h2,
+.content main h3 {
+  color: var(--reforge-ink);
+  font-family: Bahnschrift, "Arial Narrow", "Segoe UI", sans-serif;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.content main h1 {
+  margin-bottom: 0.75em;
+  font-size: 2.35em;
+}
+
+.content main h2 {
+  margin-top: 2.25em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--reforge-line);
+}
+
+.content main a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.content main blockquote {
+  margin: 1.5em 0;
+  padding: 0.85em 1.1em;
+  border-left-width: 4px;
+}
+
+.content main table {
+  width: 100%;
+}
+
+.content main th {
+  color: var(--reforge-ink);
+  font-weight: 700;
+}
+
+.docs-masthead {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+  margin: 0 0 2.5rem;
+  padding: 1.5rem 0 1.75rem;
+  border-top: 5px solid var(--reforge-blue);
+  border-bottom: 1px solid var(--reforge-line);
+}
+
+.docs-masthead img {
+  display: block;
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
+}
+
+.docs-masthead > * {
+  min-width: 0;
+}
+
+.docs-masthead h1 {
+  margin: 0 0 0.25rem;
+  font-size: 2.6rem;
+}
+
+.docs-masthead p {
+  max-width: 700px;
+  margin: 0;
+  color: var(--fg);
+  font-size: 1.05rem;
+  opacity: 0.76;
+}
+
+.docs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.25rem;
+  margin-top: 1rem;
+}
+
+.docs-actions a {
+  color: var(--reforge-blue);
+  font-weight: 700;
+}
+
+.signal-key {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 1.5rem 0 2rem;
+  overflow: hidden;
+  border: 1px solid var(--reforge-line);
+  background: var(--reforge-line);
+}
+
+.signal-key > div {
+  min-width: 0;
+  padding: 1rem;
+  background: var(--bg);
+}
+
+.signal-key strong,
+.signal-key span {
+  display: block;
+}
+
+.signal-key strong {
+  margin-bottom: 0.25rem;
+  color: var(--reforge-ink);
+}
+
+.signal-key span {
+  color: var(--fg);
+  font-size: 0.88rem;
+  opacity: 0.72;
+}
+
+.signal-key .findings {
+  border-top: 3px solid var(--reforge-amber);
+}
+
+.signal-key .hotspots {
+  border-top: 3px solid var(--reforge-blue);
+}
+
+.signal-key .metrics {
+  border-top: 3px solid var(--reforge-green);
+}
+
+@media (max-width: 700px) {
+  .docs-masthead {
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 16px;
+    padding-top: 1rem;
+  }
+
+  .docs-masthead img {
+    width: 60px;
+    height: 60px;
+  }
+
+  .docs-masthead h1 {
+    font-size: 2rem;
+  }
+
+  .docs-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .signal-key {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}

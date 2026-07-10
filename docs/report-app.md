@@ -20,7 +20,8 @@ cargo run -- scan . --output-file reforge-report.html --progress never
 
 The resulting file contains the scan data, HTML shell, CSS, and JavaScript app
 bundle. It can be opened directly in a browser without a local server and
-without network access.
+without network access. Reforge creates missing parent directories in the
+output path before writing the report.
 
 ## Architecture
 
@@ -42,6 +43,11 @@ together.
 Frontend source lives in `web/report-app`. Use that package for React
 components, TypeScript types, styling, and visualization behavior.
 
+Frontend development requires Node.js `^20.19.0` or `>=22.12.0` and npm; CI
+uses Node.js 22. The project uses its pinned Vite 8 dependency from
+`package-lock.json`; install it with `npm ci` and run it through the package
+scripts rather than relying on a global Vite installation.
+
 Build the app after changing report UI code:
 
 ```powershell
@@ -57,4 +63,5 @@ The build is expected to refresh these checked-in assets:
 
 Rust embeds those generated assets into the single-file HTML report. Commit the
 frontend source changes and the regenerated assets together so `--output html`
-uses the current React app.
+uses the current React app. These two bundles are the repository's intentional
+exception to the rule against committing generated build output.

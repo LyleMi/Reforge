@@ -11,6 +11,9 @@ Confirm the crate metadata in `Cargo.toml`:
 - `description`
 - `license`
 - `readme`
+- `repository`
+- `homepage`
+- `documentation`
 - `keywords`
 - `categories`
 

@@ -19,3 +19,13 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  - package-ecosystem: npm
+    directory: /web/report-app
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      report-app-dependencies:
+        patterns:
+          - "*"

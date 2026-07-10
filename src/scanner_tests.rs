@@ -110,6 +110,37 @@ fn can_include_generated_directories() -> Result<()> {
 }
 
 #[test]
+fn scans_and_analyzes_php_sources() -> Result<()> {
+    let root = test_root("php-source");
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(
+        root.join("src/app.php"),
+        r#"<?php
+function calculate_total(array $items): int {
+    $total = 0;
+    foreach ($items as $item) {
+        $total += $item;
+    }
+    return $total;
+}
+"#,
+    )?;
+
+    let mut progress = NoopProgress;
+    let report = scan_report(&scan_args(root.clone(), false), &mut progress)?;
+
+    fs::remove_dir_all(root)?;
+
+    assert_eq!(report.stats.source_files_scanned, 1);
+    assert_eq!(report.raw_metrics.files.len(), 1);
+    assert!(report.raw_metrics.files[0].path.ends_with("src/app.php"));
+    assert!(report.raw_metrics.functions.iter().any(|function| {
+        function.path.ends_with("src/app.php") && function.name == "calculate_total"
+    }));
+    Ok(())
+}
+
+#[test]
 fn can_exclude_test_sources_from_scan() -> Result<()> {
     let root = test_root("exclude-tests");
     fs::create_dir_all(root.join("src"))?;

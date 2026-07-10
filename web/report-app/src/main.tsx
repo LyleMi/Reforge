@@ -5,7 +5,6 @@ import "./styles.css";
 import type {
   DependencyGraphEdge,
   DependencyGraphNode,
-  FileRawMetric,
   Finding,
   FindingMetric,
   Hotspot,
@@ -13,18 +12,13 @@ import type {
   ScanReport,
   Severity,
 } from "./reportTypes";
-
-type FileOverview = {
-  path: string;
-  loc: number;
-  imports: number;
-  publicItems: number;
-  churn: number;
-  findings: number;
-  risk: number;
-  hotspotPriority: number;
-  isTest: boolean;
-};
+import {
+  deriveFileOverviews,
+  formatRiskScore,
+  toDisplayReport,
+  validateReport,
+  type FileOverview,
+} from "./reportModel";
 
 type PositionedNode = DependencyGraphNode & {
   x: number;
@@ -49,7 +43,7 @@ function parseReport(): { report?: ScanReport; error?: string } {
   }
 
   try {
-    return { report: JSON.parse(element.textContent) as ScanReport };
+    return { report: validateReport(JSON.parse(element.textContent)) };
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Report JSON could not be parsed."
@@ -97,61 +91,6 @@ function location(path: string, line?: number | null, name?: string | null): str
   const linePart = line ? `:${line}` : "";
   const namePart = name ? ` ${name}` : "";
   return `${path}${linePart}${namePart}`;
-}
-
-function churnTotal(file: FileRawMetric): number {
-  const churn = file.churn ?? {};
-  return number(churn.lines_added) + number(churn.lines_deleted) + number(churn.recent_weighted_churn);
-}
-
-function deriveFileOverviews(report: ScanReport): FileOverview[] {
-  const files = report.raw_metrics?.files ?? [];
-  const findings = report.findings ?? [];
-  const hotspots = report.hotspots ?? [];
-  const maxLoc = Math.max(1, ...files.map((file) => number(file.loc)));
-  const findingCounts = new Map<string, number>();
-  const findingPriorities = new Map<string, number>();
-  const hotspotPriorities = new Map<string, number>();
-
-  for (const finding of findings) {
-    findingCounts.set(finding.path, (findingCounts.get(finding.path) ?? 0) + 1);
-    findingPriorities.set(
-      finding.path,
-      Math.max(findingPriorities.get(finding.path) ?? 0, number(finding.priority))
-    );
-  }
-
-  for (const hotspot of hotspots) {
-    hotspotPriorities.set(
-      hotspot.path,
-      Math.max(hotspotPriorities.get(hotspot.path) ?? 0, number(hotspot.priority))
-    );
-  }
-
-  return files
-    .map((file) => {
-      const loc = number(file.loc);
-      const hotspotPriority = hotspotPriorities.get(file.path) ?? 0;
-      const findingPriority = findingPriorities.get(file.path) ?? 0;
-      return {
-        path: file.path,
-        loc,
-        imports: number(file.imports),
-        publicItems: number(file.public_items),
-        churn: churnTotal(file),
-        findings: findingCounts.get(file.path) ?? 0,
-        hotspotPriority,
-        isTest: Boolean(file.is_test),
-        risk: Math.max(findingPriority, hotspotPriority, Math.round((loc / maxLoc) * 35))
-      };
-    })
-    .sort(
-      (left, right) =>
-        right.risk - left.risk ||
-        right.findings - left.findings ||
-        right.loc - left.loc ||
-        left.path.localeCompare(right.path)
-    );
 }
 
 function groupSimilarFindings(findings: Finding[]): Finding[] {
@@ -336,7 +275,7 @@ function MetricsSummary({ report }: { report: ScanReport }) {
   );
 }
 
-function FileHeatmap({ files }: { files: FileOverview[] }) {
+function FileOverviewList({ files }: { files: FileOverview[] }) {
   const [expanded, setExpanded] = useState(false);
 
   if (files.length === 0) return <p className="empty">No raw file metrics were included in this report.</p>;
@@ -349,14 +288,19 @@ function FileHeatmap({ files }: { files: FileOverview[] }) {
           <div>
             <strong>{file.path}</strong>
             <span>
-              {formatNumber(file.loc)} loc · {formatNumber(file.imports)} imports · {formatNumber(file.churn)} churn
+              {formatNumber(file.loc)} loc · {formatNumber(file.imports)} imports · {formatNumber(file.recentWeightedChurn)} recent weighted churn · {formatNumber(file.findings)} findings
               {file.isTest ? " · test" : ""}
             </span>
           </div>
-          <div className="risk-meter" aria-label={`risk ${file.risk}`}>
-            <i style={{ width: `${Math.min(100, file.risk)}%` }} />
+          <div
+            className="priority-meter"
+            aria-label={file.hotspotPriority === null ? "not in hotspot watchlist" : `hotspot priority ${file.hotspotPriority}`}
+          >
+            <i style={{ width: `${Math.min(100, file.hotspotPriority ?? 0)}%` }} />
           </div>
-          <Badge className={`band-${scoreBand(file.risk)}`}>{file.risk}</Badge>
+          <Badge className={file.hotspotPriority === null ? "" : `band-${scoreBand(file.hotspotPriority)}`}>
+            {file.hotspotPriority === null ? "unranked" : `p${file.hotspotPriority}`}
+          </Badge>
         </div>
       ))}
       <ShowMoreButton expanded={expanded} initialLimit={INITIAL_FILE_LIMIT} onToggle={() => setExpanded(!expanded)} total={files.length} />
@@ -400,8 +344,8 @@ function Hotspots({ hotspots }: { hotspots: Hotspot[] }) {
                 <div className="chips">
                   <Badge>{hotspot.level}</Badge>
                   <Badge className={severityClass(hotspot.severity)}>{hotspot.severity ?? "info"}</Badge>
-                  <Badge>static {Math.round(number(hotspot.static_risk) * 100)}</Badge>
-                  <Badge>churn {Math.round(number(hotspot.churn_risk) * 100)}</Badge>
+                  <Badge>static {formatRiskScore(hotspot.static_risk)}</Badge>
+                  <Badge>churn {formatRiskScore(hotspot.churn_risk)}</Badge>
                 </div>
               </div>
               <strong className="priority">{number(hotspot.priority)}</strong>
@@ -647,13 +591,14 @@ function compareFindings(left: Finding, right: Finding, sort: string): number {
 }
 
 function ReportApp({ report }: { report: ScanReport }) {
-  const findings = report.findings ?? [];
-  const hotspots = report.hotspots ?? [];
-  const files = useMemo(() => deriveFileOverviews(report), [report]);
+  const displayReport = useMemo(() => toDisplayReport(report), [report]);
+  const findings = displayReport.findings ?? [];
+  const hotspots = displayReport.hotspots ?? [];
+  const files = useMemo(() => deriveFileOverviews(displayReport), [displayReport]);
   const similarGroups = useMemo(() => groupSimilarFindings(findings), [findings]);
-  const summary = report.summary ?? {};
-  const stats = report.stats ?? {};
-  const suppression = report.suppression_summary ?? {};
+  const summary = displayReport.summary ?? {};
+  const stats = displayReport.stats ?? {};
+  const suppression = displayReport.suppression_summary ?? {};
   const suppressedCount = number(suppression.suppressed_count);
   const highestSuppressedPriority = suppression.highest_suppressed_priority;
   const suppressionMeta =
@@ -665,7 +610,7 @@ function ReportApp({ report }: { report: ScanReport }) {
     <main className="report-shell">
       <header className="report-header">
         <div>
-          <span className="eyebrow">Reforge schema {report.schema_version ?? "unknown"}</span>
+          <span className="eyebrow">Reforge schema {displayReport.schema_version}</span>
           <h1>Reforge scan report</h1>
           <p>
             {formatNumber(number(summary.scanned_files, number(stats.source_files_scanned)))} files scanned in {formatDuration(number(summary.duration_ms))}; churn is {summary.churn?.enabled ? "enabled" : "disabled"}.
@@ -698,13 +643,13 @@ function ReportApp({ report }: { report: ScanReport }) {
         </Section>
       </div>
 
-      <Section title="File Heatmap" meta={`${files.length} files ranked`}>
-        <FileHeatmap files={files} />
+      <Section title="File Overview" meta={`${files.length} files · priority then churn`}>
+        <FileOverviewList files={files} />
       </Section>
 
       <div className="dashboard-grid wide-left">
-        <Section title="Dependency Map" meta={`${report.dependency_graph?.nodes?.length ?? 0} nodes`}>
-          <DependencyMap report={report} />
+        <Section title="Dependency Map" meta={`${displayReport.dependency_graph?.nodes?.length ?? 0} nodes`}>
+          <DependencyMap report={displayReport} />
         </Section>
         <Section title="Similar Function Groups" meta={`${similarGroups.length} groups`}>
           <SimilarGroups groups={similarGroups} />

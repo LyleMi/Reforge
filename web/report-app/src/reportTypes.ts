@@ -114,13 +114,15 @@ export type SuppressionSummary = {
 };
 
 type MetricScope = "files" | "functions" | "types" | "churn";
-type RawMetricScope = "functions" | "types";
+type LocatedRawMetric = Record<string, unknown> & { path: string };
 
 export type MetricsSummaryShape = Partial<Record<MetricScope, Record<string, Percentiles>>>;
 
 export type RawMetrics = {
   files?: FileRawMetric[];
-} & Partial<Record<RawMetricScope, Array<Record<string, unknown>>>>;
+  functions?: LocatedRawMetric[];
+  types?: LocatedRawMetric[];
+};
 
 export type DependencyGraph = {
   nodes?: DependencyGraphNode[];
@@ -128,7 +130,7 @@ export type DependencyGraph = {
 };
 
 export type ScanReport = {
-  schema_version?: number;
+  schema_version: number;
   summary?: ScanSummary;
   stats?: ScanStats;
   metrics_summary?: MetricsSummaryShape;

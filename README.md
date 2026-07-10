@@ -8,7 +8,7 @@
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
   <img alt="MSRV" src="https://img.shields.io/badge/MSRV-1.85-2f855a">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-174%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-176%20passing-brightgreen">
   <img alt="Output formats" src="https://img.shields.io/badge/output-human%20%7C%20html%20%7C%20json%20%7C%20yaml%20%7C%20sarif-6b46c1">
 </p>
 
@@ -63,7 +63,8 @@ cargo run -- scan . --output-file reforge-report.json --progress never
 ```
 
 The output file extension selects HTML, JSON, YAML, or SARIF automatically unless
-`--output` is set explicitly.
+`--output` is set explicitly. Reforge creates missing parent directories in the
+output path.
 
 Generate a static offline HTML report:
 
@@ -80,6 +81,11 @@ cargo run -- scan . --output sarif --output-file reforge-report.sarif --progress
 ## Installation
 
 Reforge requires Rust 1.85 or newer.
+
+Tagged releases publish prebuilt archives for Windows, Linux, and macOS on the
+[GitHub Releases page](https://github.com/LyleMi/Reforge/releases). When a
+release is available, extract its platform archive and place `reforge` (or
+`reforge.exe`) on `PATH`. Each archive also contains the README and license.
 
 Build a local debug binary:
 
@@ -145,7 +151,9 @@ The scripts install or update the skill only. Add `-InstallCli` or
 
 ## Documentation
 
-The full documentation set lives in [docs/](docs/README.md), including the
+Read the [published documentation](https://lylemi.github.io/Reforge/) or open
+the [current self-scan sample](https://lylemi.github.io/Reforge/sample/). The
+source documentation set lives in [docs/](docs/README.md), including the
 [user guide](docs/user-guide.md), [configuration reference](docs/configuration.md),
 [report schema](docs/report-schema.md), [metrics model](docs/metrics-model.md),
 [detector reference](docs/detectors.md), [HTML report app](docs/report-app.md), and
@@ -160,7 +168,7 @@ Reforge reports maintainability and refactoring data in four layers:
 - `metrics_summary`: project-level percentile distributions such as LOC,
   complexity, imports, and churn.
 - `hotspots`: model-ranked locations with `priority`, `static_risk`, and
-  `churn_risk`.
+  `churn_risk`; both risk components use a 0-100 scale.
 - `findings`: actionable signals derived from raw metrics and pattern
   detectors.
 
@@ -353,7 +361,7 @@ signals from the hotspot `Watchlist`, `Signal mix` summarizes finding kinds,
 and each finding includes the ranking reason. HTML output renders the same
 scan with the React + TypeScript report app, packaged as a single offline
 `.html` artifact with the scan data, HTML shell, styles, and inline app bundle.
-The visual report includes summary cards, risk distribution, file heatmap,
+The visual report includes summary cards, risk distribution, File Overview,
 dependency map, hotspots, similar-function groups, and prioritized findings.
 JSON and YAML use schema version 13 and include `summary`,
 `metrics_summary`, `raw_metrics`, `dependency_graph`, `hotspots`,
@@ -415,11 +423,17 @@ ignored so mechanical changes do not dominate the hotspot model.
 
 Hotspot models:
 
-- `static`: ranks by size, complexity, coupling, duplication, drift, and test
-  risk.
-- `churn`: ranks primarily by commits touched, changed lines, authors, and
-  weighted churn.
-- `hybrid`: default, using `static_risk * 0.65 + churn_risk * 0.35`.
+- `static`: uses the strongest 0-100 structural risk for the location. File
+  risk considers lines, imports, public items, direct directory file count,
+  and file-LOC percentile; function risk considers lines, complexity, nesting,
+  parameters, and function-LOC percentile; type risk considers lines, members,
+  and type-LOC percentile.
+- `churn`: uses the strongest 0-100 project-percentile signal from commits
+  touched and recent weighted churn, with author-count percentile weighted at
+  70%. Function and type locations inherit file churn only after their static
+  risk reaches 35.
+- `hybrid`: default, using `static_risk * 0.65 + churn_risk * 0.35` before
+  rounding priority to an integer.
 
 ## Configuration
 
