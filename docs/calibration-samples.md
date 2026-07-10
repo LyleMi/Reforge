@@ -112,8 +112,6 @@ watchlist behavior without exposing sample-specific paths.
 
 ## Calibration Follow-Ups
 
-- Add at least one smaller library and one service application before changing
-  defaults based on these two large CLI samples.
 - Review a stratified sample of high-priority findings with maintainers to
   estimate false-positive rates by detector kind.
 - Calibrate the documented `strict`, `balanced`, and `relaxed` presets against
@@ -121,3 +119,43 @@ watchlist behavior without exposing sample-specific paths.
 - For large repositories, consider a calibration mode or docs recipe that uses
   `--exclude-tests` and higher `--min-function-tokens` when the goal is
   structural threshold calibration rather than duplication analysis.
+
+## Cross-Project Core Pass
+
+A second pass on July 10, 2026 added smaller libraries, frameworks, a service
+application, and a TypeScript monorepo. Sample identities, clone locations, and
+raw reports remain outside the committed documentation. Each source snapshot
+was frozen before scanning, and all samples used the same reproducible static
+settings as the large CLI pass.
+
+| Sample | Shape | Source files | Function candidates | Findings | Issues | Findings merged into issues | Hotspots | Similar groups | Duration (ms) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| core-rust-cli | multi-crate CLI | 101 | 378 | 183 | 136 | 25.7% | 99 | 10 | 6,479 |
+| core-python-framework | small framework | 83 | 68 | 83 | 62 | 25.3% | 40 | 0 | 486 |
+| core-go-library | small HTTP library | 78 | 82 | 38 | 25 | 34.2% | 41 | 0 | 381 |
+| core-js-framework | web framework | 141 | 7 | 47 | 45 | 4.3% | 2 | 0 | 1,076 |
+| core-java-service | service application | 48 | 10 | 0 | 0 | 0.0% | 0 | 0 | 96 |
+| core-ts-monorepo | plugin monorepo | 1,451 | 556 | 933 | 556 | 40.4% | 310 | 3 | 4,195 |
+
+The pass exposed three instrumentation and model issues before the final
+figures above were recorded:
+
+- Python annotations and default expressions were initially traversed as if
+  every identifier were a parameter. A representative eight-parameter
+  function was measured as 30 parameters. Parameter extraction now counts the
+  declared bindings only and excludes method receivers.
+- Java `package-info.java` files were initially treated as kebab-case business
+  source, producing four naming-drift findings in the service sample. Java
+  package and module metadata are now naming-neutral.
+- Dependency depth recursively enumerated simple paths in cyclic graphs. The
+  TypeScript monorepo did not complete within 15 minutes. Depth is now computed
+  once on the strongly connected component condensation DAG; the same complete
+  static scan finishes in about four seconds on the calibration machine.
+
+These corrections changed instrumentation and graph semantics, not default
+thresholds. The remaining large differences in report volume are therefore
+treated as project-shape evidence. In particular, the Java service is a useful
+zero-finding control for the balanced preset, while the TypeScript monorepo is
+a detector-balance and issue-clustering stress sample. The JavaScript
+framework's happy-path test findings remain low-confidence review prompts and
+need maintainer labeling before any threshold or confidence change.

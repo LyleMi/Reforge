@@ -16,6 +16,7 @@ pub(super) fn parameter_names(
     match family {
         LanguageFamily::Rust => rust_parameter_names(parameters, source),
         LanguageFamily::Go => go_parameter_names(parameters, source),
+        LanguageFamily::Python => python_parameter_names(parameters, source),
         LanguageFamily::JavaScriptTypeScript => {
             javascript_typescript_parameter_names(parameters, source)
         }
@@ -32,15 +33,38 @@ pub(super) fn parameter_names(
             &["simple_parameter", "variadic_parameter"],
         ),
         LanguageFamily::Ruby => ruby_parameter_names(parameters, source),
-        _ => {
-            let mut names = Vec::new();
-            let mut cursor = parameters.walk();
-            for child in parameters.named_children(&mut cursor) {
-                collect_parameter_name(child, source, &mut names);
-            }
-            names
+    }
+}
+
+fn python_parameter_names(parameters: Node<'_>, source: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut cursor = parameters.walk();
+    for parameter in parameters.named_children(&mut cursor) {
+        let before = names.len();
+        if parameter.kind() == IDENTIFIER_KIND {
+            collect_parameter_name(parameter, source, &mut names);
+        } else if let Some(name) = parameter.child_by_field_name("name") {
+            collect_parameter_name(name, source, &mut names);
+        }
+
+        if names.len() == before
+            && matches!(
+                parameter.kind(),
+                "default_parameter"
+                    | "typed_parameter"
+                    | "typed_default_parameter"
+                    | "list_splat"
+                    | "list_splat_pattern"
+                    | "dictionary_splat"
+                    | "dictionary_splat_pattern"
+            )
+        {
+            names.push("value".to_string());
         }
     }
+
+    names.retain(|name| name != "self" && name != "cls");
+    names
 }
 
 fn field_named_parameter_names(

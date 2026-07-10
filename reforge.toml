@@ -7,7 +7,7 @@ ignore-paths = [
 [[suppressions]]
 kind = "complex_function"
 path = "src/detectors/structure/analysis/aggregation.rs"
-line = 151
+line = 158
 reason = "scanner naming-style classifier intentionally centralizes syntax branching"
 
 [[suppressions]]
@@ -79,19 +79,19 @@ reason = "public item counting dispatches across supported Tree-sitter grammars"
 [[suppressions]]
 kind = "complex_function"
 path = "src/detectors/structure/analysis/aggregation.rs"
-line = 419
+line = 426
 reason = "directory concept splitting handles mixed file-name conventions conservatively"
 
 [[suppressions]]
 kind = "deep_nesting"
 path = "src/detectors/structure/analysis/aggregation.rs"
-line = 419
+line = 426
 reason = "directory concept splitting uses nested guards to preserve naming behavior"
 
 [[suppressions]]
 kind = "readability_risk"
 path = "src/detectors/structure/analysis/aggregation.rs"
-line = 419
+line = 426
 reason = "directory concept splitting keeps separator and case transitions in one stable helper"
 
 [[suppressions]]

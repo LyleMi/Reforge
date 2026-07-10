@@ -100,7 +100,11 @@ calls, and quoted C/C++ includes that resolve to scanned source files.
 - `dependency_hub`: a project with enough resolved graph data has a file with
   unusually high fan-in or fan-out. The finding reports direct fan-in/fan-out,
   transitive reach, dependency depth, and instability percentage so broad,
-  deep, and mixed-responsibility hubs rank higher.
+  deep, and mixed-responsibility hubs rank higher. Dependency depth is the
+  longest path through the strongly connected component condensation graph.
+  Files in the same cycle therefore share one component depth; cycle size and
+  density remain evidence of `dependency_cycle` instead of being counted again
+  as depth.
 
 External packages, unresolved aliases, generated paths skipped by scan filters,
 and ambiguous language-specific module systems are ignored rather than guessed.

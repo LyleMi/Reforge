@@ -121,3 +121,19 @@ fn reports_dependency_hub_graph_complexity_metrics() {
     assert_eq!(metric_value(hub, "dependency_depth"), Some(3));
     assert_eq!(metric_value(hub, "instability_percent"), Some(75));
 }
+
+#[test]
+fn dependency_depth_collapses_cycles_before_measuring_paths() {
+    let mut graph = DependencyGraph::default();
+    graph.add_edge("hub".to_string(), "a".to_string());
+    graph.add_edge("a".to_string(), "b".to_string());
+    graph.add_edge("b".to_string(), "a".to_string());
+    graph.add_edge("b".to_string(), "leaf".to_string());
+
+    let depths = dependency_depths(&graph);
+
+    assert_eq!(depths.get("hub"), Some(&2));
+    assert_eq!(depths.get("a"), Some(&1));
+    assert_eq!(depths.get("b"), Some(&1));
+    assert_eq!(depths.get("leaf"), Some(&0));
+}

@@ -130,7 +130,14 @@ pub(in crate::detectors::structure) fn normalized_naming_stem(path: &Path) -> Op
     if stem.is_empty()
         || matches!(
             stem.as_str(),
-            "mod" | "lib" | "main" | "index" | "__init__" | "package"
+            "mod"
+                | "lib"
+                | "main"
+                | "index"
+                | "__init__"
+                | "package"
+                | "package-info"
+                | "module-info"
         )
     {
         None

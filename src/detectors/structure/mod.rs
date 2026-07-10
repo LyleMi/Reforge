@@ -966,3 +966,7 @@ use parameters::*;
 #[cfg(test)]
 #[path = "../../structural_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../structural_regression_tests.rs"]
+mod regression_tests;

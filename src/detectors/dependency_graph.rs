@@ -176,6 +176,7 @@ fn dependency_hub_findings(graph: &DependencyGraph) -> Vec<Finding> {
 struct HubContext {
     fan_in: BTreeMap<String, usize>,
     reverse_edges: BTreeMap<String, BTreeSet<String>>,
+    dependency_depths: BTreeMap<String, usize>,
     fan_out_baseline: usize,
     fan_in_baseline: usize,
 }
@@ -184,6 +185,7 @@ impl HubContext {
     fn new(graph: &DependencyGraph) -> Self {
         let fan_in = fan_in_counts(graph);
         let reverse_edges = reverse_edges(graph);
+        let dependency_depths = dependency_depths(graph);
         let fan_out_values = graph
             .nodes
             .values()
@@ -200,6 +202,7 @@ impl HubContext {
         Self {
             fan_in,
             reverse_edges,
+            dependency_depths,
             fan_out_baseline,
             fan_in_baseline,
         }
@@ -219,7 +222,11 @@ fn dependency_hub_finding(
 
     let transitive_fan_out = reachable_count(graph, &node.path);
     let transitive_fan_in = reverse_reachable_count(&context.reverse_edges, &node.path);
-    let dependency_depth = dependency_depth(graph, &node.path);
+    let dependency_depth = context
+        .dependency_depths
+        .get(&node.path)
+        .copied()
+        .unwrap_or(0);
 
     Some(finding(FindingInput::new(
         FindingKind::DependencyHub,
@@ -429,35 +436,57 @@ fn reachable_paths(start: &str, mut edges_for: impl FnMut(&str) -> Vec<String>) 
     seen.len()
 }
 
-fn dependency_depth(graph: &DependencyGraph, start: &str) -> usize {
-    let mut visiting = BTreeSet::from([start.to_string()]);
-    dependency_depth_from(graph, start, &mut visiting)
+fn dependency_depths(graph: &DependencyGraph) -> BTreeMap<String, usize> {
+    let components = strongly_connected_components(graph);
+    let mut component_by_path = BTreeMap::<String, usize>::new();
+    for (component_index, component) in components.iter().enumerate() {
+        for path in component {
+            component_by_path.insert(path.clone(), component_index);
+        }
+    }
+
+    let mut component_edges = vec![BTreeSet::<usize>::new(); components.len()];
+    for node in graph.nodes.values() {
+        let Some(&source_component) = component_by_path.get(&node.path) else {
+            continue;
+        };
+        for target in &node.edges {
+            let Some(&target_component) = component_by_path.get(target) else {
+                continue;
+            };
+            if source_component != target_component {
+                component_edges[source_component].insert(target_component);
+            }
+        }
+    }
+
+    let mut memo = vec![None; components.len()];
+    for component_index in 0..components.len() {
+        component_dependency_depth(component_index, &component_edges, &mut memo);
+    }
+
+    component_by_path
+        .into_iter()
+        .map(|(path, component_index)| (path, memo[component_index].unwrap_or(0)))
+        .collect()
 }
 
-fn dependency_depth_from(
-    graph: &DependencyGraph,
-    path: &str,
-    visiting: &mut BTreeSet<String>,
+fn component_dependency_depth(
+    component: usize,
+    edges: &[BTreeSet<usize>],
+    memo: &mut [Option<usize>],
 ) -> usize {
-    graph
-        .nodes
-        .get(path)
-        .map(|node| {
-            node.edges
-                .iter()
-                .map(|target| {
-                    if !visiting.insert(target.clone()) {
-                        return 0;
-                    }
+    if let Some(depth) = memo[component] {
+        return depth;
+    }
 
-                    let depth = 1 + dependency_depth_from(graph, target, visiting);
-                    visiting.remove(target);
-                    depth
-                })
-                .max()
-                .unwrap_or(0)
-        })
-        .unwrap_or(0)
+    let depth = edges[component]
+        .iter()
+        .map(|target| 1 + component_dependency_depth(*target, edges, memo))
+        .max()
+        .unwrap_or(0);
+    memo[component] = Some(depth);
+    depth
 }
 
 fn instability_percent(fan_in: usize, fan_out: usize) -> usize {
