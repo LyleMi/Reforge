@@ -73,7 +73,7 @@ fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
     finding
         .metrics
         .iter()
-        .find(|metric| metric.name == name)
+        .find(|metric| metric.name.as_str() == name)
         .map(|metric| metric.value)
 }
 
@@ -297,7 +297,7 @@ fn reports_stale_cli_documentation_when_flags_are_missing() -> Result<()> {
     let documented_flags = 2;
     let expected_missing = cli_flags_doc().split_whitespace().count() - documented_flags;
     assert_eq!(
-        metric_value(stale, "missing_cli_flags"),
+        metric_value(stale, "documentation.missing_cli_flags"),
         Some(expected_missing)
     );
     assert!(stale.message.contains("--max-file-lines"));
@@ -322,7 +322,7 @@ fn reports_stale_schema_documentation_when_fields_are_missing() -> Result<()> {
         .iter()
         .find(|finding| finding.kind == FindingKind::StaleSchemaDocumentation)
         .expect("stale schema docs should be reported");
-    assert!(metric_value(stale, "missing_schema_fields").unwrap() > 0);
+    assert!(metric_value(stale, "documentation.missing_schema_fields").unwrap() > 0);
     assert!(stale.message.contains("hotspots"));
     Ok(())
 }

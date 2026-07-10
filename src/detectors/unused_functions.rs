@@ -8,6 +8,7 @@ use crate::language::{
     IDENTIFIER_KIND, LanguageFamily, NAME_FIELD, has_rust_cfg_test_attribute,
     rust_attributes_before,
 };
+use crate::model::MetricId;
 use crate::scanner::{Finding, FindingInput, FindingKind, FindingMetric, is_test_source};
 use crate::similar_functions::{ParsedSourceFile, SourceFile, parse_source_files};
 
@@ -244,7 +245,12 @@ fn unused_function_finding(definition: FunctionDefinition) -> Finding {
                 "function `{}` has no references outside its own body",
                 definition.name
             ),
-            vec![FindingMetric::threshold("references", 0, 1, "references")],
+            vec![FindingMetric::threshold(
+                MetricId::FunctionReferences,
+                0,
+                1,
+                "references",
+            )],
         )
         .with_confidence(0.65),
     )

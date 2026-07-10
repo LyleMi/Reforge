@@ -9,7 +9,7 @@ use crate::language::{
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
     NAME_FIELD, PARAMETERS_FIELD, adapter_for_path, child_by_kind, has_rust_cfg_test_attribute,
 };
-use crate::model::{METRIC_NESTING_DEPTH, METRIC_PUBLIC_ITEMS};
+use crate::model::MetricId;
 use crate::scanner::{
     Finding, FindingInput, FindingKind, FindingMetric, RelatedLocation, is_test_source,
 };
@@ -374,7 +374,7 @@ fn push_readability_risk_finding(
         })
         .collect::<Vec<_>>();
     metrics.push(FindingMetric::threshold(
-        "readability_signals",
+        MetricId::ReadabilitySignalCount,
         readability_signals.len(),
         MIN_READABILITY_RISK_SIGNALS,
         "signals",
@@ -415,12 +415,12 @@ impl FunctionFindingSignal {
         }
     }
 
-    fn metric_name(self) -> &'static str {
+    fn metric_name(self) -> MetricId {
         match self {
-            Self::LongFunction => "function_lines",
-            Self::ComplexFunction => "function_complexity",
-            Self::DeepNesting => METRIC_NESTING_DEPTH,
-            Self::ManyParameters => "function_parameters",
+            Self::LongFunction => MetricId::FunctionLoc,
+            Self::ComplexFunction => MetricId::FunctionComplexity,
+            Self::DeepNesting => MetricId::FunctionNestingDepth,
+            Self::ManyParameters => MetricId::FunctionParameterCount,
         }
     }
 
@@ -504,13 +504,13 @@ fn scan_type_metrics(
                 ),
                 vec![
                     FindingMetric::threshold(
-                        "type_lines",
+                        MetricId::TypeLoc,
                         type_metric.lines,
                         options.max_type_lines,
                         "lines",
                     ),
                     FindingMetric::threshold(
-                        "type_members",
+                        MetricId::TypeMemberCount,
                         type_metric.members,
                         options.max_type_members,
                         "members",
@@ -538,7 +538,7 @@ fn scan_file_metrics(
                 Some(1),
                 format!("file has {imports} imports; consider reducing module coupling"),
                 vec![FindingMetric::threshold(
-                    "imports",
+                    MetricId::FileImports,
                     imports,
                     options.max_imports,
                     "imports",
@@ -556,7 +556,7 @@ fn scan_file_metrics(
                 Some(1),
                 format!("file exposes {public_items} public/exported items"),
                 vec![FindingMetric::threshold(
-                    METRIC_PUBLIC_ITEMS,
+                    MetricId::FilePublicItems,
                     public_items,
                     options.max_public_items,
                     "items",
@@ -606,19 +606,19 @@ fn scan_function_proliferation(
             ),
             vec![
                 FindingMetric::threshold(
-                    "function_count",
+                    MetricId::FileFunctionCount,
                     function_count,
                     options.max_functions_per_file,
                     "functions",
                 ),
                 FindingMetric::threshold(
-                    "functions_per_100_lines",
+                    MetricId::FileFunctionsPerHundredLines,
                     functions_per_100_lines,
                     options.max_functions_per_100_lines,
                     "functions",
                 ),
                 FindingMetric::threshold(
-                    "small_function_ratio",
+                    MetricId::FileSmallFunctionRatio,
                     small_function_ratio,
                     options.max_small_function_ratio,
                     "percent",

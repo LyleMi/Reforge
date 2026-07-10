@@ -1,6 +1,6 @@
 use crate::model::{
     DetectionApproach, DetectorManifestEntry, DetectorRelation, DetectorRelationKind, EntityScope,
-    FindingKind, PrecisionRisk, QualityConstruct, RefactorAction, SignalMechanism,
+    FindingKind, MetricId, PrecisionRisk, QualityConstruct, RefactorAction, SignalMechanism,
 };
 
 mod raw_metrics;
@@ -110,11 +110,82 @@ pub(crate) fn detector_manifest() -> Vec<DetectorManifestEntry> {
                     .map(|language| (*language).to_string())
                     .collect(),
                 precision_risk: precision_risk(kind),
+                input_metrics: input_metrics(kind).to_vec(),
+                default_confidence: default_confidence(kind),
+                impact: impact(kind),
+                actionability: actionability(kind),
                 parent_kind: parent_kind(kind),
                 relations: relations(kind).to_vec(),
             }
         })
         .collect()
+}
+
+pub(crate) fn input_metrics(kind: FindingKind) -> &'static [MetricId] {
+    use FindingKind as K;
+    use MetricId as M;
+
+    match kind {
+        K::LargeFile => &[M::FileLoc],
+        K::LargeDirectory => &[M::DirectorySourceFiles],
+        K::DebtMarker => &[],
+        K::LongFunction => &[M::FunctionLoc],
+        K::ComplexFunction => &[M::FunctionComplexity],
+        K::DeepNesting => &[M::FunctionNestingDepth],
+        K::ManyParameters => &[M::FunctionParameterCount],
+        K::ReadabilityRisk => &[
+            M::FunctionLoc,
+            M::FunctionComplexity,
+            M::FunctionNestingDepth,
+            M::FunctionParameterCount,
+            M::ReadabilitySignalCount,
+        ],
+        K::LargeType => &[M::TypeLoc, M::TypeMemberCount],
+        K::LargePublicSurface => &[M::FilePublicItems],
+        K::ImportHeavyFile => &[M::FileImports],
+        K::FunctionProliferation => &[
+            M::FileFunctionCount,
+            M::FileFunctionsPerHundredLines,
+            M::FileSmallFunctionRatio,
+        ],
+        K::UnusedFunction => &[M::FunctionReferences],
+        K::MissingDocumentationSet => &[M::DocumentationMissingRequiredDocs],
+        K::MissingUserGuide => &[M::DocumentationMissingUserTopics],
+        K::MissingReportSchemaDocs | K::MissingMetricsModelDocs | K::MissingArchitectureDocs => {
+            &[M::DocumentationRisk]
+        }
+        K::StaleCliDocumentation => &[M::DocumentationMissingCliFlags],
+        K::StaleSchemaDocumentation => &[M::DocumentationMissingSchemaFields],
+        K::DependencyCycle => &[
+            M::DependencyCycleFiles,
+            M::DependencyCycleEdges,
+            M::DependencyCycleDensityPercent,
+        ],
+        K::DependencyHub => &[
+            M::DependencyDepth,
+            M::DependencyInstabilityPercent,
+            M::DependencyFanOut,
+            M::DependencyFanIn,
+            M::DependencyTransitiveFanOut,
+            M::DependencyTransitiveFanIn,
+        ],
+        K::SimilarFunctions
+        | K::RepeatedLiteral
+        | K::RepeatedErrorPattern
+        | K::TestDuplication
+        | K::HappyPathOnlyTests
+        | K::FileNamingDrift
+        | K::DirectoryDrift
+        | K::DataClump
+        | K::ParallelImplementation
+        | K::ShadowedAbstraction
+        | K::DuplicateTypeShape
+        | K::ConfigKeyDrift
+        | K::FixtureFactoryDrift
+        | K::GenericBucketDrift
+        | K::AdapterBoundaryBypass
+        | K::StaleCompatibilityPath => &[M::GroupSize],
+    }
 }
 
 pub(crate) fn action(kind: FindingKind) -> RefactorAction {
@@ -429,6 +500,124 @@ fn supported_languages(kind: FindingKind) -> &'static [&'static str] {
     }
 }
 
+pub(crate) fn default_confidence(kind: FindingKind) -> f64 {
+    use FindingKind as K;
+
+    match kind {
+        K::SimilarFunctions
+        | K::RepeatedErrorPattern
+        | K::TestDuplication
+        | K::DataClump
+        | K::ConfigKeyDrift
+        | K::FixtureFactoryDrift => 0.85,
+        K::RepeatedLiteral => 0.75,
+        K::DuplicateTypeShape => 0.80,
+        K::AdapterBoundaryBypass => 0.65,
+        K::GenericBucketDrift
+        | K::StaleCompatibilityPath
+        | K::HappyPathOnlyTests
+        | K::FileNamingDrift
+        | K::DirectoryDrift
+        | K::FunctionProliferation
+        | K::UnusedFunction
+        | K::ParallelImplementation
+        | K::ShadowedAbstraction => 0.60,
+        K::MissingDocumentationSet
+        | K::MissingUserGuide
+        | K::MissingReportSchemaDocs
+        | K::MissingMetricsModelDocs
+        | K::MissingArchitectureDocs
+        | K::StaleCliDocumentation
+        | K::StaleSchemaDocumentation => 0.95,
+        K::DependencyCycle | K::DependencyHub | K::ReadabilityRisk => 0.90,
+        K::DebtMarker
+        | K::LargeFile
+        | K::LargeDirectory
+        | K::LongFunction
+        | K::ComplexFunction
+        | K::DeepNesting
+        | K::ManyParameters
+        | K::LargeType
+        | K::LargePublicSurface
+        | K::ImportHeavyFile => 1.0,
+    }
+}
+
+pub(crate) fn impact(kind: FindingKind) -> f64 {
+    use FindingKind as K;
+
+    match kind {
+        K::DebtMarker => 25.0,
+        K::RepeatedLiteral => 30.0,
+        K::HappyPathOnlyTests | K::ShadowedAbstraction | K::GenericBucketDrift => 35.0,
+        K::FileNamingDrift => 40.0,
+        K::TestDuplication
+        | K::AdapterBoundaryBypass
+        | K::StaleCompatibilityPath
+        | K::ParallelImplementation => 45.0,
+        K::ConfigKeyDrift | K::FixtureFactoryDrift => 50.0,
+        K::LargePublicSurface
+        | K::ImportHeavyFile
+        | K::FunctionProliferation
+        | K::UnusedFunction => 60.0,
+        K::LargeFile
+        | K::LargeDirectory
+        | K::RepeatedErrorPattern
+        | K::DirectoryDrift
+        | K::DataClump
+        | K::DuplicateTypeShape => 65.0,
+        K::MissingDocumentationSet
+        | K::MissingUserGuide
+        | K::MissingMetricsModelDocs
+        | K::MissingArchitectureDocs
+        | K::LongFunction
+        | K::DeepNesting
+        | K::ManyParameters
+        | K::LargeType => 70.0,
+        K::ReadabilityRisk | K::StaleCliDocumentation | K::DependencyHub => 75.0,
+        K::SimilarFunctions => 80.0,
+        K::DependencyCycle => 85.0,
+        K::ComplexFunction | K::MissingReportSchemaDocs | K::StaleSchemaDocumentation => 90.0,
+    }
+}
+
+pub(crate) fn actionability(kind: FindingKind) -> f64 {
+    use FindingKind as K;
+
+    match kind {
+        K::GenericBucketDrift => 35.0,
+        K::RepeatedLiteral | K::HappyPathOnlyTests => 40.0,
+        K::ShadowedAbstraction | K::StaleCompatibilityPath | K::AdapterBoundaryBypass => 45.0,
+        K::ParallelImplementation => 50.0,
+        K::TestDuplication => 55.0,
+        K::DebtMarker | K::FileNamingDrift | K::DirectoryDrift => 60.0,
+        K::ConfigKeyDrift | K::FixtureFactoryDrift => 65.0,
+        K::MissingMetricsModelDocs | K::MissingArchitectureDocs | K::RepeatedErrorPattern => 70.0,
+        K::LargeDirectory
+        | K::ImportHeavyFile
+        | K::LargePublicSurface
+        | K::FunctionProliferation
+        | K::UnusedFunction
+        | K::DataClump
+        | K::DependencyHub => 75.0,
+        K::ReadabilityRisk => 80.0,
+        K::MissingDocumentationSet
+        | K::MissingUserGuide
+        | K::MissingReportSchemaDocs
+        | K::StaleCliDocumentation
+        | K::StaleSchemaDocumentation
+        | K::DependencyCycle
+        | K::LargeFile
+        | K::LongFunction
+        | K::ComplexFunction
+        | K::DeepNesting
+        | K::ManyParameters
+        | K::LargeType
+        | K::SimilarFunctions
+        | K::DuplicateTypeShape => 85.0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::model::{MetricDirection, MetricScale};
@@ -522,9 +711,28 @@ mod tests {
 
         assert_eq!(names.len(), manifest.len());
         assert!(manifest.iter().any(|entry| {
-            entry.name == "file.is_test"
+            entry.name == MetricId::FileIsTest
                 && entry.scale == MetricScale::Boolean
                 && entry.direction == MetricDirection::ContextOnly
         }));
+        assert!(manifest.iter().any(|entry| {
+            entry.name == MetricId::DirectorySourceFiles
+                && entry.entity_scope == EntityScope::Directory
+                && entry.direction == MetricDirection::HigherIsMorePressure
+        }));
+    }
+
+    #[test]
+    fn detector_specs_have_unique_typed_inputs_and_explicit_ranking_policy() {
+        for entry in detector_manifest() {
+            let mut inputs = entry.input_metrics.clone();
+            inputs.sort_unstable();
+            inputs.dedup();
+
+            assert_eq!(inputs.len(), entry.input_metrics.len(), "{:?}", entry.kind);
+            assert!((0.0..=1.0).contains(&entry.default_confidence));
+            assert!((0.0..=100.0).contains(&entry.impact));
+            assert!((0.0..=100.0).contains(&entry.actionability));
+        }
     }
 }

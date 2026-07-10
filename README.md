@@ -13,7 +13,7 @@
 </p>
 
 Reforge is a Rust CLI for reporting source-tree maintainability and
-refactoring signals. It collects raw file, function, type, and optional git
+refactoring signals. It collects raw directory, file, function, type, and optional git
 churn metrics first, then derives hotspots and findings from that
 project-wide model.
 
@@ -163,7 +163,7 @@ source documentation set lives in [docs/](docs/README.md), including the
 
 Reforge reports maintainability and refactoring data in five layers:
 
-- `raw_metrics` plus `raw_metric_manifest`: file, function, type, and churn
+- `raw_metrics` plus `raw_metric_manifest`: directory, file, function, type, and churn
   measurements with explicit scope, unit, scale, and direction.
 - `metrics_summary`: project-level percentile distributions such as LOC,
   complexity, imports, and churn.
@@ -350,7 +350,7 @@ Signal mix
 Findings
   warning  p=58 c=1.00  large file: 1200 lines
             src/report.rs:1
-            metrics file_lines=1200/800 lines
+            metrics file.loc=1200/800 lines
             rank high impact, high confidence
 
 Watchlist
@@ -365,7 +365,7 @@ scan with the React + TypeScript report app, packaged as a single offline
 `.html` artifact with the scan data, HTML shell, styles, and inline app bundle.
 The visual report includes summary cards, risk distribution, File Overview,
 dependency map, hotspots, similar-function groups, and prioritized findings.
-JSON and YAML use schema version 15 and include `summary`,
+JSON and YAML use schema version 16 and include `summary`,
 `metrics_summary`, `raw_metrics`, `raw_metric_manifest`, `dependency_graph`, `hotspots`,
 `suppression_summary`, `issue_clusters`, `detector_manifest`, and `findings`.
 SARIF output targets SARIF 2.1.0

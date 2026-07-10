@@ -15,7 +15,7 @@ fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
     finding
         .metrics
         .iter()
-        .find(|metric| metric.name == name)
+        .find(|metric| metric.name.as_str() == name)
         .map(|metric| metric.value)
 }
 
@@ -34,9 +34,12 @@ fn detects_resolved_javascript_cycle() {
         .find(|finding| finding.kind == FindingKind::DependencyCycle)
         .expect("cycle should be reported");
     assert_eq!(cycle.related_locations.len(), 2);
-    assert_eq!(cycle.metrics[0].name, "cycle_files");
-    assert_eq!(metric_value(cycle, "cycle_edges"), Some(2));
-    assert_eq!(metric_value(cycle, "cycle_density_percent"), Some(100));
+    assert_eq!(cycle.metrics[0].name, MetricId::DependencyCycleFiles);
+    assert_eq!(metric_value(cycle, "dependency.cycle_edges"), Some(2));
+    assert_eq!(
+        metric_value(cycle, "dependency.cycle_density_percent"),
+        Some(100)
+    );
     assert_eq!(scan.snapshot.nodes.len(), 2);
     assert_eq!(scan.snapshot.edges.len(), 2);
     assert!(
@@ -85,7 +88,7 @@ fn detects_dependency_hub_with_high_fan_out() {
         .find(|finding| finding.kind == FindingKind::DependencyHub)
         .expect("hub should be reported");
     assert_eq!(hub.path, "project/src/hub.ts");
-    assert_eq!(metric_value(hub, "fan_out"), Some(6));
+    assert_eq!(metric_value(hub, "dependency.fan_out"), Some(6));
 }
 
 #[test]
@@ -115,11 +118,14 @@ fn reports_dependency_hub_graph_complexity_metrics() {
             finding.kind == FindingKind::DependencyHub && finding.path == "project/src/hub.ts"
         })
         .expect("hub should be reported");
-    assert_eq!(metric_value(hub, "fan_out"), Some(6));
-    assert_eq!(metric_value(hub, "fan_in"), Some(2));
-    assert_eq!(metric_value(hub, "transitive_fan_out"), Some(8));
-    assert_eq!(metric_value(hub, "dependency_depth"), Some(3));
-    assert_eq!(metric_value(hub, "instability_percent"), Some(75));
+    assert_eq!(metric_value(hub, "dependency.fan_out"), Some(6));
+    assert_eq!(metric_value(hub, "dependency.fan_in"), Some(2));
+    assert_eq!(metric_value(hub, "dependency.transitive_fan_out"), Some(8));
+    assert_eq!(metric_value(hub, "dependency.depth"), Some(3));
+    assert_eq!(
+        metric_value(hub, "dependency.instability_percent"),
+        Some(75)
+    );
 }
 
 #[test]

@@ -77,6 +77,8 @@ Every finding kind has an entry in the report-level `detector_manifest` with:
 - detection `approach`;
 - supported languages or repository scope;
 - qualitative `precision_risk`;
+- canonical `input_metrics` plus the default confidence, impact, and
+  actionability policy values;
 - optional `parent_kind` for composite detectors;
 - typed `relations`: `facet_of` for composite evidence and
   `alternative_evidence` for detectors that can observe the same cause.
@@ -96,14 +98,19 @@ per finding kind. Unsupported languages mean “not observed,” not “no issue
   compensate for missing language coverage.
 - Threshold and percentile evidence are normalized within a finding by taking
   the strongest facet rather than summing correlated facets.
+- A detector cannot emit a metric outside its manifest-declared input set.
+- Metric IDs are canonical and entity-qualified, so aliases cannot make one
+  observation appear to be independent evidence.
 - Clusters use complete-link compatibility: every member must be related to
   every other member. A chain of shared files cannot merge unrelated endpoint
   findings.
 
 ## Raw Metric Contract
 
-The report-level `raw_metric_manifest` defines the entity scope, unit, scale,
-direction, and meaning of every raw metric family. Boolean context fields are
+The report-level `raw_metric_manifest` defines the canonical metric ID, entity
+scope, unit, scale, direction, and meaning of every raw metric family. Directory
+observations are stored once per directory instead of being repeated on every
+contained file. Boolean context fields are
 not treated as numeric pressure. Counts remain ratio-scale observations, but
 their thresholds are contextual policy rather than universal quality grades.
 
@@ -138,6 +145,12 @@ and raw metric definitions make this boundary machine-readable.
 - Briand, Morasca, and Basili motivate explicit entities, attributes, and
   mathematical properties for software measures:
   <https://www.cs.umd.edu/~basili/publications/journals/J58.pdf>.
+- ISO/IEC 25020:2019 supplies the quality-measurement reference model and
+  guidance for selecting, constructing, validating, and documenting measures:
+  <https://www.iso.org/standard/72117.html>.
+- ISO/IEC/IEEE 15939:2017 supplies the measurement process for connecting
+  information needs, measures, analysis, application, and validity checks:
+  <https://www.iso.org/standard/71197.html>.
 
 ## Validation Expectations
 

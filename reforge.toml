@@ -49,13 +49,13 @@ reason = "duplicate type-shape grouping keeps scoring and related locations toge
 [[suppressions]]
 kind = "complex_function"
 path = "src/detectors/structure/analysis.rs"
-line = 674
+line = 679
 reason = "test-case heuristic intentionally groups language-specific evidence checks"
 
 [[suppressions]]
 kind = "complex_function"
 path = "src/scoring/mod.rs"
-line = 403
+line = 289
 reason = "ranking explanation is a compact mapping from scoring factors to report text"
 
 [[suppressions]]
@@ -97,14 +97,26 @@ reason = "directory concept splitting keeps separator and case transitions in on
 [[suppressions]]
 kind = "complex_function"
 path = "src/detectors/unused_functions.rs"
-line = 145
+line = 146
 reason = "unused-function candidate dispatch is intentionally explicit per language"
 
 [[suppressions]]
 kind = "deep_nesting"
 path = "src/scoring/hotspots.rs"
-line = 230
+line = 225
 reason = "hotspot percentile risk calculation is kept local for stable ranking behavior"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/manifest.rs"
+line = 124
+reason = "typed detector input registry is intentionally exhaustive so metric contracts remain centrally auditable"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/model/mod.rs"
+line = 90
+reason = "MetricId serialization names are intentionally mapped exhaustively in one schema-owned function"
 
 [[suppressions]]
 kind = "large_type"
@@ -135,6 +147,18 @@ kind = "large_file"
 path = "src/scanner_tests.rs"
 line = 1
 reason = "scanner integration tests stay colocated with scan orchestration behavior"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/structural_tests.rs"
+line = 1
+reason = "structural detector fixtures stay colocated as one cross-language behavior suite"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/model/mod.rs"
+line = 1
+reason = "report schema model intentionally centralizes serialized contract types and canonical metric identities"
 
 [[suppressions]]
 kind = "large_public_surface"

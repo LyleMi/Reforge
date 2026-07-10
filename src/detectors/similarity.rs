@@ -723,7 +723,7 @@ fn similar_function_finding(
                 threshold
             ),
             vec![FindingMetric::threshold(
-                "group_size",
+                crate::model::MetricId::GroupSize,
                 group.len(),
                 min_group_size,
                 "functions",

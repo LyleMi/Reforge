@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use clap::CommandFactory;
 
 use crate::cli::Cli;
-use crate::model::{Finding, FindingKind, FindingMetric};
+use crate::model::{Finding, FindingKind, FindingMetric, MetricId};
 use crate::scoring::{FindingInput, finding};
 
 const PROJECT_MARKERS: &[&str] = &[
@@ -256,7 +256,7 @@ impl DocumentationInventory {
             None,
             "missing independent docs set; README should link to stable docs for users and maintainers",
             vec![FindingMetric::threshold(
-                "missing_required_docs",
+                MetricId::DocumentationMissingRequiredDocs,
                 missing_count.max(1),
                 1,
                 "documents",
@@ -272,7 +272,7 @@ impl DocumentationInventory {
                 None,
                 "missing user guide; users need install, quick start, CLI, configuration, output, examples, and troubleshooting docs",
                 vec![FindingMetric::threshold(
-                    "missing_user_topics",
+                    MetricId::DocumentationMissingUserTopics,
                     USER_GUIDE_TOPICS.len(),
                     1,
                     "topics",
@@ -294,7 +294,7 @@ impl DocumentationInventory {
                 missing_topics.join(", ")
             ),
             vec![FindingMetric::threshold(
-                "missing_user_topics",
+                MetricId::DocumentationMissingUserTopics,
                 missing_topics.len(),
                 1,
                 "topics",
@@ -323,7 +323,7 @@ impl DocumentationInventory {
             None,
             message,
             vec![FindingMetric::threshold(
-                "documentation_risk",
+                MetricId::DocumentationRisk,
                 risk,
                 35,
                 "risk",
@@ -366,7 +366,7 @@ impl DocumentationInventory {
                 missing_flags.join(", ")
             ),
             vec![FindingMetric::threshold(
-                "missing_cli_flags",
+                MetricId::DocumentationMissingCliFlags,
                 missing_flags.len(),
                 1,
                 "flags",
@@ -399,7 +399,7 @@ impl DocumentationInventory {
                 missing_fields.join(", ")
             ),
             vec![FindingMetric::threshold(
-                "missing_schema_fields",
+                MetricId::DocumentationMissingSchemaFields,
                 missing_fields.len(),
                 1,
                 "fields",

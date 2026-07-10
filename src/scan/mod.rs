@@ -13,9 +13,10 @@ use crate::detectors::dependency_graph::scan_dependency_graph_report;
 use crate::detectors::manifest::{detector_manifest, raw_metric_manifest};
 use crate::documentation::scan_documentation;
 use crate::model::{
-    ChurnFileMetric, DependencyGraphSnapshot, FileRawMetric, Finding, FindingKind, FindingMetric,
-    FunctionRawMetric, RawMetrics, SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary,
-    SuppressionSummary, TypeRawMetric,
+    ChurnFileMetric, DependencyGraphSnapshot, DirectoryRawMetric, FileRawMetric, Finding,
+    FindingKind, FindingMetric, FunctionRawMetric, MetricId, RawMetrics,
+    SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary, SuppressionSummary,
+    TypeRawMetric,
 };
 use crate::scoring::{
     FindingInput, StaticRiskThresholds, cluster_findings, finalize_scoring, finding, rank_hotspots,
@@ -82,7 +83,6 @@ struct SourceScanPlan {
 #[derive(Debug, Clone, Copy)]
 struct FileScanOptions {
     max_file_lines: usize,
-    directory_source_files: usize,
 }
 
 #[allow(dead_code)]
@@ -405,11 +405,6 @@ fn scan_sources(
     for path in &source_plan.source_files {
         let file_options = FileScanOptions {
             max_file_lines: args.max_file_lines,
-            directory_source_files: path
-                .parent()
-                .and_then(|parent| source_plan.directory_source_files.get(parent))
-                .copied()
-                .unwrap_or(0),
         };
         scan_file(path, file_options, scan)?;
         report_file_scan_progress(progress, &scan.stats, total_source_files, path);
@@ -418,6 +413,7 @@ fn scan_sources(
     scan_directories(
         &source_plan.directory_source_files,
         args.max_dir_files,
+        &mut scan.raw_metrics,
         &mut scan.findings,
     );
     Ok(())
@@ -530,7 +526,6 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
         loc: line_count,
         imports: 0,
         public_items: 0,
-        directory_source_files: options.directory_source_files,
         is_test,
         churn: ChurnFileMetric::default(),
     });
@@ -542,7 +537,7 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
             Some(1),
             format!("file has {line_count} lines; consider splitting responsibilities"),
             vec![FindingMetric::threshold(
-                "file_lines",
+                MetricId::FileLoc,
                 line_count,
                 options.max_file_lines,
                 "lines",
@@ -590,9 +585,14 @@ fn count_source_file_parent(path: &Path, directory_source_files: &mut BTreeMap<P
 fn scan_directories(
     directory_source_files: &BTreeMap<PathBuf, usize>,
     max_dir_files: usize,
+    raw_metrics: &mut RawMetrics,
     findings: &mut Vec<Finding>,
 ) {
     for (directory, file_count) in directory_source_files {
+        raw_metrics.directories.push(DirectoryRawMetric {
+            path: display_path(directory),
+            source_files: *file_count,
+        });
         if *file_count > max_dir_files {
             findings.push(finding(FindingInput::new(
                 FindingKind::LargeDirectory,
@@ -602,7 +602,7 @@ fn scan_directories(
                     "directory contains {file_count} source files; consider grouping related responsibilities"
                 ),
                 vec![FindingMetric::threshold(
-                    "directory_files",
+                    MetricId::DirectorySourceFiles,
                     *file_count,
                     max_dir_files,
                     "source files",

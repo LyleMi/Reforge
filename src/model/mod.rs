@@ -4,10 +4,138 @@ use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
 use crate::cli::{ChurnMode, HotspotModel};
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 15;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 16;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
-pub(crate) const METRIC_NESTING_DEPTH: &str = "nesting_depth";
-pub(crate) const METRIC_PUBLIC_ITEMS: &str = "public_items";
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum MetricId {
+    #[serde(rename = "file.loc")]
+    FileLoc,
+    #[serde(rename = "file.imports")]
+    FileImports,
+    #[serde(rename = "file.public_items")]
+    FilePublicItems,
+    #[serde(rename = "file.is_test")]
+    FileIsTest,
+    #[serde(rename = "directory.source_files")]
+    DirectorySourceFiles,
+    #[serde(rename = "function.loc")]
+    FunctionLoc,
+    #[serde(rename = "function.complexity")]
+    FunctionComplexity,
+    #[serde(rename = "function.nesting_depth")]
+    FunctionNestingDepth,
+    #[serde(rename = "function.parameter_count")]
+    FunctionParameterCount,
+    #[serde(rename = "function.is_test")]
+    FunctionIsTest,
+    #[serde(rename = "type.loc")]
+    TypeLoc,
+    #[serde(rename = "type.member_count")]
+    TypeMemberCount,
+    #[serde(rename = "type.is_test")]
+    TypeIsTest,
+    #[serde(rename = "churn.commits_touched")]
+    ChurnCommitsTouched,
+    #[serde(rename = "churn.lines_added")]
+    ChurnLinesAdded,
+    #[serde(rename = "churn.lines_deleted")]
+    ChurnLinesDeleted,
+    #[serde(rename = "churn.authors_count")]
+    ChurnAuthorsCount,
+    #[serde(rename = "churn.recent_weighted_churn")]
+    ChurnRecentWeighted,
+    #[serde(rename = "group.size")]
+    GroupSize,
+    #[serde(rename = "readability.signal_count")]
+    ReadabilitySignalCount,
+    #[serde(rename = "file.function_count")]
+    FileFunctionCount,
+    #[serde(rename = "file.functions_per_100_lines")]
+    FileFunctionsPerHundredLines,
+    #[serde(rename = "file.small_function_ratio")]
+    FileSmallFunctionRatio,
+    #[serde(rename = "dependency.cycle_files")]
+    DependencyCycleFiles,
+    #[serde(rename = "dependency.cycle_edges")]
+    DependencyCycleEdges,
+    #[serde(rename = "dependency.cycle_density_percent")]
+    DependencyCycleDensityPercent,
+    #[serde(rename = "dependency.depth")]
+    DependencyDepth,
+    #[serde(rename = "dependency.instability_percent")]
+    DependencyInstabilityPercent,
+    #[serde(rename = "dependency.fan_out")]
+    DependencyFanOut,
+    #[serde(rename = "dependency.fan_in")]
+    DependencyFanIn,
+    #[serde(rename = "dependency.transitive_fan_out")]
+    DependencyTransitiveFanOut,
+    #[serde(rename = "dependency.transitive_fan_in")]
+    DependencyTransitiveFanIn,
+    #[serde(rename = "function.references")]
+    FunctionReferences,
+    #[serde(rename = "documentation.missing_required_docs")]
+    DocumentationMissingRequiredDocs,
+    #[serde(rename = "documentation.missing_user_topics")]
+    DocumentationMissingUserTopics,
+    #[serde(rename = "documentation.risk")]
+    DocumentationRisk,
+    #[serde(rename = "documentation.missing_cli_flags")]
+    DocumentationMissingCliFlags,
+    #[serde(rename = "documentation.missing_schema_fields")]
+    DocumentationMissingSchemaFields,
+}
+
+impl MetricId {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::FileLoc => "file.loc",
+            Self::FileImports => "file.imports",
+            Self::FilePublicItems => "file.public_items",
+            Self::FileIsTest => "file.is_test",
+            Self::DirectorySourceFiles => "directory.source_files",
+            Self::FunctionLoc => "function.loc",
+            Self::FunctionComplexity => "function.complexity",
+            Self::FunctionNestingDepth => "function.nesting_depth",
+            Self::FunctionParameterCount => "function.parameter_count",
+            Self::FunctionIsTest => "function.is_test",
+            Self::TypeLoc => "type.loc",
+            Self::TypeMemberCount => "type.member_count",
+            Self::TypeIsTest => "type.is_test",
+            Self::ChurnCommitsTouched => "churn.commits_touched",
+            Self::ChurnLinesAdded => "churn.lines_added",
+            Self::ChurnLinesDeleted => "churn.lines_deleted",
+            Self::ChurnAuthorsCount => "churn.authors_count",
+            Self::ChurnRecentWeighted => "churn.recent_weighted_churn",
+            Self::GroupSize => "group.size",
+            Self::ReadabilitySignalCount => "readability.signal_count",
+            Self::FileFunctionCount => "file.function_count",
+            Self::FileFunctionsPerHundredLines => "file.functions_per_100_lines",
+            Self::FileSmallFunctionRatio => "file.small_function_ratio",
+            Self::DependencyCycleFiles => "dependency.cycle_files",
+            Self::DependencyCycleEdges => "dependency.cycle_edges",
+            Self::DependencyCycleDensityPercent => "dependency.cycle_density_percent",
+            Self::DependencyDepth => "dependency.depth",
+            Self::DependencyInstabilityPercent => "dependency.instability_percent",
+            Self::DependencyFanOut => "dependency.fan_out",
+            Self::DependencyFanIn => "dependency.fan_in",
+            Self::DependencyTransitiveFanOut => "dependency.transitive_fan_out",
+            Self::DependencyTransitiveFanIn => "dependency.transitive_fan_in",
+            Self::FunctionReferences => "function.references",
+            Self::DocumentationMissingRequiredDocs => "documentation.missing_required_docs",
+            Self::DocumentationMissingUserTopics => "documentation.missing_user_topics",
+            Self::DocumentationRisk => "documentation.risk",
+            Self::DocumentationMissingCliFlags => "documentation.missing_cli_flags",
+            Self::DocumentationMissingSchemaFields => "documentation.missing_schema_fields",
+        }
+    }
+}
+
+impl std::fmt::Display for MetricId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -125,7 +253,7 @@ pub enum MetricDirection {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawMetricManifestEntry {
-    pub name: String,
+    pub name: MetricId,
     pub entity_scope: EntityScope,
     pub unit: String,
     pub scale: MetricScale,
@@ -173,7 +301,7 @@ pub struct RelatedLocation {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FindingMetric {
-    pub name: String,
+    pub name: MetricId,
     pub value: usize,
     pub threshold: Option<usize>,
     pub unit: String,
@@ -184,13 +312,13 @@ pub struct FindingMetric {
 
 impl FindingMetric {
     pub fn threshold(
-        name: impl Into<String>,
+        name: MetricId,
         value: usize,
         threshold: usize,
         unit: impl Into<String>,
     ) -> Self {
         Self {
-            name: name.into(),
+            name,
             value,
             threshold: Some(threshold),
             unit: unit.into(),
@@ -202,9 +330,9 @@ impl FindingMetric {
         }
     }
 
-    pub fn measurement(name: impl Into<String>, value: usize, unit: impl Into<String>) -> Self {
+    pub fn measurement(name: MetricId, value: usize, unit: impl Into<String>) -> Self {
         Self {
-            name: name.into(),
+            name,
             value,
             threshold: None,
             unit: unit.into(),
@@ -563,9 +691,14 @@ pub struct FileRawMetric {
     pub loc: usize,
     pub imports: usize,
     pub public_items: usize,
-    pub directory_source_files: usize,
     pub is_test: bool,
     pub churn: ChurnFileMetric,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DirectoryRawMetric {
+    pub path: String,
+    pub source_files: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -592,6 +725,7 @@ pub struct TypeRawMetric {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct RawMetrics {
+    pub directories: Vec<DirectoryRawMetric>,
     pub files: Vec<FileRawMetric>,
     pub functions: Vec<FunctionRawMetric>,
     pub types: Vec<TypeRawMetric>,
@@ -627,6 +761,7 @@ pub struct MetricPercentiles {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MetricsSummary {
+    pub directories: BTreeMap<String, MetricPercentiles>,
     pub files: BTreeMap<String, MetricPercentiles>,
     pub functions: BTreeMap<String, MetricPercentiles>,
     pub types: BTreeMap<String, MetricPercentiles>,
@@ -677,7 +812,7 @@ pub struct IssueCluster {
     pub severity: Severity,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DetectorManifestEntry {
     pub kind: FindingKind,
     pub construct: QualityConstruct,
@@ -687,6 +822,10 @@ pub struct DetectorManifestEntry {
     pub approach: DetectionApproach,
     pub supported_languages: Vec<String>,
     pub precision_risk: PrecisionRisk,
+    pub input_metrics: Vec<MetricId>,
+    pub default_confidence: f64,
+    pub impact: f64,
+    pub actionability: f64,
     pub parent_kind: Option<FindingKind>,
     pub relations: Vec<DetectorRelation>,
 }

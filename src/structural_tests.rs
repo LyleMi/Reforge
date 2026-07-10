@@ -33,7 +33,7 @@ fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
     finding
         .metrics
         .iter()
-        .find(|metric| metric.name == name)
+        .find(|metric| metric.name.as_str() == name)
         .map(|metric| metric.value)
 }
 
@@ -99,8 +99,8 @@ pub fn process(a: i32, b: i32, c: i32, d: i32) -> i32 {
         .expect("combined function threshold signals should produce readability risk");
 
     assert_eq!(finding.line, Some(2));
-    assert_eq!(metric_value(finding, "readability_signals"), Some(4));
-    assert_eq!(metric_value(finding, "function_lines"), Some(10));
+    assert_eq!(metric_value(finding, "readability.signal_count"), Some(4));
+    assert_eq!(metric_value(finding, "function.loc"), Some(10));
     assert!(finding.message.contains("combines 4 readability risks"));
     Ok(())
 }
@@ -263,7 +263,10 @@ fn private_helper() {}
         .iter()
         .find(|finding| finding.kind == FindingKind::LargePublicSurface)
         .expect("public Rust items should be counted");
-    assert_eq!(metric_value(public_surface, METRIC_PUBLIC_ITEMS), Some(4));
+    assert_eq!(
+        metric_value(public_surface, MetricId::FilePublicItems.as_str()),
+        Some(4)
+    );
     Ok(())
 }
 
@@ -287,8 +290,11 @@ fn five() -> i32 { 5 }
         .find(|finding| finding.kind == FindingKind::FunctionProliferation)
         .expect("dense small functions should be reported");
 
-    assert_eq!(metric_value(finding, "function_count"), Some(5));
-    assert_eq!(metric_value(finding, "small_function_ratio"), Some(100));
+    assert_eq!(metric_value(finding, "file.function_count"), Some(5));
+    assert_eq!(
+        metric_value(finding, "file.small_function_ratio"),
+        Some(100)
+    );
     Ok(())
 }
 
@@ -470,7 +476,7 @@ fn keeps_cross_file_domain_repeated_literals() -> Result<()> {
         .find(|finding| finding.kind == FindingKind::RepeatedLiteral)
         .expect("domain repeated literal should be reported");
 
-    assert_eq!(metric_value(finding, "group_size"), Some(3));
+    assert_eq!(metric_value(finding, "group.size"), Some(3));
     assert!(finding.confidence >= 0.80);
     Ok(())
 }
@@ -647,7 +653,7 @@ test("loads user", () => {
         .expect("happy-path-only test risk should be reported");
 
     assert_eq!(finding.severity, Severity::Info);
-    assert_eq!(metric_value(finding, "group_size"), Some(3));
+    assert_eq!(metric_value(finding, "group.size"), Some(3));
     assert_eq!(finding.related_locations.len(), 3);
     Ok(())
 }
@@ -793,7 +799,7 @@ fn reports_file_naming_drift_within_directory() -> Result<()> {
 
     assert_eq!(finding.severity, Severity::Info);
     assert_eq!(finding.path, "src/payments");
-    assert_eq!(metric_value(finding, "group_size"), Some(3));
+    assert_eq!(metric_value(finding, "group.size"), Some(3));
     assert_eq!(finding.related_locations.len(), 2);
     Ok(())
 }

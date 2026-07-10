@@ -644,7 +644,12 @@ pub(super) fn happy_path_test_findings(test_files: Vec<(usize, Vec<Occurrence>)>
                     format!(
                         "test file has {test_count} cases but no negative, error, or boundary assertions were detected"
                     ),
-                    vec![FindingMetric::threshold("group_size", test_count, 3, "test cases")],
+                    vec![FindingMetric::threshold(
+                        crate::model::MetricId::GroupSize,
+                        test_count,
+                        3,
+                        "test cases",
+                    )],
                 )
                 .with_related_locations(locations),
             ))

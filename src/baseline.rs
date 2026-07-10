@@ -270,6 +270,7 @@ mod tests {
             },
             stats: crate::model::ScanStats::default(),
             metrics_summary: crate::model::MetricsSummary {
+                directories: BTreeMap::new(),
                 files: BTreeMap::new(),
                 functions: BTreeMap::new(),
                 types: BTreeMap::new(),

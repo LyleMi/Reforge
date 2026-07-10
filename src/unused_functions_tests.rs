@@ -45,7 +45,7 @@ fn caller() {
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert!(names[0].contains("`dead`"));
     assert_eq!(findings[0].line, Some(4));
-    assert_eq!(findings[0].metrics[0].name, "references");
+    assert_eq!(findings[0].metrics[0].name, MetricId::FunctionReferences);
     assert_eq!(findings[0].metrics[0].value, 0);
     Ok(())
 }

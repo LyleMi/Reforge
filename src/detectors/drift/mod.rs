@@ -568,7 +568,7 @@ fn duplicate_type_shape_findings(
                     fields.into_iter().take(6).collect::<Vec<_>>().join(", ")
                 ),
                 vec![FindingMetric::threshold(
-                    "group_size",
+                    crate::model::MetricId::GroupSize,
                     group.len(),
                     threshold,
                     "type shapes",
@@ -610,7 +610,7 @@ fn generic_bucket_findings(
                     directory.files.len()
                 ),
                 vec![FindingMetric::threshold(
-                    "group_size",
+                    crate::model::MetricId::GroupSize,
                     directory.concepts.len(),
                     concept_threshold,
                     "concepts",
@@ -644,7 +644,7 @@ fn generic_bucket_findings(
                 Some(occurrence.line),
                 format!("generic file accumulates unrelated concepts: {concepts}"),
                 vec![FindingMetric::threshold(
-                    "group_size",
+                    crate::model::MetricId::GroupSize,
                     concept_count,
                     generic_file_threshold,
                     "concepts",
@@ -689,7 +689,7 @@ fn adapter_boundary_bypass_findings(
                     kind.label()
                 ),
                 vec![FindingMetric::threshold(
-                    "group_size",
+                    crate::model::MetricId::GroupSize,
                     group.len(),
                     threshold,
                     "bypasses",
@@ -743,7 +743,7 @@ fn groups_to_findings(
                 Some(representative.line),
                 (spec.message)(&key, group.len()),
                 vec![FindingMetric::threshold(
-                    "group_size",
+                    crate::model::MetricId::GroupSize,
                     group.len(),
                     spec.threshold,
                     "occurrences",

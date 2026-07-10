@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
-use crate::model::{Hotspot, HotspotLevel, Severity};
+use crate::model::{Hotspot, HotspotLevel, MetricId, Severity};
 
 fn test_root(name: &str) -> std::path::PathBuf {
     let suffix = SystemTime::now()
@@ -73,7 +73,7 @@ fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
     finding
         .metrics
         .iter()
-        .find(|metric| metric.name == name)
+        .find(|metric| metric.name.as_str() == name)
         .map(|metric| metric.value)
 }
 
@@ -191,7 +191,10 @@ fn reports_directories_with_many_source_files() -> Result<()> {
     assert_eq!(findings[0].kind, FindingKind::LargeDirectory);
     assert!(findings[0].path.ends_with("src"));
     assert_eq!(findings[0].line, None);
-    assert_eq!(metric_value(&findings[0], "directory_files"), Some(3));
+    assert_eq!(
+        metric_value(&findings[0], "directory.source_files"),
+        Some(3)
+    );
     assert!(
         findings[0]
             .message
@@ -221,7 +224,7 @@ fn reports_dependency_cycles_between_resolved_source_files() -> Result<()> {
         .iter()
         .find(|finding| finding.kind == FindingKind::DependencyCycle)
         .expect("resolved dependency cycle should be reported");
-    assert_eq!(metric_value(cycle, "cycle_files"), Some(2));
+    assert_eq!(metric_value(cycle, "dependency.cycle_files"), Some(2));
     assert_eq!(cycle.related_locations.len(), 2);
     assert!(
         cycle
@@ -315,7 +318,7 @@ function gamma(rows) {
         .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
         .collect::<Vec<_>>();
     assert_eq!(similar_findings.len(), 1);
-    assert_eq!(metric_value(similar_findings[0], "group_size"), Some(3));
+    assert_eq!(metric_value(similar_findings[0], "group.size"), Some(3));
     assert!(
         stricter_findings
             .iter()
@@ -700,6 +703,9 @@ fn metrics_summary_uses_all_raw_metrics_not_only_findings() -> Result<()> {
 
     assert!(report.findings.is_empty());
     assert_eq!(report.raw_metrics.files.len(), 6);
+    assert_eq!(report.raw_metrics.directories.len(), 1);
+    assert_eq!(report.raw_metrics.directories[0].source_files, 6);
+    assert_eq!(report.metrics_summary.directories["source_files"].p50, 6);
     assert_eq!(report.metrics_summary.files["loc"].p50, 1);
     Ok(())
 }
@@ -707,13 +713,13 @@ fn metrics_summary_uses_all_raw_metrics_not_only_findings() -> Result<()> {
 #[test]
 fn hotspot_models_sort_differently() {
     let raw_metrics = RawMetrics {
+        directories: Vec::new(),
         files: vec![
             FileRawMetric {
                 path: "src/static.rs".to_string(),
                 loc: 900,
                 imports: 1,
                 public_items: 1,
-                directory_source_files: 2,
                 is_test: false,
                 churn: ChurnFileMetric::default(),
             },
@@ -722,7 +728,6 @@ fn hotspot_models_sort_differently() {
                 loc: 10,
                 imports: 1,
                 public_items: 1,
-                directory_source_files: 2,
                 is_test: false,
                 churn: ChurnFileMetric {
                     commits_touched: 12,
@@ -758,13 +763,13 @@ fn hotspot_models_sort_differently() {
 #[test]
 fn test_metrics_do_not_enter_hotspot_leaderboard() {
     let raw_metrics = RawMetrics {
+        directories: Vec::new(),
         files: vec![
             FileRawMetric {
                 path: "tests/large_test.rs".to_string(),
                 loc: 2_000,
                 imports: 1,
                 public_items: 1,
-                directory_source_files: 1,
                 is_test: true,
                 churn: ChurnFileMetric {
                     commits_touched: 20,
@@ -779,7 +784,6 @@ fn test_metrics_do_not_enter_hotspot_leaderboard() {
                 loc: 900,
                 imports: 1,
                 public_items: 1,
-                directory_source_files: 1,
                 is_test: false,
                 churn: ChurnFileMetric::default(),
             },
@@ -868,7 +872,12 @@ fn file_level_hotspot_only_weakly_influences_line_findings() {
         "src/big.rs",
         Some(42),
         "literal is repeated",
-        vec![FindingMetric::threshold("group_size", 4, 4, "occurrences")],
+        vec![FindingMetric::threshold(
+            MetricId::GroupSize,
+            4,
+            4,
+            "occurrences",
+        )],
     ))];
     let base_priority = findings[0].priority;
     let hotspots = vec![Hotspot {
@@ -897,7 +906,12 @@ fn function_hotspot_takes_precedence_over_file_hotspot_for_same_line_finding() {
         "src/hot.rs",
         Some(10),
         "function is long",
-        vec![FindingMetric::threshold("function_lines", 120, 80, "lines")],
+        vec![FindingMetric::threshold(
+            MetricId::FunctionLoc,
+            120,
+            80,
+            "lines",
+        )],
     ))];
     let hotspots = vec![
         Hotspot {

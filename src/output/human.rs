@@ -3,7 +3,7 @@ use std::io::{self, Write};
 
 use crate::baseline::{BaselineDiff, BaselineFinding, BaselineFindingStatus};
 use crate::cli::BaselineShow;
-use crate::model::{Finding, FindingKind, Hotspot, IssueCluster, ScanReport, Severity};
+use crate::model::{Finding, FindingKind, Hotspot, IssueCluster, MetricId, ScanReport, Severity};
 
 const RELATED_LOCATION_LIMIT: usize = 3;
 const HOTSPOT_LIMIT: usize = 10;
@@ -558,7 +558,7 @@ fn render_kind_metric_message(finding: &Finding, display: &FindingKindDisplay) -
     let value = match display.metric {
         Some(DisplayMetric::Primary) => primary_metric_value(finding),
         Some(DisplayMetric::GroupSize) => group_size(finding),
-        Some(DisplayMetric::Named(name)) => metric_value(finding, name),
+        Some(DisplayMetric::Named(name)) => metric_value(finding, name.as_str()),
         None => None,
     }?;
     Some(display.format.render(display.label, value))
@@ -568,7 +568,7 @@ fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
     finding
         .metrics
         .iter()
-        .find(|metric| metric.name == name)
+        .find(|metric| metric.name.as_str() == name)
         .map(|metric| metric.value)
 }
 
@@ -577,7 +577,7 @@ fn primary_metric_value(finding: &Finding) -> Option<usize> {
 }
 
 fn group_size(finding: &Finding) -> Option<usize> {
-    metric_value(finding, "group_size").or_else(|| primary_metric_value(finding))
+    metric_value(finding, MetricId::GroupSize.as_str()).or_else(|| primary_metric_value(finding))
 }
 
 fn has_related_location_details(finding: &Finding) -> bool {
@@ -673,7 +673,7 @@ impl FindingBreakdown {
 enum DisplayMetric {
     Primary,
     GroupSize,
-    Named(&'static str),
+    Named(MetricId),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -770,13 +770,13 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
     display(
         FindingKind::ReadabilityRisk,
         "readability risk",
-        DisplayMetric::Named("readability_signals"),
+        DisplayMetric::Named(MetricId::ReadabilitySignalCount),
         MetricFormat::Count("signals"),
     ),
     display(
         FindingKind::LargeType,
         "large type",
-        DisplayMetric::Named("type_lines"),
+        DisplayMetric::Named(MetricId::TypeLoc),
         MetricFormat::NamedValue("lines"),
     ),
     display(
@@ -794,13 +794,13 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
     display(
         FindingKind::FunctionProliferation,
         "function proliferation",
-        DisplayMetric::Named("function_count"),
+        DisplayMetric::Named(MetricId::FileFunctionCount),
         MetricFormat::PluralCount("function"),
     ),
     display(
         FindingKind::UnusedFunction,
         "unused function",
-        DisplayMetric::Named("references"),
+        DisplayMetric::Named(MetricId::FunctionReferences),
         MetricFormat::Count("references"),
     ),
     display(
@@ -947,13 +947,13 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
     display(
         FindingKind::DependencyCycle,
         "dependency cycle",
-        DisplayMetric::Named("cycle_files"),
+        DisplayMetric::Named(MetricId::DependencyCycleFiles),
         MetricFormat::PluralCount("file"),
     ),
     display(
         FindingKind::DependencyHub,
         "dependency hub",
-        DisplayMetric::Named("fan_out"),
+        DisplayMetric::Named(MetricId::DependencyFanOut),
         MetricFormat::Count("outgoing dependencies"),
     ),
 ];

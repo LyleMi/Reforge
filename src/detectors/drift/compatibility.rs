@@ -69,7 +69,7 @@ pub(super) fn stale_compatibility_path_findings(
                     group.len()
                 ),
                 vec![FindingMetric::threshold(
-                    "group_size",
+                    crate::model::MetricId::GroupSize,
                     group.len(),
                     threshold,
                     "markers",

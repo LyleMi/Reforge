@@ -27,7 +27,7 @@ fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
     finding
         .metrics
         .iter()
-        .find(|metric| metric.name == name)
+        .find(|metric| metric.name.as_str() == name)
         .map(|metric| metric.value)
 }
 
@@ -54,7 +54,7 @@ fn detects_parallel_implementations_and_shadowed_helpers() {
         .iter()
         .find(|finding| finding.kind == FindingKind::ParallelImplementation)
         .expect("parallel implementation finding");
-    assert_eq!(metric_value(parallel, "group_size"), Some(3));
+    assert_eq!(metric_value(parallel, "group.size"), Some(3));
     assert_eq!(parallel.related_locations.len(), 3);
     assert!(has_kind(&findings, FindingKind::ShadowedAbstraction));
 }
@@ -130,7 +130,7 @@ fn detects_duplicate_type_shapes() {
         .iter()
         .find(|finding| finding.kind == FindingKind::DuplicateTypeShape)
         .expect("duplicate type shape finding");
-    assert_eq!(metric_value(finding, "group_size"), Some(2));
+    assert_eq!(metric_value(finding, "group.size"), Some(2));
     assert!(finding.message.contains("email"));
 }
 
@@ -153,7 +153,7 @@ fn detects_duplicate_single_line_type_shapes() {
         .iter()
         .find(|finding| finding.kind == FindingKind::DuplicateTypeShape)
         .expect("duplicate type shape finding");
-    assert_eq!(metric_value(finding, "group_size"), Some(2));
+    assert_eq!(metric_value(finding, "group.size"), Some(2));
     assert!(finding.message.contains("email"));
 }
 
@@ -180,7 +180,7 @@ fn detects_config_key_drift() {
         .iter()
         .find(|finding| finding.kind == FindingKind::ConfigKeyDrift)
         .expect("config key drift finding");
-    assert_eq!(metric_value(finding, "group_size"), Some(3));
+    assert_eq!(metric_value(finding, "group.size"), Some(3));
     assert!(finding.related_locations.len() >= 3);
 }
 
@@ -221,7 +221,7 @@ fn detects_fixture_factory_drift_in_tests() {
         .iter()
         .find(|finding| finding.kind == FindingKind::FixtureFactoryDrift)
         .expect("fixture factory drift finding");
-    assert_eq!(metric_value(finding, "group_size"), Some(2));
+    assert_eq!(metric_value(finding, "group.size"), Some(2));
     assert_eq!(finding.related_locations.len(), 2);
 }
 
@@ -257,7 +257,7 @@ fn detects_generic_bucket_directories() {
         .find(|finding| finding.kind == FindingKind::GenericBucketDrift)
         .expect("generic bucket finding");
     assert_eq!(finding.path, "src/utils");
-    assert!(metric_value(finding, "group_size").unwrap_or_default() >= 4);
+    assert!(metric_value(finding, "group.size").unwrap_or_default() >= 4);
     assert_eq!(finding.related_locations.len(), 5);
 }
 
@@ -351,7 +351,7 @@ fn detects_adapter_boundary_bypasses_when_boundary_exists() {
         .iter()
         .find(|finding| finding.kind == FindingKind::AdapterBoundaryBypass)
         .expect("adapter bypass finding");
-    assert_eq!(metric_value(finding, "group_size"), Some(4));
+    assert_eq!(metric_value(finding, "group.size"), Some(4));
     assert_eq!(finding.related_locations.len(), 4);
 }
 
@@ -437,7 +437,7 @@ export function mapLegacyUser(payload: LegacyUser) {
         .find(|finding| finding.kind == FindingKind::StaleCompatibilityPath)
         .expect("stale compatibility path finding");
     assert_eq!(finding.path, "src/api/user_legacy.ts");
-    assert_eq!(metric_value(finding, "group_size"), Some(3));
+    assert_eq!(metric_value(finding, "group.size"), Some(3));
     assert_eq!(finding.related_locations.len(), 3);
 }
 

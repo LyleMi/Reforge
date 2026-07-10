@@ -1,11 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cli::HotspotModel;
-use crate::detectors::manifest::classification;
+use crate::detectors::manifest::{
+    actionability, classification, default_confidence as manifest_default_confidence, impact,
+    input_metrics,
+};
 use crate::model::{
-    FileRawMetric, Finding, FindingKind, FindingMetric, Hotspot, HotspotLevel,
-    METRIC_NESTING_DEPTH, METRIC_PUBLIC_ITEMS, MetricPercentiles, MetricsSummary, PriorityFactors,
-    RawMetrics, RelatedLocation, Severity, SignalMechanism,
+    FileRawMetric, Finding, FindingKind, FindingMetric, Hotspot, HotspotLevel, MetricId,
+    MetricPercentiles, MetricsSummary, PriorityFactors, RawMetrics, RelatedLocation, Severity,
+    SignalMechanism,
 };
 
 mod clusters;
@@ -17,88 +20,6 @@ pub(crate) use hotspots::{StaticRiskThresholds, rank_hotspots};
 const PERCENTILE_MIN_SAMPLE: usize = 5;
 const MIN_SCORE: f64 = 0.0;
 const MAX_SCORE: f64 = 100.0;
-
-const IMPACT_SCORES: &[(FindingKind, f64)] = &[
-    (FindingKind::DebtMarker, 25.0),
-    (FindingKind::RepeatedLiteral, 30.0),
-    (FindingKind::HappyPathOnlyTests, 35.0),
-    (FindingKind::FileNamingDrift, 40.0),
-    (FindingKind::ShadowedAbstraction, 35.0),
-    (FindingKind::TestDuplication, 45.0),
-    (FindingKind::ConfigKeyDrift, 50.0),
-    (FindingKind::FixtureFactoryDrift, 50.0),
-    (FindingKind::GenericBucketDrift, 35.0),
-    (FindingKind::AdapterBoundaryBypass, 45.0),
-    (FindingKind::LargePublicSurface, 60.0),
-    (FindingKind::ImportHeavyFile, 60.0),
-    (FindingKind::FunctionProliferation, 60.0),
-    (FindingKind::UnusedFunction, 60.0),
-    (FindingKind::LargeFile, 65.0),
-    (FindingKind::LargeDirectory, 65.0),
-    (FindingKind::RepeatedErrorPattern, 65.0),
-    (FindingKind::DirectoryDrift, 65.0),
-    (FindingKind::DataClump, 65.0),
-    (FindingKind::DuplicateTypeShape, 65.0),
-    (FindingKind::StaleCompatibilityPath, 45.0),
-    (FindingKind::MissingDocumentationSet, 70.0),
-    (FindingKind::MissingUserGuide, 70.0),
-    (FindingKind::MissingMetricsModelDocs, 70.0),
-    (FindingKind::MissingArchitectureDocs, 70.0),
-    (FindingKind::LongFunction, 70.0),
-    (FindingKind::DeepNesting, 70.0),
-    (FindingKind::ManyParameters, 70.0),
-    (FindingKind::ReadabilityRisk, 75.0),
-    (FindingKind::LargeType, 70.0),
-    (FindingKind::ParallelImplementation, 45.0),
-    (FindingKind::StaleCliDocumentation, 75.0),
-    (FindingKind::DependencyHub, 75.0),
-    (FindingKind::SimilarFunctions, 80.0),
-    (FindingKind::DependencyCycle, 85.0),
-    (FindingKind::ComplexFunction, 90.0),
-    (FindingKind::MissingReportSchemaDocs, 90.0),
-    (FindingKind::StaleSchemaDocumentation, 90.0),
-];
-
-const ACTIONABILITY_SCORES: &[(FindingKind, f64)] = &[
-    (FindingKind::RepeatedLiteral, 40.0),
-    (FindingKind::HappyPathOnlyTests, 40.0),
-    (FindingKind::GenericBucketDrift, 35.0),
-    (FindingKind::TestDuplication, 55.0),
-    (FindingKind::DebtMarker, 60.0),
-    (FindingKind::FileNamingDrift, 60.0),
-    (FindingKind::DirectoryDrift, 60.0),
-    (FindingKind::ShadowedAbstraction, 45.0),
-    (FindingKind::ConfigKeyDrift, 65.0),
-    (FindingKind::FixtureFactoryDrift, 65.0),
-    (FindingKind::StaleCompatibilityPath, 45.0),
-    (FindingKind::MissingMetricsModelDocs, 70.0),
-    (FindingKind::MissingArchitectureDocs, 70.0),
-    (FindingKind::RepeatedErrorPattern, 70.0),
-    (FindingKind::AdapterBoundaryBypass, 45.0),
-    (FindingKind::LargeDirectory, 75.0),
-    (FindingKind::ImportHeavyFile, 75.0),
-    (FindingKind::LargePublicSurface, 75.0),
-    (FindingKind::FunctionProliferation, 75.0),
-    (FindingKind::UnusedFunction, 75.0),
-    (FindingKind::DataClump, 75.0),
-    (FindingKind::MissingDocumentationSet, 85.0),
-    (FindingKind::MissingUserGuide, 85.0),
-    (FindingKind::MissingReportSchemaDocs, 85.0),
-    (FindingKind::StaleCliDocumentation, 85.0),
-    (FindingKind::StaleSchemaDocumentation, 85.0),
-    (FindingKind::DependencyCycle, 85.0),
-    (FindingKind::DependencyHub, 75.0),
-    (FindingKind::LargeFile, 85.0),
-    (FindingKind::LongFunction, 85.0),
-    (FindingKind::ComplexFunction, 85.0),
-    (FindingKind::DeepNesting, 85.0),
-    (FindingKind::ManyParameters, 85.0),
-    (FindingKind::ReadabilityRisk, 80.0),
-    (FindingKind::LargeType, 85.0),
-    (FindingKind::SimilarFunctions, 85.0),
-    (FindingKind::ParallelImplementation, 50.0),
-    (FindingKind::DuplicateTypeShape, 85.0),
-];
 
 #[derive(Debug, Clone)]
 pub struct FindingInput {
@@ -150,6 +71,15 @@ pub fn scored_finding(input: FindingInput) -> Finding {
 }
 
 fn build_finding(input: FindingInput) -> Finding {
+    let declared_metrics = input_metrics(input.kind);
+    assert!(
+        input
+            .metrics
+            .iter()
+            .all(|metric| declared_metrics.contains(&metric.name)),
+        "finding {:?} emitted a metric outside its detector contract",
+        input.kind
+    );
     let confidence = input
         .confidence
         .unwrap_or_else(|| default_confidence(input.kind));
@@ -202,44 +132,7 @@ pub fn priority_score(
 }
 
 pub fn default_confidence(kind: FindingKind) -> f64 {
-    match kind {
-        FindingKind::SimilarFunctions => 0.85,
-        FindingKind::RepeatedErrorPattern
-        | FindingKind::TestDuplication
-        | FindingKind::DataClump
-        | FindingKind::ConfigKeyDrift
-        | FindingKind::FixtureFactoryDrift => 0.85,
-        FindingKind::RepeatedLiteral => 0.75,
-        FindingKind::DuplicateTypeShape => 0.80,
-        FindingKind::AdapterBoundaryBypass => 0.65,
-        FindingKind::GenericBucketDrift | FindingKind::StaleCompatibilityPath => 0.60,
-        FindingKind::HappyPathOnlyTests => 0.60,
-        FindingKind::MissingDocumentationSet
-        | FindingKind::MissingUserGuide
-        | FindingKind::MissingReportSchemaDocs
-        | FindingKind::MissingMetricsModelDocs
-        | FindingKind::MissingArchitectureDocs
-        | FindingKind::StaleCliDocumentation
-        | FindingKind::StaleSchemaDocumentation => 0.95,
-        FindingKind::DependencyCycle | FindingKind::DependencyHub => 0.90,
-        FindingKind::ReadabilityRisk => 0.90,
-        FindingKind::FileNamingDrift
-        | FindingKind::DirectoryDrift
-        | FindingKind::FunctionProliferation
-        | FindingKind::UnusedFunction
-        | FindingKind::ParallelImplementation
-        | FindingKind::ShadowedAbstraction => 0.60,
-        FindingKind::DebtMarker
-        | FindingKind::LargeFile
-        | FindingKind::LargeDirectory
-        | FindingKind::LongFunction
-        | FindingKind::ComplexFunction
-        | FindingKind::DeepNesting
-        | FindingKind::ManyParameters
-        | FindingKind::LargeType
-        | FindingKind::LargePublicSurface
-        | FindingKind::ImportHeavyFile => 1.0,
-    }
+    manifest_default_confidence(kind)
 }
 
 pub(crate) fn finalize_scoring(
@@ -376,18 +269,11 @@ fn best_file_hotspot_for_finding<'a>(
 }
 
 fn impact_score(kind: FindingKind) -> f64 {
-    score_for_kind(kind, IMPACT_SCORES)
+    impact(kind)
 }
 
 fn actionability_score(kind: FindingKind) -> f64 {
-    score_for_kind(kind, ACTIONABILITY_SCORES)
-}
-
-fn score_for_kind(kind: FindingKind, scores: &[(FindingKind, f64)]) -> f64 {
-    scores
-        .iter()
-        .find_map(|(candidate, score)| (*candidate == kind).then_some(*score))
-        .unwrap_or(50.0)
+    actionability(kind)
 }
 
 pub fn normalized_threshold_excess(ratio: f64) -> f64 {
@@ -449,54 +335,54 @@ fn unique_related_file_count(related_locations: &[RelatedLocation]) -> usize {
         .len()
 }
 
-fn percentile_metric_values(raw_metrics: &RawMetrics) -> BTreeMap<String, Vec<usize>> {
-    let mut values = BTreeMap::<String, Vec<usize>>::new();
+fn percentile_metric_values(raw_metrics: &RawMetrics) -> BTreeMap<MetricId, Vec<usize>> {
+    let mut values = BTreeMap::<MetricId, Vec<usize>>::new();
+
+    for directory in &raw_metrics.directories {
+        values
+            .entry(MetricId::DirectorySourceFiles)
+            .or_default()
+            .push(directory.source_files);
+    }
 
     for file in &raw_metrics.files {
+        values.entry(MetricId::FileLoc).or_default().push(file.loc);
         values
-            .entry("file_lines".to_string())
-            .or_default()
-            .push(file.loc);
-        values
-            .entry("imports".to_string())
+            .entry(MetricId::FileImports)
             .or_default()
             .push(file.imports);
         values
-            .entry(METRIC_PUBLIC_ITEMS.to_string())
+            .entry(MetricId::FilePublicItems)
             .or_default()
             .push(file.public_items);
-        values
-            .entry("directory_files".to_string())
-            .or_default()
-            .push(file.directory_source_files);
     }
 
     for function in &raw_metrics.functions {
         values
-            .entry("function_lines".to_string())
+            .entry(MetricId::FunctionLoc)
             .or_default()
             .push(function.loc);
         values
-            .entry("function_complexity".to_string())
+            .entry(MetricId::FunctionComplexity)
             .or_default()
             .push(function.complexity);
         values
-            .entry(METRIC_NESTING_DEPTH.to_string())
+            .entry(MetricId::FunctionNestingDepth)
             .or_default()
             .push(function.nesting_depth);
         values
-            .entry("function_parameters".to_string())
+            .entry(MetricId::FunctionParameterCount)
             .or_default()
             .push(function.parameter_count);
     }
 
     for type_metric in &raw_metrics.types {
         values
-            .entry("type_lines".to_string())
+            .entry(MetricId::TypeLoc)
             .or_default()
             .push(type_metric.loc);
         values
-            .entry("type_members".to_string())
+            .entry(MetricId::TypeMemberCount)
             .or_default()
             .push(type_metric.member_count);
     }
@@ -510,7 +396,7 @@ fn percentile_metric_values(raw_metrics: &RawMetrics) -> BTreeMap<String, Vec<us
 
 fn metric_percentile(
     metric: &FindingMetric,
-    percentile_values: &BTreeMap<String, Vec<usize>>,
+    percentile_values: &BTreeMap<MetricId, Vec<usize>>,
 ) -> Option<f64> {
     let values = percentile_values.get(&metric.name)?;
     if values.len() < PERCENTILE_MIN_SAMPLE {
@@ -526,16 +412,28 @@ fn normalized_metric_value(metric: &FindingMetric, threshold_normalized: f64) ->
         return threshold_normalized;
     };
 
-    ((threshold_normalized * 0.65) + (percentile * 0.35)).clamp(0.0, 1.0)
+    threshold_normalized.max(percentile).clamp(0.0, 1.0)
 }
 
 pub(crate) fn summarize_raw_metrics(raw_metrics: &RawMetrics) -> MetricsSummary {
     MetricsSummary {
+        directories: directory_percentiles(raw_metrics),
         files: file_percentiles(raw_metrics),
         functions: function_percentiles(raw_metrics),
         types: type_percentiles(raw_metrics),
         churn: churn_percentiles(raw_metrics),
     }
+}
+
+fn directory_percentiles(raw_metrics: &RawMetrics) -> BTreeMap<String, MetricPercentiles> {
+    percentile_map([(
+        "source_files",
+        raw_metrics
+            .directories
+            .iter()
+            .map(|metric| metric.source_files)
+            .collect(),
+    )])
 }
 
 fn file_percentiles(raw_metrics: &RawMetrics) -> BTreeMap<String, MetricPercentiles> {
@@ -553,19 +451,11 @@ fn file_percentiles(raw_metrics: &RawMetrics) -> BTreeMap<String, MetricPercenti
                 .collect(),
         ),
         (
-            METRIC_PUBLIC_ITEMS,
+            "public_items",
             raw_metrics
                 .files
                 .iter()
                 .map(|metric| metric.public_items)
-                .collect(),
-        ),
-        (
-            "directory_source_files",
-            raw_metrics
-                .files
-                .iter()
-                .map(|metric| metric.directory_source_files)
                 .collect(),
         ),
     ])
@@ -590,7 +480,7 @@ fn function_percentiles(raw_metrics: &RawMetrics) -> BTreeMap<String, MetricPerc
                 .collect(),
         ),
         (
-            METRIC_NESTING_DEPTH,
+            "nesting_depth",
             raw_metrics
                 .functions
                 .iter()
@@ -699,4 +589,29 @@ fn percentile(values: &[usize], percentile: f64) -> usize {
 
     let index = ((values.len() - 1) as f64 * percentile).ceil() as usize;
     values[index.min(values.len() - 1)]
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "outside its detector contract")]
+    fn rejects_metrics_not_declared_by_detector() {
+        finding(FindingInput::new(
+            FindingKind::LargeFile,
+            "src/lib.rs",
+            Some(1),
+            "",
+            vec![FindingMetric::threshold(MetricId::GroupSize, 3, 2, "items")],
+        ));
+    }
+
+    #[test]
+    fn normalization_uses_the_stronger_lens_without_adding_duplicate_evidence() {
+        let mut metric = FindingMetric::threshold(MetricId::FileLoc, 900, 800, "lines");
+        metric.percentile = Some(0.95);
+
+        assert_eq!(normalized_metric_value(&metric, 0.40), 0.95);
+    }
 }

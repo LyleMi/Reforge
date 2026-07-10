@@ -1,16 +1,14 @@
 use super::*;
 
 use crate::cli::{
-    DEFAULT_MAX_DIR_FILES, DEFAULT_MAX_FILE_LINES, DEFAULT_MAX_FUNCTION_COMPLEXITY,
-    DEFAULT_MAX_FUNCTION_LINES, DEFAULT_MAX_FUNCTION_PARAMETERS, DEFAULT_MAX_IMPORTS,
-    DEFAULT_MAX_NESTING_DEPTH, DEFAULT_MAX_PUBLIC_ITEMS, DEFAULT_MAX_TYPE_LINES,
-    DEFAULT_MAX_TYPE_MEMBERS, ScanArgs,
+    DEFAULT_MAX_FILE_LINES, DEFAULT_MAX_FUNCTION_COMPLEXITY, DEFAULT_MAX_FUNCTION_LINES,
+    DEFAULT_MAX_FUNCTION_PARAMETERS, DEFAULT_MAX_IMPORTS, DEFAULT_MAX_NESTING_DEPTH,
+    DEFAULT_MAX_PUBLIC_ITEMS, DEFAULT_MAX_TYPE_LINES, DEFAULT_MAX_TYPE_MEMBERS, ScanArgs,
 };
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct StaticRiskThresholds {
     pub max_file_lines: usize,
-    pub max_dir_files: usize,
     pub max_function_lines: usize,
     pub max_function_complexity: usize,
     pub max_nesting_depth: usize,
@@ -25,7 +23,6 @@ impl From<&ScanArgs> for StaticRiskThresholds {
     fn from(args: &ScanArgs) -> Self {
         Self {
             max_file_lines: args.max_file_lines,
-            max_dir_files: args.max_dir_files,
             max_function_lines: args.max_function_lines,
             max_function_complexity: args.max_function_complexity,
             max_nesting_depth: args.max_nesting_depth,
@@ -42,7 +39,6 @@ impl Default for StaticRiskThresholds {
     fn default() -> Self {
         Self {
             max_file_lines: DEFAULT_MAX_FILE_LINES,
-            max_dir_files: DEFAULT_MAX_DIR_FILES,
             max_function_lines: DEFAULT_MAX_FUNCTION_LINES,
             max_function_complexity: DEFAULT_MAX_FUNCTION_COMPLEXITY,
             max_nesting_depth: DEFAULT_MAX_NESTING_DEPTH,
@@ -189,7 +185,6 @@ fn file_static_risk(
         threshold_risk(file.loc, thresholds.max_file_lines),
         threshold_risk(file.imports, thresholds.max_imports) * 0.80,
         threshold_risk(file.public_items, thresholds.max_public_items) * 0.80,
-        threshold_risk(file.directory_source_files, thresholds.max_dir_files) * 0.65,
         percentile_risk(file.loc, &metrics_summary.files, "loc") * 0.35,
     ])
 }

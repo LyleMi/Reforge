@@ -64,7 +64,7 @@ pub(in crate::detectors::structure) fn file_naming_drift_findings(
                     dominant_locations.len()
                 ),
                 vec![FindingMetric::threshold(
-                    "group_size",
+                    crate::model::MetricId::GroupSize,
                     styles.len(),
                     2,
                     "naming styles",
@@ -285,7 +285,7 @@ pub(in crate::detectors::structure) fn directory_drift_findings(
                     concepts.len()
                 ),
                 vec![FindingMetric::threshold(
-                    "group_size",
+                    crate::model::MetricId::GroupSize,
                     concepts.len(),
                     threshold,
                     "concepts",
@@ -328,7 +328,7 @@ pub(in crate::detectors::structure) fn group_occurrences(
             })
             .collect::<Vec<_>>();
         let metrics = vec![FindingMetric::threshold(
-            "group_size",
+            crate::model::MetricId::GroupSize,
             group.len(),
             min_occurrences,
             "occurrences",

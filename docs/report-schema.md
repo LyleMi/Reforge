@@ -1,6 +1,6 @@
 # Report Schema
 
-JSON and YAML reports use schema version `15`. The same Rust data model is
+JSON and YAML reports use schema version `16`. The same Rust data model is
 serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 that carries the same finding IDs in result fingerprints.
 
@@ -8,7 +8,7 @@ that carries the same finding IDs in result fingerprints.
 
 ```json
 {
-  "schema_version": 15,
+  "schema_version": 16,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
@@ -25,11 +25,11 @@ that carries the same finding IDs in result fingerprints.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `15`.
+- `schema_version`: report schema version. Current value is `16`.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
-- `raw_metrics`: file, function, type, and churn measurements.
+- `raw_metrics`: directory, file, function, type, and churn measurements.
 - `raw_metric_manifest`: scale, unit, scope, direction, and meaning of every
   raw metric family.
 - `dependency_graph`: resolved source-file dependency graph snapshot.
@@ -81,8 +81,8 @@ Fields:
 
 ## `metrics_summary`
 
-`metrics_summary` contains maps for `files`, `functions`, `types`, and
-`churn`. Each metric has:
+`metrics_summary` contains maps for `directories`, `files`, `functions`,
+`types`, and `churn`. Each metric has:
 
 - `p50`
 - `p75`
@@ -90,8 +90,10 @@ Fields:
 - `p95`
 - `max`
 
-File metrics include `loc`, `imports`, `public_items`, and
-`directory_source_files`.
+Directory metrics include `source_files`. Each directory contributes exactly
+one observation, independent of the number of files it contains.
+
+File metrics include `loc`, `imports`, and `public_items`.
 
 Function metrics include `loc`, `complexity`, `nesting_depth`, and
 `parameter_count`.
@@ -109,9 +111,13 @@ Churn metrics include `commits_touched`, `lines_added`, `lines_deleted`,
 - `loc`
 - `imports`
 - `public_items`
-- `directory_source_files`
 - `is_test`
 - `churn`
+
+`raw_metrics.directories` entries:
+
+- `path`
+- `source_files`
 
 `raw_metrics.files[].churn` entries:
 
@@ -248,8 +254,9 @@ primary member is the highest-priority finding; member findings remain in
 ## `detector_manifest`
 
 Each entry contains `kind`, `construct`, `mechanism`, `action`, `entity_scope`,
-`approach`, `supported_languages`, `precision_risk`, optional `parent_kind`,
-and typed `relations`. A relation is either `facet_of` or
+`approach`, `supported_languages`, `precision_risk`, typed `input_metrics`,
+`default_confidence`, `impact`, `actionability`, optional `parent_kind`, and
+typed `relations`. A relation is either `facet_of` or
 `alternative_evidence`; clustering consumes these relations instead of
 inferring overlap from a shared mechanism alone. Consumers can distinguish
 unsupported analysis from an observed absence of findings.
@@ -350,6 +357,10 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
+version `16` gives every finding metric a canonical dotted ID, adds directory
+raw metrics and percentile summaries, removes repeated parent-directory counts
+from file raw metrics and file hotspots, and exposes detector metric and
+ranking-policy inputs in `detector_manifest`. Schema
 version `14` adds finding constructs and mechanisms, issue clusters, detector
 manifests, and `summary.issue_count`; it removes metric `dimension`. Schema
 version `13` does not emit the legacy v4 fields `score`, `score_breakdown`, or

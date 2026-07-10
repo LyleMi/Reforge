@@ -1,7 +1,7 @@
 # Metrics Model
 
 Reforge separates measurement from interpretation. The scanner first collects
-raw file, function, type, and churn metrics, then derives summaries, hotspots,
+raw directory, file, function, type, and churn metrics, then derives summaries, hotspots,
 and findings from that model. The model reports maintainability and
 refactoring signals; it is not a quality score, health score, bug detector, or
 defect probability model.
@@ -14,10 +14,14 @@ File metrics:
 - `imports`: top-level import/use declarations for supported Tree-sitter
   languages.
 - `public_items`: public or exported top-level items.
-- `directory_source_files`: number of direct source files in the parent
-  directory.
 - `is_test`: whether the path looks like a test file.
 - `churn`: git churn metrics when enabled.
+
+Directory metrics:
+
+- `source_files`: number of direct source files. A directory is sampled once,
+  so large directories do not receive extra percentile weight from containing
+  more files.
 
 Function metrics:
 
@@ -48,9 +52,12 @@ Churn metrics:
 category. Percentiles help rank hotspots relative to the scanned project, not
 against a universal standard.
 
-Finding metrics may include a `percentile` value when at least five values are
-available for that metric. Percentiles are combined with threshold excess for
-raw metrics that have a matching project distribution.
+Finding metrics use canonical dotted IDs such as `file.loc` and
+`function.complexity`. A detector can emit only metrics declared by its
+manifest entry. Finding metrics may include a `percentile` value when at least
+five values are available for that metric. When both threshold excess and a
+project percentile describe the same observation, intensity takes the
+stronger lens rather than adding duplicate evidence.
 
 ## Finding Priority
 
@@ -122,8 +129,7 @@ Static risk is the strongest applicable structural signal for the location,
 not a blend of every detector mechanism:
 
 - File risk considers the file-LOC threshold, import threshold at 80% weight,
-  public-item threshold at 80%, direct directory file-count threshold at 65%,
-  and file-LOC percentile at 35%.
+  public-item threshold at 80%, and file-LOC percentile at 35%.
 - Function risk considers line and complexity thresholds, nesting at 85%,
   parameter count at 75%, and function-LOC percentile at 35%.
 - Type risk considers line and member-count thresholds plus type-LOC

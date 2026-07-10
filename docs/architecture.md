@@ -21,7 +21,7 @@ scores findings, and renders reports.
   implementations.
 - `src/scoring/mod.rs`: metric summaries, priority scoring, severity mapping,
   and hotspot ranking.
-- `src/baseline.rs`: schema 15 baseline loading, finding ID comparison, diff
+- `src/baseline.rs`: schema 16 baseline loading, finding ID comparison, diff
   classification, and `--fail-on` gate selection.
 - `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF output entry points.
 
@@ -60,7 +60,7 @@ into clearer directories.
 ## Data Flow
 
 `ScanArgs` is the input configuration. `scan_report` produces a `ScanReport`
-with schema version `15`. Detectors emit `Finding` values with metrics and
+with schema version `16`. Detectors emit `Finding` values with metrics and
 related locations. The dependency-graph detector also emits a resolved
 source-file graph snapshot. Scoring later enriches findings with constructs and mechanisms,
 normalized values, percentiles, `priority_factors`, `priority`, `severity`,

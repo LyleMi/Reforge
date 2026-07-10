@@ -11,7 +11,7 @@
   </div>
 </div>
 
-Reforge collects file, function, type, dependency, and optional git churn
+Reforge collects directory, file, function, type, dependency, and optional git churn
 metrics before deriving hotspots and findings. It is designed for local audits,
 CI gates, and evidence-led refactoring work. It is not a quality score, bug
 detector, or defect probability model.

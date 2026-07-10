@@ -21,7 +21,7 @@ fn metric_value(finding: &Finding, name: &str) -> Option<usize> {
     finding
         .metrics
         .iter()
-        .find(|metric| metric.name == name)
+        .find(|metric| metric.name.as_str() == name)
         .map(|metric| metric.value)
 }
 
@@ -68,7 +68,7 @@ fn gamma(numbers: &[i32]) -> i32 {
     let findings = scan_similar_functions(&[source_file("src/lib.rs", source)], &options())?;
 
     assert_eq!(findings.len(), 1);
-    assert_eq!(metric_value(&findings[0], "group_size"), Some(3));
+    assert_eq!(metric_value(&findings[0], "group.size"), Some(3));
     Ok(())
 }
 
@@ -130,7 +130,7 @@ mod tests {
 
     assert_eq!(included.candidate_count, 3);
     assert_eq!(included.findings.len(), 1);
-    assert_eq!(metric_value(&included.findings[0], "group_size"), Some(3));
+    assert_eq!(metric_value(&included.findings[0], "group.size"), Some(3));
     Ok(())
 }
 
@@ -176,7 +176,7 @@ fn detects_similar_javascript_functions_with_normalized_names_and_literals() -> 
     let findings = scan_similar_functions(&[source_file("src/app.js", source)], &options())?;
 
     assert_eq!(findings.len(), 1);
-    assert_eq!(metric_value(&findings[0], "group_size"), Some(3));
+    assert_eq!(metric_value(&findings[0], "group.size"), Some(3));
     assert_eq!(findings[0].related_locations.len(), 3);
     Ok(())
 }
@@ -224,7 +224,7 @@ function gamma(rows: Item[]): number {
     let findings = scan_similar_functions(&[source_file("src/app.ts", source)], &options())?;
 
     assert_eq!(findings.len(), 1);
-    assert_eq!(metric_value(&findings[0], "group_size"), Some(3));
+    assert_eq!(metric_value(&findings[0], "group.size"), Some(3));
     Ok(())
 }
 
@@ -527,7 +527,7 @@ end
         let scan = scan_similar_functions_report(&[source_file(path, source)], &options())?;
         assert_eq!(scan.candidate_count, 3, "{path}: {scan:#?}");
         assert_eq!(scan.findings.len(), 1, "{path}: {scan:#?}");
-        assert_eq!(metric_value(&scan.findings[0], "group_size"), Some(3));
+        assert_eq!(metric_value(&scan.findings[0], "group.size"), Some(3));
     }
 
     Ok(())

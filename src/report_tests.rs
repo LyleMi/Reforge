@@ -1,6 +1,7 @@
 use super::*;
 use crate::model::{
     DependencyGraphEdge, DependencyGraphNode, DependencyGraphSnapshot, Hotspot, HotspotLevel,
+    MetricId,
 };
 use crate::scanner::{
     ChurnFileMetric, ChurnSummary, FileRawMetric, FindingInput, FindingMetric, MetricsSummary,
@@ -33,6 +34,7 @@ fn report(findings: Vec<Finding>) -> ScanReport {
         },
         stats: ScanStats::default(),
         metrics_summary: MetricsSummary {
+            directories: BTreeMap::new(),
             files: BTreeMap::new(),
             functions: BTreeMap::new(),
             types: BTreeMap::new(),
@@ -65,7 +67,7 @@ fn human_report_renders_cluster_primary_once_and_keeps_raw_signal_count() {
             Some(10),
             "complex",
             vec![FindingMetric::threshold(
-                "function_complexity",
+                MetricId::FunctionComplexity,
                 20,
                 15,
                 "complexity",
@@ -77,7 +79,12 @@ fn human_report_renders_cluster_primary_once_and_keeps_raw_signal_count() {
             "src/a.rs",
             Some(10),
             "nested",
-            vec![FindingMetric::threshold("nesting_depth", 6, 4, "levels")],
+            vec![FindingMetric::threshold(
+                MetricId::FunctionNestingDepth,
+                6,
+                4,
+                "levels",
+            )],
             Vec::new(),
         ),
     ];
@@ -114,7 +121,12 @@ fn large_file(path: &str, lines: usize) -> Finding {
         path,
         Some(1),
         "",
-        vec![FindingMetric::threshold("file_lines", lines, 800, "lines")],
+        vec![FindingMetric::threshold(
+            MetricId::FileLoc,
+            lines,
+            800,
+            "lines",
+        )],
         Vec::new(),
     )
 }
@@ -129,7 +141,7 @@ fn maps_priority_to_severity() {
 
 #[test]
 fn calculates_threshold_excess_ratio() {
-    let metric = FindingMetric::threshold("file_lines", 1_200, 800, "lines");
+    let metric = FindingMetric::threshold(MetricId::FileLoc, 1_200, 800, "lines");
 
     assert_eq!(metric.threshold, Some(800));
     assert_eq!(metric.excess_ratio, Some(1.5));
@@ -142,7 +154,12 @@ fn spread_factor_increases_score_for_cross_file_groups() {
         "src/a.rs",
         Some(1),
         "similar",
-        vec![FindingMetric::threshold("group_size", 3, 3, "functions")],
+        vec![FindingMetric::threshold(
+            MetricId::GroupSize,
+            3,
+            3,
+            "functions",
+        )],
         vec![RelatedLocation {
             path: "src/a.rs".to_string(),
             line: 1,
@@ -154,7 +171,12 @@ fn spread_factor_increases_score_for_cross_file_groups() {
         "src/a.rs",
         Some(1),
         "similar",
-        vec![FindingMetric::threshold("group_size", 3, 3, "functions")],
+        vec![FindingMetric::threshold(
+            MetricId::GroupSize,
+            3,
+            3,
+            "functions",
+        )],
         vec![
             RelatedLocation {
                 path: "src/a.rs".to_string(),
@@ -185,8 +207,8 @@ fn large_type_scores_from_strongest_metric() {
         Some(1),
         "large type",
         vec![
-            FindingMetric::threshold("type_lines", 260, 250, "lines"),
-            FindingMetric::threshold("type_members", 60, 30, "members"),
+            FindingMetric::threshold(MetricId::TypeLoc, 260, 250, "lines"),
+            FindingMetric::threshold(MetricId::TypeMemberCount, 60, 30, "members"),
         ],
         Vec::new(),
     );
@@ -196,8 +218,8 @@ fn large_type_scores_from_strongest_metric() {
         Some(1),
         "large type",
         vec![
-            FindingMetric::threshold("type_lines", 260, 250, "lines"),
-            FindingMetric::threshold("type_members", 120, 30, "members"),
+            FindingMetric::threshold(MetricId::TypeLoc, 260, 250, "lines"),
+            FindingMetric::threshold(MetricId::TypeMemberCount, 120, 30, "members"),
         ],
         Vec::new(),
     );
@@ -228,7 +250,7 @@ fn human_report_sorts_by_priority_and_renders_priority_confidence_and_metrics() 
         Some(10),
         "complex",
         vec![FindingMetric::threshold(
-            "function_complexity",
+            MetricId::FunctionComplexity,
             30,
             15,
             "complexity",
@@ -256,7 +278,7 @@ fn human_report_sorts_by_priority_and_renders_priority_confidence_and_metrics() 
     assert!(output.contains("warning  p=48 c=1.00"));
     assert!(output.contains("Signal mix"));
     assert!(output.contains("large file"));
-    assert!(output.contains("metrics file_lines=1200/800 lines"));
+    assert!(output.contains("metrics file.loc=1200/800 lines"));
     assert!(output.contains("rank cognitive-load signal, high confidence"));
 }
 
@@ -382,13 +404,18 @@ fn renders_human_baseline_diff_when_selected_findings_are_empty() {
 }
 
 #[test]
-fn renders_json_report_schema_v15_with_orthogonal_classification_metadata() {
+fn renders_json_report_schema_v16_with_measurement_contract_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
         Some(1),
         "similar",
-        vec![FindingMetric::threshold("group_size", 3, 3, "functions")],
+        vec![FindingMetric::threshold(
+            MetricId::GroupSize,
+            3,
+            3,
+            "functions",
+        )],
         vec![RelatedLocation {
             path: "src/a.rs".to_string(),
             line: 1,
@@ -420,7 +447,7 @@ fn renders_json_report_schema_v15_with_orthogonal_classification_metadata() {
         value["findings"][0]["recommendation"],
         "Extract the shared behavior into a common helper or deliberately separate the variants if they should evolve independently."
     );
-    assert_eq!(value["findings"][0]["metrics"][0]["name"], "group_size");
+    assert_eq!(value["findings"][0]["metrics"][0]["name"], "group.size");
     assert_eq!(value["findings"][0]["construct"], "reusability");
     assert_eq!(value["findings"][0]["mechanism"], "duplication_divergence");
     assert!(
@@ -449,7 +476,12 @@ fn caps_serialized_similar_function_locations() {
             "src/a.rs",
             Some(1),
             "similar",
-            vec![FindingMetric::threshold("group_size", 75, 3, "functions")],
+            vec![FindingMetric::threshold(
+                MetricId::GroupSize,
+                75,
+                3,
+                "functions",
+            )],
         )
         .with_confidence(0.85)
         .with_related_locations(
@@ -510,7 +542,12 @@ fn finding_ids_are_stable_for_equivalent_identity_inputs() {
         "src/a.rs",
         Some(10),
         "literal",
-        vec![FindingMetric::threshold("group_size", 4, 3, "occurrences")],
+        vec![FindingMetric::threshold(
+            MetricId::GroupSize,
+            4,
+            3,
+            "occurrences",
+        )],
         vec![RelatedLocation {
             path: "src/b.rs".to_string(),
             line: 20,
@@ -522,7 +559,12 @@ fn finding_ids_are_stable_for_equivalent_identity_inputs() {
         "src/a.rs",
         Some(10),
         "changed wording",
-        vec![FindingMetric::threshold("group_size", 10, 3, "occurrences")],
+        vec![FindingMetric::threshold(
+            MetricId::GroupSize,
+            10,
+            3,
+            "occurrences",
+        )],
         vec![RelatedLocation {
             path: "src/b.rs".to_string(),
             line: 20,
@@ -541,7 +583,12 @@ fn renders_sarif_report_with_rules_results_and_fingerprints() {
         "src/a.rs",
         Some(1),
         "file is large",
-        vec![FindingMetric::threshold("file_lines", 900, 800, "lines")],
+        vec![FindingMetric::threshold(
+            MetricId::FileLoc,
+            900,
+            800,
+            "lines",
+        )],
         Vec::new(),
     )]);
 
@@ -577,7 +624,12 @@ fn renders_html_report_with_react_shell_and_embedded_report_data() {
         "src/a.rs",
         Some(10),
         "similar functions",
-        vec![FindingMetric::threshold("group_size", 3, 3, "functions")],
+        vec![FindingMetric::threshold(
+            MetricId::GroupSize,
+            3,
+            3,
+            "functions",
+        )],
         vec![
             RelatedLocation {
                 path: "src/a.rs".to_string(),
@@ -596,7 +648,6 @@ fn renders_html_report_with_react_shell_and_embedded_report_data() {
         loc: 120,
         imports: 8,
         public_items: 4,
-        directory_source_files: 2,
         is_test: false,
         churn: ChurnFileMetric {
             commits_touched: 2,
@@ -701,7 +752,12 @@ fn html_report_escapes_json_before_embedding_it_in_script_data() {
         "src/</script><div>.rs",
         Some(1),
         "file contains </script> marker",
-        vec![FindingMetric::threshold("file_lines", 900, 800, "lines")],
+        vec![FindingMetric::threshold(
+            MetricId::FileLoc,
+            900,
+            800,
+            "lines",
+        )],
         Vec::new(),
     )]));
 

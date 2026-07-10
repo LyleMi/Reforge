@@ -205,7 +205,7 @@ the same HTML report format automatically.
 
 Reports contain four main data layers plus suppression audit context:
 
-- `raw_metrics`: file, function, type, and churn measurements.
+- `raw_metrics`: directory, file, function, type, and churn measurements.
 - `metrics_summary`: percentile summaries for the scanned project.
 - `hotspots`: file, function, and type locations ranked by static risk, churn
   risk, or both.
@@ -248,8 +248,8 @@ fail if it is unavailable. Use `--churn off` to skip git entirely.
 Hotspot models:
 
 - `--hotspot-model static`: rank by the strongest 0-100 structural risk for
-  each location. File risk considers lines, imports, public items, direct
-  directory file count, and file-LOC percentile; function risk considers
+  each location. File risk considers lines, imports, public items, and
+  file-LOC percentile; function risk considers
   lines, complexity, nesting, parameters, and function-LOC percentile; type
   risk considers lines, members, and type-LOC percentile.
 - `--hotspot-model churn`: rank by the strongest 0-100 project-percentile

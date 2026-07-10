@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::model::{
     DependencyGraphEdge, DependencyGraphNode, DependencyGraphSnapshot, Finding, FindingKind,
-    FindingMetric, RelatedLocation,
+    FindingMetric, MetricId, RelatedLocation,
 };
 use crate::scanner::{FindingInput, finding};
 
@@ -136,19 +136,19 @@ fn dependency_cycle_findings(graph: &DependencyGraph) -> Vec<Finding> {
                     ),
                     vec![
                         FindingMetric::threshold(
-                            "cycle_files",
+                            MetricId::DependencyCycleFiles,
                             related_locations.len(),
                             2,
                             "files",
                         ),
                         FindingMetric::threshold(
-                            "cycle_edges",
+                            MetricId::DependencyCycleEdges,
                             cycle_edges,
                             related_locations.len(),
                             "internal edges",
                         ),
                         FindingMetric::measurement(
-                            "cycle_density_percent",
+                            MetricId::DependencyCycleDensityPercent,
                             cycle_density,
                             "percent",
                         ),
@@ -272,14 +272,14 @@ fn dependency_hub_metrics(
     );
     if dependency_depth > 1 {
         metrics.push(FindingMetric::threshold(
-            "dependency_depth",
+            MetricId::DependencyDepth,
             dependency_depth,
             MIN_DEPENDENCY_DEPTH,
             "edges",
         ));
     }
     metrics.push(FindingMetric::measurement(
-        "instability_percent",
+        MetricId::DependencyInstabilityPercent,
         instability_percent(fan_in, fan_out),
         "percent",
     ));
@@ -289,7 +289,7 @@ fn dependency_hub_metrics(
 fn push_direct_coupling_metrics(metrics: &mut Vec<FindingMetric>, fan_in: usize, fan_out: usize) {
     if fan_out > 0 {
         metrics.push(FindingMetric::threshold(
-            "fan_out",
+            MetricId::DependencyFanOut,
             fan_out,
             MIN_HUB_DEGREE,
             "resolved dependencies",
@@ -297,7 +297,7 @@ fn push_direct_coupling_metrics(metrics: &mut Vec<FindingMetric>, fan_in: usize,
     }
     if fan_in > 0 {
         metrics.push(FindingMetric::threshold(
-            "fan_in",
+            MetricId::DependencyFanIn,
             fan_in,
             MIN_HUB_DEGREE,
             "resolved dependents",
@@ -314,7 +314,7 @@ fn push_transitive_coupling_metrics(
 ) {
     if transitive_fan_out > fan_out {
         metrics.push(FindingMetric::threshold(
-            "transitive_fan_out",
+            MetricId::DependencyTransitiveFanOut,
             transitive_fan_out,
             MIN_TRANSITIVE_REACH,
             "reachable dependencies",
@@ -322,7 +322,7 @@ fn push_transitive_coupling_metrics(
     }
     if transitive_fan_in > fan_in {
         metrics.push(FindingMetric::threshold(
-            "transitive_fan_in",
+            MetricId::DependencyTransitiveFanIn,
             transitive_fan_in,
             MIN_TRANSITIVE_REACH,
             "reachable dependents",
