@@ -225,7 +225,7 @@ hotspot watchlist and raw metrics are empty. When suppressions are used, keep
 the suppression summary visible so reviewers can distinguish zero
 unsuppressed findings from zero observed signals.
 
-Every finding in JSON, YAML, and SARIF has a stable `id` with an `rf1-` prefix.
+Every finding in JSON, YAML, and SARIF has a stable `id` with an `rf2-` prefix.
 The ID is derived from the finding kind, primary location, related locations,
 and metric names so it can be used for baseline comparison.
 
@@ -283,7 +283,7 @@ Without `--baseline`, all current findings are selected:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-With `--baseline <PATH>`, Reforge reads a prior schema 15 JSON or YAML report
+With `--baseline <PATH>`, Reforge reads a prior schema 17 JSON or YAML report
 and matches findings by stable `id`. Older reports without IDs are rejected;
 regenerate the baseline with the current Reforge.
 
@@ -363,7 +363,7 @@ git churn.
 | `--min-data-clump-occurrences` | `4` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a specific configuration file. |
-| `--baseline` | none | Read a prior schema 15 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 17 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
 | `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |

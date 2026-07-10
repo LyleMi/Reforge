@@ -1,6 +1,6 @@
 # Report Schema
 
-JSON and YAML reports use schema version `16`. The same Rust data model is
+JSON and YAML reports use schema version `17`. The same Rust data model is
 serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 that carries the same finding IDs in result fingerprints.
 
@@ -8,7 +8,7 @@ that carries the same finding IDs in result fingerprints.
 
 ```json
 {
-  "schema_version": 16,
+  "schema_version": 17,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
@@ -25,7 +25,7 @@ that carries the same finding IDs in result fingerprints.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `16`.
+- `schema_version`: report schema version. Current value is `17`.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
@@ -189,7 +189,7 @@ hard CI gate failures by themselves.
 Finding fields:
 
 - `kind`: detector-specific finding kind.
-- `id`: stable finding identifier in the form `rf1-<hex>`.
+- `id`: stable finding identifier in the form `rf2-<hex>`.
 - `severity`: `info`, `warning`, or `critical`.
 - `path`: primary path.
 - `line`: primary line or `null`.
@@ -237,16 +237,20 @@ Finding fields:
 Very large `similar_functions` groups serialize at most 50 related locations
 to keep reports bounded.
 
-Finding IDs are deterministic for the same finding identity. The `rf1-` ID
-uses the finding kind, normalized primary location, primary line, related
-locations, and metric names. It intentionally does not include message text or
-metric values, allowing baseline comparison to recognize an existing finding
-whose priority or severity has changed.
+Finding IDs are deterministic for the same evidence identity. The `rf2-` ID
+uses the finding kind, metric names, and the normalized, sorted, deduplicated
+set of primary and related path/line locations. It intentionally does not
+include the representative location choice, related-location order, names,
+message text, or metric values. Baseline comparison therefore recognizes the
+same evidence group when detector traversal order or ranking changes.
 
 ## `issue_clusters`
 
 Issue clusters contain `id`, `construct`, `mechanism`, `action`, `path`, `line`,
 `primary_finding_id`, `finding_ids`, `kinds`, `priority`, and `severity`.
+Finding `id` values are stable `EvidenceId` values (`rf2-...`). Cluster `id`
+values are stable `IssueKey` values (`ic2-...`) derived from the sorted member
+EvidenceIds, not from the primary finding or detector input order.
 Only groups with at least two overlapping atomic findings are emitted. The
 primary member is the highest-priority finding; member findings remain in
 `findings` for baselines and detector-specific filtering.
@@ -357,6 +361,10 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
+version `17` formalizes `rf2-` EvidenceIds over canonical evidence-location
+sets and derives stable IssueKeys from cluster membership. Clustering orders
+evidence by EvidenceId before complete-link grouping, eliminating detector/input
+ordering from membership, primary selection, and cluster identity. Schema
 version `16` gives every finding metric a canonical dotted ID, adds directory
 raw metrics and percentile summaries, removes repeated parent-directory counts
 from file raw metrics and file hotspots, and exposes detector metric and

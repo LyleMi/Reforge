@@ -440,7 +440,7 @@ fn renders_json_report_schema_v16_with_measurement_contract_metadata() {
     assert!(
         value["findings"][0]["id"]
             .as_str()
-            .is_some_and(|id| id.starts_with("rf1-"))
+            .is_some_and(|id| id.starts_with("rf2-"))
     );
     assert_eq!(value["findings"][0]["kind"], "similar_functions");
     assert_eq!(
@@ -573,7 +573,47 @@ fn finding_ids_are_stable_for_equivalent_identity_inputs() {
     );
 
     assert_eq!(left.id, right.id);
-    assert!(left.id.starts_with("rf1-"));
+    assert!(left.id.starts_with("rf2-"));
+}
+
+#[test]
+fn finding_ids_are_stable_when_group_representative_rotates() {
+    let locations = [
+        RelatedLocation {
+            path: "src/a.rs".to_string(),
+            line: 10,
+            name: Some("alpha".to_string()),
+        },
+        RelatedLocation {
+            path: "src/b.rs".to_string(),
+            line: 20,
+            name: Some("beta".to_string()),
+        },
+        RelatedLocation {
+            path: "src/c.rs".to_string(),
+            line: 30,
+            name: Some("gamma".to_string()),
+        },
+    ];
+    let metric = || FindingMetric::threshold(MetricId::GroupSize, 3, 3, "functions");
+    let left = make_finding(
+        FindingKind::SimilarFunctions,
+        "src/a.rs",
+        Some(10),
+        "group",
+        vec![metric()],
+        locations.to_vec(),
+    );
+    let right = make_finding(
+        FindingKind::SimilarFunctions,
+        "src/b.rs",
+        Some(20),
+        "group",
+        vec![metric()],
+        locations.into_iter().rev().collect(),
+    );
+
+    assert_eq!(left.id, right.id);
 }
 
 #[test]
@@ -609,7 +649,7 @@ fn renders_sarif_report_with_rules_results_and_fingerprints() {
     );
     assert_eq!(
         value["runs"][0]["results"][0]["partialFingerprints"]["reforgeFindingId"],
-        scan_report.findings[0].id
+        scan_report.findings[0].id.as_str()
     );
     assert_eq!(
         value["runs"][0]["results"][0]["properties"]["recommendation"],

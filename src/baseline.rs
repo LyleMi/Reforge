@@ -178,7 +178,7 @@ fn validate_finding_ids(path: &Path, report: &ScanReport) -> Result<()> {
     if report
         .findings
         .iter()
-        .all(|finding| finding.id.starts_with("rf1-"))
+        .all(|finding| finding.id.starts_with("rf2-"))
     {
         return Ok(());
     }
@@ -223,7 +223,7 @@ mod tests {
 
     fn finding(id: &str, priority: u8, severity: Severity) -> Finding {
         Finding {
-            id: id.to_string(),
+            id: id.to_string().into(),
             kind: FindingKind::LargeFile,
             severity,
             path: "src/a.rs".to_string(),
@@ -298,7 +298,7 @@ mod tests {
         let selected = selected_findings(&current, Some(&old), BaselineMode::New);
 
         assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0].id, "rf1-new");
+        assert_eq!(selected[0].id.as_str(), "rf1-new");
     }
 
     #[test]

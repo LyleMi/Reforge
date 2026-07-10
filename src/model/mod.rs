@@ -4,8 +4,63 @@ use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
 use crate::cli::{ChurnMode, HotspotModel};
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 16;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 17;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct EvidenceId(String);
+
+impl EvidenceId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for EvidenceId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl From<String> for EvidenceId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl std::ops::Deref for EvidenceId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct IssueKey(String);
+
+impl IssueKey {
+    pub fn from_evidence<'a>(evidence_ids: impl IntoIterator<Item = &'a EvidenceId>) -> Self {
+        let mut evidence_ids = evidence_ids.into_iter().collect::<Vec<_>>();
+        evidence_ids.sort_unstable();
+        evidence_ids.dedup();
+
+        let mut input = String::from("ic2");
+        for evidence_id in evidence_ids {
+            input.push('\0');
+            input.push_str(evidence_id.as_str());
+        }
+        Self(format!("ic2-{:016x}", fnv1a64(input.as_bytes())))
+    }
+}
+
+impl std::fmt::Display for IssueKey {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum MetricId {
     #[serde(rename = "file.loc")]
@@ -345,7 +400,7 @@ impl FindingMetric {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Finding {
-    pub id: String,
+    pub id: EvidenceId,
     pub kind: FindingKind,
     pub severity: Severity,
     pub path: String,
@@ -353,7 +408,7 @@ pub struct Finding {
     pub metrics: Vec<FindingMetric>,
     pub construct: QualityConstruct,
     pub mechanism: SignalMechanism,
-    pub issue_cluster_id: Option<String>,
+    pub issue_cluster_id: Option<IssueKey>,
     pub priority: u8,
     pub confidence: f64,
     pub priority_factors: PriorityFactors,
@@ -536,14 +591,10 @@ const KIND_RECOMMENDATIONS: &[(FindingKind, &str)] = &[
     ),
 ];
 
-pub fn stable_finding_id(finding: &Finding) -> String {
+pub fn stable_finding_id(finding: &Finding) -> EvidenceId {
     let mut input = String::new();
-    input.push_str("rf1\0");
+    input.push_str("rf2\0");
     input.push_str(&serialized_finding_kind(finding.kind));
-    input.push('\0');
-    input.push_str(&normalize_identity_path(&finding.path));
-    input.push('\0');
-    input.push_str(&finding.line.unwrap_or(0).to_string());
 
     let mut metric_names = finding
         .metrics
@@ -557,25 +608,24 @@ pub fn stable_finding_id(finding: &Finding) -> String {
         input.push_str(name);
     }
 
-    let mut related = finding
+    let mut locations = finding
         .related_locations
         .iter()
-        .map(|location| {
-            format!(
-                "{}:{}:{}",
-                normalize_identity_path(&location.path),
-                location.line,
-                location.name.as_deref().unwrap_or("")
-            )
-        })
+        .map(|location| identity_location(&location.path, Some(location.line)))
         .collect::<Vec<_>>();
-    related.sort_unstable();
-    for location in related {
+    locations.push(identity_location(&finding.path, finding.line));
+    locations.sort_unstable();
+    locations.dedup();
+    for location in locations {
         input.push('\0');
         input.push_str(&location);
     }
 
-    format!("rf1-{:016x}", fnv1a64(input.as_bytes()))
+    EvidenceId(format!("rf2-{:016x}", fnv1a64(input.as_bytes())))
+}
+
+fn identity_location(path: &str, line: Option<usize>) -> String {
+    format!("{}:{}", normalize_identity_path(path), line.unwrap_or(0))
 }
 
 pub fn serialized_finding_kind(kind: FindingKind) -> String {
@@ -799,14 +849,14 @@ pub struct SuppressionSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IssueCluster {
-    pub id: String,
+    pub id: IssueKey,
     pub construct: QualityConstruct,
     pub mechanism: SignalMechanism,
     pub action: RefactorAction,
     pub path: String,
     pub line: Option<usize>,
-    pub primary_finding_id: String,
-    pub finding_ids: Vec<String>,
+    pub primary_finding_id: EvidenceId,
+    pub finding_ids: Vec<EvidenceId>,
     pub kinds: Vec<FindingKind>,
     pub priority: u8,
     pub severity: Severity,

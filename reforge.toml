@@ -115,7 +115,7 @@ reason = "typed detector input registry is intentionally exhaustive so metric co
 [[suppressions]]
 kind = "complex_function"
 path = "src/model/mod.rs"
-line = 90
+line = 145
 reason = "MetricId serialization names are intentionally mapped exhaustively in one schema-owned function"
 
 [[suppressions]]
@@ -153,6 +153,12 @@ kind = "large_file"
 path = "src/structural_tests.rs"
 line = 1
 reason = "structural detector fixtures stay colocated as one cross-language behavior suite"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/report_tests.rs"
+line = 1
+reason = "report serialization and rendering fixtures stay colocated as one schema contract suite"
 
 [[suppressions]]
 kind = "large_file"

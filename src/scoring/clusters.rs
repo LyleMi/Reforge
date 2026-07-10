@@ -1,14 +1,15 @@
 use std::collections::BTreeSet;
 
 use crate::detectors::manifest::{action, parent_kind, relations};
-use crate::model::{Finding, FindingKind, IssueCluster, SignalMechanism};
+use crate::model::{Finding, FindingKind, IssueCluster, IssueKey, SignalMechanism};
 
 pub(crate) fn cluster_findings(findings: &mut [Finding]) -> Vec<IssueCluster> {
-    let candidate_indices = findings
+    let mut candidate_indices = findings
         .iter()
         .enumerate()
         .filter_map(|(index, finding)| is_cluster_candidate(finding).then_some(index))
         .collect::<Vec<_>>();
+    candidate_indices.sort_unstable_by(|left, right| findings[*left].id.cmp(&findings[*right].id));
     let mut components = Vec::<Vec<usize>>::new();
 
     for finding_index in candidate_indices {
@@ -34,6 +35,7 @@ pub(crate) fn cluster_findings(findings: &mut [Finding]) -> Vec<IssueCluster> {
             .cmp(&left.priority)
             .then_with(|| left.path.cmp(&right.path))
             .then_with(|| left.line.cmp(&right.line))
+            .then_with(|| left.id.cmp(&right.id))
     });
     clusters
 }
@@ -107,7 +109,6 @@ fn build_cluster(findings: &mut [Finding], mut members: Vec<usize>) -> IssueClus
             .then_with(|| findings[*left].id.cmp(&findings[*right].id))
     });
     let primary = &findings[members[0]];
-    let id = format!("ic1-{}", primary.id.trim_start_matches("rf1-"));
     let construct = primary.construct;
     let mechanism = primary.mechanism;
     let action = action(primary.kind);
@@ -121,6 +122,7 @@ fn build_cluster(findings: &mut [Finding], mut members: Vec<usize>) -> IssueClus
         .map(|index| findings[*index].id.clone())
         .collect::<Vec<_>>();
     finding_ids.sort();
+    let id = IssueKey::from_evidence(&finding_ids);
     let mut kinds = members
         .iter()
         .map(|index| findings[*index].kind)
@@ -235,6 +237,69 @@ mod tests {
 
         assert_eq!(clusters.len(), 1);
         assert_eq!(clusters[0].finding_ids.len(), 2);
-        assert!(findings[2].issue_cluster_id.is_none());
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|finding| finding.issue_cluster_id.is_none())
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn clustering_is_stable_for_every_input_permutation() {
+        let base = [
+            group_sample(FindingKind::SimilarFunctions, "src/a.rs", &["src/b.rs"]),
+            group_sample(
+                FindingKind::ParallelImplementation,
+                "src/b.rs",
+                &["src/c.rs"],
+            ),
+            group_sample(FindingKind::ShadowedAbstraction, "src/c.rs", &["src/d.rs"]),
+        ];
+        let permutations = [
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ];
+        let mut expected = None;
+
+        for permutation in permutations {
+            let mut findings = permutation
+                .into_iter()
+                .map(|index| base[index].clone())
+                .collect::<Vec<_>>();
+            let clusters = cluster_findings(&mut findings);
+            let snapshot = clusters
+                .iter()
+                .map(|cluster| {
+                    (
+                        cluster.id.clone(),
+                        cluster.primary_finding_id.clone(),
+                        cluster.finding_ids.clone(),
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            if let Some(expected) = &expected {
+                assert_eq!(&snapshot, expected);
+            } else {
+                expected = Some(snapshot);
+            }
+        }
+    }
+
+    #[test]
+    fn issue_key_depends_only_on_the_evidence_set() {
+        let first = crate::model::EvidenceId::from("rf2-first".to_string());
+        let second = crate::model::EvidenceId::from("rf2-second".to_string());
+
+        assert_eq!(
+            IssueKey::from_evidence([&first, &second]),
+            IssueKey::from_evidence([&second, &first, &second])
+        );
     }
 }

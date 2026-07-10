@@ -9,18 +9,18 @@ import {
 import type { ScanReport } from "../src/reportTypes";
 
 function report(overrides: Partial<ScanReport> = {}): ScanReport {
-  return { schema_version: 15, ...overrides };
+  return { schema_version: 17, ...overrides };
 }
 
 describe("validateReport", () => {
-  it("accepts schema 15", () => {
-    expect(validateReport({ schema_version: 15 })).toEqual({ schema_version: 15 });
+  it("accepts schema 17", () => {
+    expect(validateReport({ schema_version: 17 })).toEqual({ schema_version: 17 });
   });
 
-  it.each([{}, { schema_version: 14 }, { schema_version: 16 }])(
-    "rejects reports outside schema 15",
+  it.each([{}, { schema_version: 15 }, { schema_version: 16 }, { schema_version: 18 }])(
+    "rejects reports outside schema 17",
     (candidate) => {
-      expect(() => validateReport(candidate)).toThrow(/requires schema 15/);
+      expect(() => validateReport(candidate)).toThrow(/requires schema 17/);
     },
   );
 });

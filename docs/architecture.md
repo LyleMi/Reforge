@@ -21,7 +21,7 @@ scores findings, and renders reports.
   implementations.
 - `src/scoring/mod.rs`: metric summaries, priority scoring, severity mapping,
   and hotspot ranking.
-- `src/baseline.rs`: schema 16 baseline loading, finding ID comparison, diff
+- `src/baseline.rs`: schema 17 baseline loading, finding ID comparison, diff
   classification, and `--fail-on` gate selection.
 - `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF output entry points.
 
@@ -60,11 +60,11 @@ into clearer directories.
 ## Data Flow
 
 `ScanArgs` is the input configuration. `scan_report` produces a `ScanReport`
-with schema version `16`. Detectors emit `Finding` values with metrics and
+with schema version `17`. Detectors emit `Finding` values with metrics and
 related locations. The dependency-graph detector also emits a resolved
 source-file graph snapshot. Scoring later enriches findings with constructs and mechanisms,
 normalized values, percentiles, `priority_factors`, `priority`, `severity`,
-`rank_explanation`, and stable `rf1-` IDs. After filtering and suppression,
+`rank_explanation`, and stable `rf2-` IDs. After filtering and suppression,
 overlapping findings are grouped into issue clusters.
 
 Raw metrics remain available in reports so consumers can build their own
@@ -101,7 +101,7 @@ TypeScript report app.
 
 The data and packaging flow is:
 
-1. The Rust scanner builds a schema 15 `ScanReport`.
+1. The Rust scanner builds a schema 17 `ScanReport`.
 2. The HTML output path serializes that report as JSON.
 3. Reforge writes an HTML shell containing the serialized report data.
 4. The shell inlines the compiled React bundle and CSS.

@@ -85,7 +85,7 @@ fn build_finding(input: FindingInput) -> Finding {
         .unwrap_or_else(|| default_confidence(input.kind));
     let (construct, mechanism) = classification(input.kind);
     let mut finding = Finding {
-        id: String::new(),
+        id: Default::default(),
         kind: input.kind,
         severity: Severity::Info,
         path: input.path,

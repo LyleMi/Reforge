@@ -104,6 +104,9 @@ per finding kind. Unsupported languages mean “not observed,” not “no issue
 - Clusters use complete-link compatibility: every member must be related to
   every other member. A chain of shared files cannot merge unrelated endpoint
   findings.
+- Findings carry stable EvidenceIds. Clustering sorts by EvidenceId before
+  grouping, and each IssueKey is derived from the sorted member EvidenceIds,
+  so detector emission order cannot change cluster membership or identity.
 
 ## Raw Metric Contract
 
