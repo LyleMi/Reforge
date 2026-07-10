@@ -39,6 +39,7 @@ fn report(findings: Vec<Finding>) -> ScanReport {
             churn: BTreeMap::new(),
         },
         raw_metrics: RawMetrics::default(),
+        raw_metric_manifest: Vec::new(),
         dependency_graph: DependencyGraphSnapshot::default(),
         hotspots: Vec::new(),
         suppression_summary: SuppressionSummary::default(),
@@ -381,7 +382,7 @@ fn renders_human_baseline_diff_when_selected_findings_are_empty() {
 }
 
 #[test]
-fn renders_json_report_schema_v14_with_orthogonal_classification_metadata() {
+fn renders_json_report_schema_v15_with_orthogonal_classification_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
@@ -403,6 +404,7 @@ fn renders_json_report_schema_v14_with_orthogonal_classification_metadata() {
     assert_eq!(value["summary"]["hotspot_model"], "hybrid");
     assert!(value.get("metrics_summary").is_some());
     assert!(value.get("raw_metrics").is_some());
+    assert!(value.get("raw_metric_manifest").is_some());
     assert!(value.get("dependency_graph").is_some());
     assert!(value.get("hotspots").is_some());
     assert!(value.get("suppression_summary").is_some());

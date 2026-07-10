@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
 use crate::cli::{ChurnMode, HotspotModel};
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 14;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 15;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 pub(crate) const METRIC_NESTING_DEPTH: &str = "nesting_depth";
 pub(crate) const METRIC_PUBLIC_ITEMS: &str = "public_items";
@@ -80,6 +80,70 @@ pub enum SignalMechanism {
     ChangePressure,
     VerificationDifficulty,
     KnowledgeDrift,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefactorAction {
+    SimplifyFunction,
+    ReduceDependencyCoupling,
+    DecomposeResponsibility,
+    ConsolidateDuplication,
+    ConsolidateTestSupport,
+    StrengthenTestCoverage,
+    RemoveDeadCode,
+    ResolveDeclaredDebt,
+    StandardizeNaming,
+    RetireCompatibility,
+    RestoreDocumentation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntityScope {
+    Repository,
+    Directory,
+    File,
+    Function,
+    Type,
+    FindingGroup,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricScale {
+    Boolean,
+    Count,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricDirection {
+    HigherIsMorePressure,
+    ContextOnly,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RawMetricManifestEntry {
+    pub name: String,
+    pub entity_scope: EntityScope,
+    pub unit: String,
+    pub scale: MetricScale,
+    pub direction: MetricDirection,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DetectorRelationKind {
+    FacetOf,
+    AlternativeEvidence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetectorRelation {
+    pub kind: FindingKind,
+    pub relation: DetectorRelationKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -603,6 +667,7 @@ pub struct IssueCluster {
     pub id: String,
     pub construct: QualityConstruct,
     pub mechanism: SignalMechanism,
+    pub action: RefactorAction,
     pub path: String,
     pub line: Option<usize>,
     pub primary_finding_id: String,
@@ -617,11 +682,13 @@ pub struct DetectorManifestEntry {
     pub kind: FindingKind,
     pub construct: QualityConstruct,
     pub mechanism: SignalMechanism,
+    pub action: RefactorAction,
+    pub entity_scope: EntityScope,
     pub approach: DetectionApproach,
     pub supported_languages: Vec<String>,
     pub precision_risk: PrecisionRisk,
     pub parent_kind: Option<FindingKind>,
-    pub overlaps_with: Vec<FindingKind>,
+    pub relations: Vec<DetectorRelation>,
 }
 
 impl SuppressionSummary {
@@ -647,6 +714,7 @@ pub struct ScanReport {
     pub stats: ScanStats,
     pub metrics_summary: MetricsSummary,
     pub raw_metrics: RawMetrics,
+    pub raw_metric_manifest: Vec<RawMetricManifestEntry>,
     pub dependency_graph: DependencyGraphSnapshot,
     pub hotspots: Vec<Hotspot>,
     pub suppression_summary: SuppressionSummary,

@@ -42,9 +42,12 @@ const REQUIRED_SCHEMA_FIELDS: &[&str] = &[
     "stats",
     "metrics_summary",
     "raw_metrics",
+    "raw_metric_manifest",
     "dependency_graph",
     "hotspots",
     "suppression_summary",
+    "issue_clusters",
+    "detector_manifest",
     "findings",
     "id",
     "kind",
@@ -58,6 +61,9 @@ const REQUIRED_SCHEMA_FIELDS: &[&str] = &[
     "rank_explanation",
     "recommendation",
     "related_locations",
+    "action",
+    "entity_scope",
+    "relations",
 ];
 
 #[derive(Debug)]

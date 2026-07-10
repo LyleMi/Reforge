@@ -7,10 +7,10 @@ that a bug exists.
 
 Every finding kind is also described by the report-level `detector_manifest`.
 The manifest declares its primary maintainability construct, signal mechanism,
-detection approach, supported languages, precision risk, composite parent, and
-known overlaps. This metadata lets consumers distinguish unsupported analysis
-from an observed absence of findings and avoid double-counting related
-detectors. See [Metric Ontology](metric-ontology.md).
+refactoring action, entity scope, detection approach, supported languages,
+precision risk, composite parent, and typed detector relations. Clustering
+consumes the relation contract so shared paths alone cannot double-count or
+merge unrelated detectors. See [Metric Ontology](metric-ontology.md).
 
 ## File and Directory Signals
 

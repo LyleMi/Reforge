@@ -10,7 +10,7 @@ use ignore::{DirEntry, WalkBuilder};
 use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
 use crate::cli::ScanArgs;
 use crate::detectors::dependency_graph::scan_dependency_graph_report;
-use crate::detectors::manifest::detector_manifest;
+use crate::detectors::manifest::{detector_manifest, raw_metric_manifest};
 use crate::documentation::scan_documentation;
 use crate::model::{
     ChurnFileMetric, DependencyGraphSnapshot, FileRawMetric, Finding, FindingKind, FindingMetric,
@@ -162,6 +162,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         stats: scan.stats,
         metrics_summary,
         raw_metrics: scan.raw_metrics,
+        raw_metric_manifest: raw_metric_manifest(),
         dependency_graph: scan.dependency_graph,
         hotspots,
         suppression_summary: post_score_controls.suppression_summary,

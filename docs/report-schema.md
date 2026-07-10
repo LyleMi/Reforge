@@ -1,6 +1,6 @@
 # Report Schema
 
-JSON and YAML reports use schema version `14`. The same Rust data model is
+JSON and YAML reports use schema version `15`. The same Rust data model is
 serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 that carries the same finding IDs in result fingerprints.
 
@@ -8,11 +8,12 @@ that carries the same finding IDs in result fingerprints.
 
 ```json
 {
-  "schema_version": 14,
+  "schema_version": 15,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
   "raw_metrics": {},
+  "raw_metric_manifest": [],
   "dependency_graph": {},
   "hotspots": [],
   "suppression_summary": {},
@@ -24,11 +25,13 @@ that carries the same finding IDs in result fingerprints.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `14`.
+- `schema_version`: report schema version. Current value is `15`.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
 - `raw_metrics`: file, function, type, and churn measurements.
+- `raw_metric_manifest`: scale, unit, scope, direction, and meaning of every
+  raw metric family.
 - `dependency_graph`: resolved source-file dependency graph snapshot.
 - `hotspots`: ranked file, function, and type locations.
 - `suppression_summary`: aggregate counts for findings removed by
@@ -236,7 +239,7 @@ whose priority or severity has changed.
 
 ## `issue_clusters`
 
-Issue clusters contain `id`, `construct`, `mechanism`, `path`, `line`,
+Issue clusters contain `id`, `construct`, `mechanism`, `action`, `path`, `line`,
 `primary_finding_id`, `finding_ids`, `kinds`, `priority`, and `severity`.
 Only groups with at least two overlapping atomic findings are emitted. The
 primary member is the highest-priority finding; member findings remain in
@@ -244,10 +247,21 @@ primary member is the highest-priority finding; member findings remain in
 
 ## `detector_manifest`
 
-Each entry contains `kind`, `construct`, `mechanism`, `approach`,
-`supported_languages`, `precision_risk`, optional `parent_kind`, and
-`overlaps_with`. Consumers can distinguish unsupported analysis from an
-observed absence of findings.
+Each entry contains `kind`, `construct`, `mechanism`, `action`, `entity_scope`,
+`approach`, `supported_languages`, `precision_risk`, optional `parent_kind`,
+and typed `relations`. A relation is either `facet_of` or
+`alternative_evidence`; clustering consumes these relations instead of
+inferring overlap from a shared mechanism alone. Consumers can distinguish
+unsupported analysis from an observed absence of findings.
+
+## `raw_metric_manifest`
+
+Each entry contains a stable dotted `name`, `entity_scope`, `unit`, `scale`,
+`direction`, and `description`. `higher_is_more_pressure` means larger values
+may contribute to hotspot or finding intensity; `context_only` metrics remain
+observable but do not independently vote for maintenance pressure. A metric
+definition describes an observation, not a universal threshold or quality
+grade.
 
 `findings=0` means no unsuppressed findings were emitted. Consumers should
 avoid presenting that as proof that the scanned code is healthy or bug-free.

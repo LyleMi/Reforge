@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use crate::detectors::manifest::{action, parent_kind, relations};
 use crate::model::{Finding, FindingKind, IssueCluster, SignalMechanism};
 
 pub(crate) fn cluster_findings(findings: &mut [Finding]) -> Vec<IssueCluster> {
@@ -8,27 +9,22 @@ pub(crate) fn cluster_findings(findings: &mut [Finding]) -> Vec<IssueCluster> {
         .enumerate()
         .filter_map(|(index, finding)| is_cluster_candidate(finding).then_some(index))
         .collect::<Vec<_>>();
-    let mut parents = (0..candidate_indices.len()).collect::<Vec<_>>();
+    let mut components = Vec::<Vec<usize>>::new();
 
-    for left in 0..candidate_indices.len() {
-        for right in (left + 1)..candidate_indices.len() {
-            if findings_overlap(
-                &findings[candidate_indices[left]],
-                &findings[candidate_indices[right]],
-            ) {
-                union(&mut parents, left, right);
-            }
+    for finding_index in candidate_indices {
+        if let Some(component) = components.iter_mut().find(|component| {
+            component
+                .iter()
+                .all(|member| findings_overlap(&findings[finding_index], &findings[*member]))
+        }) {
+            component.push(finding_index);
+        } else {
+            components.push(vec![finding_index]);
         }
     }
 
-    let mut components = std::collections::BTreeMap::<usize, Vec<usize>>::new();
-    for (candidate, finding_index) in candidate_indices.into_iter().enumerate() {
-        let root = find(&mut parents, candidate);
-        components.entry(root).or_default().push(finding_index);
-    }
-
     let mut clusters = components
-        .into_values()
+        .into_iter()
         .filter(|members| members.len() > 1)
         .map(|members| build_cluster(findings, members))
         .collect::<Vec<_>>();
@@ -43,28 +39,40 @@ pub(crate) fn cluster_findings(findings: &mut [Finding]) -> Vec<IssueCluster> {
 }
 
 fn is_cluster_candidate(finding: &Finding) -> bool {
-    match finding.mechanism {
-        SignalMechanism::CognitiveLoad | SignalMechanism::DuplicationDivergence => true,
-        SignalMechanism::KnowledgeDrift => is_documentation_finding(finding.kind),
-        _ => false,
-    }
+    parent_kind(finding.kind).is_some()
+        || !relations(finding.kind).is_empty()
+        || matches!(
+            finding.kind,
+            FindingKind::ReadabilityRisk | FindingKind::MissingDocumentationSet
+        )
 }
 
-fn is_documentation_finding(kind: FindingKind) -> bool {
-    matches!(
-        kind,
-        FindingKind::MissingDocumentationSet
-            | FindingKind::MissingUserGuide
-            | FindingKind::MissingReportSchemaDocs
-            | FindingKind::MissingMetricsModelDocs
-            | FindingKind::MissingArchitectureDocs
-            | FindingKind::StaleCliDocumentation
-            | FindingKind::StaleSchemaDocumentation
-    )
+fn kinds_related(left: FindingKind, right: FindingKind) -> bool {
+    if left == right {
+        return false;
+    }
+
+    if parent_kind(left) == Some(right) || parent_kind(right) == Some(left) {
+        return true;
+    }
+    if parent_kind(left).is_some() && parent_kind(left) == parent_kind(right) {
+        return true;
+    }
+
+    relations(left)
+        .iter()
+        .any(|relation| relation.kind == right)
+        || relations(right)
+            .iter()
+            .any(|relation| relation.kind == left)
 }
 
 fn findings_overlap(left: &Finding, right: &Finding) -> bool {
-    if left.construct != right.construct || left.mechanism != right.mechanism {
+    if left.construct != right.construct
+        || left.mechanism != right.mechanism
+        || action(left.kind) != action(right.kind)
+        || !kinds_related(left.kind, right.kind)
+    {
         return false;
     }
     if left.path == right.path && left.line == right.line {
@@ -102,6 +110,7 @@ fn build_cluster(findings: &mut [Finding], mut members: Vec<usize>) -> IssueClus
     let id = format!("ic1-{}", primary.id.trim_start_matches("rf1-"));
     let construct = primary.construct;
     let mechanism = primary.mechanism;
+    let action = action(primary.kind);
     let path = primary.path.clone();
     let line = primary.line;
     let primary_finding_id = primary.id.clone();
@@ -127,6 +136,7 @@ fn build_cluster(findings: &mut [Finding], mut members: Vec<usize>) -> IssueClus
         id,
         construct,
         mechanism,
+        action,
         path,
         line,
         primary_finding_id,
@@ -137,23 +147,9 @@ fn build_cluster(findings: &mut [Finding], mut members: Vec<usize>) -> IssueClus
     }
 }
 
-fn find(parents: &mut [usize], value: usize) -> usize {
-    if parents[value] != value {
-        parents[value] = find(parents, parents[value]);
-    }
-    parents[value]
-}
-
-fn union(parents: &mut [usize], left: usize, right: usize) {
-    let left_root = find(parents, left);
-    let right_root = find(parents, right);
-    if left_root != right_root {
-        parents[right_root] = left_root;
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::model::RelatedLocation;
     use crate::scoring::{FindingInput, finding};
 
     use super::*;
@@ -170,6 +166,21 @@ mod tests {
         finding
     }
 
+    fn group_sample(kind: FindingKind, path: &str, related_paths: &[&str]) -> Finding {
+        finding(
+            FindingInput::new(kind, path, Some(1), "", Vec::new()).with_related_locations(
+                related_paths
+                    .iter()
+                    .map(|path| RelatedLocation {
+                        path: (*path).to_string(),
+                        line: 1,
+                        name: None,
+                    })
+                    .collect(),
+            ),
+        )
+    }
+
     #[test]
     fn groups_readability_facets_at_the_same_function() {
         let mut findings = vec![
@@ -182,8 +193,48 @@ mod tests {
 
         assert_eq!(clusters.len(), 1);
         assert_eq!(clusters[0].finding_ids.len(), 2);
+        assert_eq!(
+            clusters[0].action,
+            crate::model::RefactorAction::SimplifyFunction
+        );
         assert_eq!(clusters[0].primary_finding_id, findings[0].id);
         assert_eq!(findings[0].issue_cluster_id, findings[1].issue_cluster_id);
+        assert!(findings[2].issue_cluster_id.is_none());
+    }
+
+    #[test]
+    fn does_not_cluster_unrelated_detectors_at_the_same_location() {
+        let mut findings = vec![
+            sample(FindingKind::SimilarFunctions, 10, 60),
+            sample(FindingKind::RepeatedErrorPattern, 10, 50),
+        ];
+
+        let clusters = cluster_findings(&mut findings);
+
+        assert!(clusters.is_empty());
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.issue_cluster_id.is_none())
+        );
+    }
+
+    #[test]
+    fn complete_link_clustering_prevents_transitive_bridge_merges() {
+        let mut findings = vec![
+            group_sample(FindingKind::SimilarFunctions, "src/a.rs", &["src/b.rs"]),
+            group_sample(
+                FindingKind::ParallelImplementation,
+                "src/b.rs",
+                &["src/c.rs"],
+            ),
+            group_sample(FindingKind::ShadowedAbstraction, "src/c.rs", &["src/d.rs"]),
+        ];
+
+        let clusters = cluster_findings(&mut findings);
+
+        assert_eq!(clusters.len(), 1);
+        assert_eq!(clusters[0].finding_ids.len(), 2);
         assert!(findings[2].issue_cluster_id.is_none());
     }
 }

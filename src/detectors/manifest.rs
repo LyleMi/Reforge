@@ -1,7 +1,11 @@
 use crate::model::{
-    DetectionApproach, DetectorManifestEntry, FindingKind, PrecisionRisk, QualityConstruct,
-    SignalMechanism,
+    DetectionApproach, DetectorManifestEntry, DetectorRelation, DetectorRelationKind, EntityScope,
+    FindingKind, PrecisionRisk, QualityConstruct, RefactorAction, SignalMechanism,
 };
+
+mod raw_metrics;
+
+pub(crate) use raw_metrics::raw_metric_manifest;
 
 const ALL_FINDING_KINDS: &[FindingKind] = &[
     FindingKind::LargeFile,
@@ -98,6 +102,8 @@ pub(crate) fn detector_manifest() -> Vec<DetectorManifestEntry> {
                 kind,
                 construct,
                 mechanism,
+                action: action(kind),
+                entity_scope: entity_scope(kind),
                 approach: approach(kind),
                 supported_languages: supported_languages(kind)
                     .iter()
@@ -105,10 +111,100 @@ pub(crate) fn detector_manifest() -> Vec<DetectorManifestEntry> {
                     .collect(),
                 precision_risk: precision_risk(kind),
                 parent_kind: parent_kind(kind),
-                overlaps_with: overlaps_with(kind),
+                relations: relations(kind).to_vec(),
             }
         })
         .collect()
+}
+
+pub(crate) fn action(kind: FindingKind) -> RefactorAction {
+    use FindingKind as K;
+    use RefactorAction as A;
+
+    match kind {
+        K::LongFunction
+        | K::ComplexFunction
+        | K::DeepNesting
+        | K::ManyParameters
+        | K::ReadabilityRisk => A::SimplifyFunction,
+        K::DependencyCycle
+        | K::DependencyHub
+        | K::ImportHeavyFile
+        | K::LargePublicSurface
+        | K::AdapterBoundaryBypass => A::ReduceDependencyCoupling,
+        K::LargeFile
+        | K::LargeDirectory
+        | K::LargeType
+        | K::FunctionProliferation
+        | K::DirectoryDrift
+        | K::GenericBucketDrift => A::DecomposeResponsibility,
+        K::SimilarFunctions
+        | K::RepeatedLiteral
+        | K::RepeatedErrorPattern
+        | K::DataClump
+        | K::ParallelImplementation
+        | K::ShadowedAbstraction
+        | K::DuplicateTypeShape
+        | K::ConfigKeyDrift => A::ConsolidateDuplication,
+        K::TestDuplication | K::FixtureFactoryDrift => A::ConsolidateTestSupport,
+        K::HappyPathOnlyTests => A::StrengthenTestCoverage,
+        K::UnusedFunction => A::RemoveDeadCode,
+        K::DebtMarker => A::ResolveDeclaredDebt,
+        K::FileNamingDrift => A::StandardizeNaming,
+        K::StaleCompatibilityPath => A::RetireCompatibility,
+        K::MissingDocumentationSet
+        | K::MissingUserGuide
+        | K::MissingReportSchemaDocs
+        | K::MissingMetricsModelDocs
+        | K::MissingArchitectureDocs
+        | K::StaleCliDocumentation
+        | K::StaleSchemaDocumentation => A::RestoreDocumentation,
+    }
+}
+
+fn entity_scope(kind: FindingKind) -> EntityScope {
+    use EntityScope as E;
+    use FindingKind as K;
+
+    match kind {
+        K::MissingDocumentationSet
+        | K::MissingUserGuide
+        | K::MissingReportSchemaDocs
+        | K::MissingMetricsModelDocs
+        | K::MissingArchitectureDocs
+        | K::StaleCliDocumentation
+        | K::StaleSchemaDocumentation => E::Repository,
+        K::LargeDirectory | K::FileNamingDrift | K::DirectoryDrift | K::GenericBucketDrift => {
+            E::Directory
+        }
+        K::LargeFile
+        | K::DebtMarker
+        | K::LargePublicSurface
+        | K::ImportHeavyFile
+        | K::FunctionProliferation
+        | K::UnusedFunction
+        | K::DependencyHub => E::File,
+        K::LongFunction
+        | K::ComplexFunction
+        | K::DeepNesting
+        | K::ManyParameters
+        | K::ReadabilityRisk => E::Function,
+        K::LargeType => E::Type,
+        K::SimilarFunctions
+        | K::RepeatedLiteral
+        | K::RepeatedErrorPattern
+        | K::TestDuplication
+        | K::HappyPathOnlyTests
+        | K::DataClump
+        | K::ParallelImplementation
+        | K::ShadowedAbstraction
+        | K::DuplicateTypeShape
+        | K::ConfigKeyDrift
+        | K::FixtureFactoryDrift
+        | K::AdapterBoundaryBypass
+        | K::StaleCompatibilityPath
+        | K::DependencyCycle => E::FindingGroup,
+    }
 }
 
 fn approach(kind: FindingKind) -> DetectionApproach {
@@ -160,49 +256,46 @@ fn precision_risk(kind: FindingKind) -> PrecisionRisk {
     use FindingKind as K;
     use PrecisionRisk as R;
 
-    match kind {
+    if matches!(
+        kind,
         K::LargeFile
-        | K::LargeDirectory
-        | K::LongFunction
-        | K::ComplexFunction
-        | K::DeepNesting
-        | K::ManyParameters
-        | K::LargeType
-        | K::LargePublicSurface
-        | K::ImportHeavyFile
-        | K::DependencyCycle => R::Low,
+            | K::LargeDirectory
+            | K::LongFunction
+            | K::ComplexFunction
+            | K::DeepNesting
+            | K::ManyParameters
+            | K::LargeType
+            | K::LargePublicSurface
+            | K::ImportHeavyFile
+            | K::DependencyCycle
+    ) {
+        R::Low
+    } else if matches!(
+        kind,
         K::ReadabilityRisk
-        | K::SimilarFunctions
-        | K::RepeatedErrorPattern
-        | K::TestDuplication
-        | K::DataClump
-        | K::DuplicateTypeShape
-        | K::ConfigKeyDrift
-        | K::FixtureFactoryDrift
-        | K::DependencyHub
-        | K::MissingDocumentationSet
-        | K::MissingUserGuide
-        | K::MissingReportSchemaDocs
-        | K::MissingMetricsModelDocs
-        | K::MissingArchitectureDocs
-        | K::StaleCliDocumentation
-        | K::StaleSchemaDocumentation => R::Medium,
-        K::DebtMarker
-        | K::FunctionProliferation
-        | K::UnusedFunction
-        | K::RepeatedLiteral
-        | K::HappyPathOnlyTests
-        | K::FileNamingDrift
-        | K::DirectoryDrift
-        | K::ParallelImplementation
-        | K::ShadowedAbstraction
-        | K::GenericBucketDrift
-        | K::AdapterBoundaryBypass
-        | K::StaleCompatibilityPath => R::High,
+            | K::SimilarFunctions
+            | K::RepeatedErrorPattern
+            | K::TestDuplication
+            | K::DataClump
+            | K::DuplicateTypeShape
+            | K::ConfigKeyDrift
+            | K::FixtureFactoryDrift
+            | K::DependencyHub
+            | K::MissingDocumentationSet
+            | K::MissingUserGuide
+            | K::MissingReportSchemaDocs
+            | K::MissingMetricsModelDocs
+            | K::MissingArchitectureDocs
+            | K::StaleCliDocumentation
+            | K::StaleSchemaDocumentation
+    ) {
+        R::Medium
+    } else {
+        R::High
     }
 }
 
-fn parent_kind(kind: FindingKind) -> Option<FindingKind> {
+pub(crate) fn parent_kind(kind: FindingKind) -> Option<FindingKind> {
     use FindingKind as K;
 
     match kind {
@@ -217,19 +310,77 @@ fn parent_kind(kind: FindingKind) -> Option<FindingKind> {
     }
 }
 
-fn overlaps_with(kind: FindingKind) -> Vec<FindingKind> {
+const fn alternative_evidence(kind: FindingKind) -> DetectorRelation {
+    DetectorRelation {
+        kind,
+        relation: DetectorRelationKind::AlternativeEvidence,
+    }
+}
+
+const fn facet_of(kind: FindingKind) -> DetectorRelation {
+    DetectorRelation {
+        kind,
+        relation: DetectorRelationKind::FacetOf,
+    }
+}
+
+const READABILITY_FACET: &[DetectorRelation] = &[facet_of(FindingKind::ReadabilityRisk)];
+const DOCUMENTATION_FACET: &[DetectorRelation] = &[facet_of(FindingKind::MissingDocumentationSet)];
+const SIMILAR_RELATIONS: &[DetectorRelation] = &[
+    alternative_evidence(FindingKind::ParallelImplementation),
+    alternative_evidence(FindingKind::ShadowedAbstraction),
+];
+const PARALLEL_RELATIONS: &[DetectorRelation] = &[
+    alternative_evidence(FindingKind::SimilarFunctions),
+    alternative_evidence(FindingKind::ShadowedAbstraction),
+];
+const SHADOWED_RELATIONS: &[DetectorRelation] = &[
+    alternative_evidence(FindingKind::SimilarFunctions),
+    alternative_evidence(FindingKind::ParallelImplementation),
+];
+const REPEATED_LITERAL_RELATIONS: &[DetectorRelation] =
+    &[alternative_evidence(FindingKind::ConfigKeyDrift)];
+const CONFIG_KEY_RELATIONS: &[DetectorRelation] =
+    &[alternative_evidence(FindingKind::RepeatedLiteral)];
+const TEST_DUPLICATION_RELATIONS: &[DetectorRelation] =
+    &[alternative_evidence(FindingKind::FixtureFactoryDrift)];
+const FIXTURE_RELATIONS: &[DetectorRelation] =
+    &[alternative_evidence(FindingKind::TestDuplication)];
+const LARGE_DIRECTORY_RELATIONS: &[DetectorRelation] = &[
+    alternative_evidence(FindingKind::DirectoryDrift),
+    alternative_evidence(FindingKind::GenericBucketDrift),
+];
+const DIRECTORY_DRIFT_RELATIONS: &[DetectorRelation] = &[
+    alternative_evidence(FindingKind::LargeDirectory),
+    alternative_evidence(FindingKind::GenericBucketDrift),
+];
+const GENERIC_BUCKET_RELATIONS: &[DetectorRelation] = &[
+    alternative_evidence(FindingKind::LargeDirectory),
+    alternative_evidence(FindingKind::DirectoryDrift),
+];
+
+pub(crate) fn relations(kind: FindingKind) -> &'static [DetectorRelation] {
     use FindingKind as K;
 
     match kind {
-        K::SimilarFunctions => vec![K::ParallelImplementation, K::ShadowedAbstraction],
-        K::ParallelImplementation | K::ShadowedAbstraction => vec![K::SimilarFunctions],
-        K::RepeatedLiteral => vec![K::ConfigKeyDrift],
-        K::ConfigKeyDrift => vec![K::RepeatedLiteral],
-        K::TestDuplication => vec![K::FixtureFactoryDrift],
-        K::FixtureFactoryDrift => vec![K::TestDuplication],
-        K::LargeDirectory => vec![K::DirectoryDrift, K::GenericBucketDrift],
-        K::DirectoryDrift | K::GenericBucketDrift => vec![K::LargeDirectory],
-        _ => Vec::new(),
+        K::LongFunction | K::ComplexFunction | K::DeepNesting | K::ManyParameters => {
+            READABILITY_FACET
+        }
+        K::MissingUserGuide
+        | K::MissingReportSchemaDocs
+        | K::MissingMetricsModelDocs
+        | K::MissingArchitectureDocs => DOCUMENTATION_FACET,
+        K::SimilarFunctions => SIMILAR_RELATIONS,
+        K::ParallelImplementation => PARALLEL_RELATIONS,
+        K::ShadowedAbstraction => SHADOWED_RELATIONS,
+        K::RepeatedLiteral => REPEATED_LITERAL_RELATIONS,
+        K::ConfigKeyDrift => CONFIG_KEY_RELATIONS,
+        K::TestDuplication => TEST_DUPLICATION_RELATIONS,
+        K::FixtureFactoryDrift => FIXTURE_RELATIONS,
+        K::LargeDirectory => LARGE_DIRECTORY_RELATIONS,
+        K::DirectoryDrift => DIRECTORY_DRIFT_RELATIONS,
+        K::GenericBucketDrift => GENERIC_BUCKET_RELATIONS,
+        _ => &[],
     }
 }
 
@@ -280,6 +431,8 @@ fn supported_languages(kind: FindingKind) -> &'static [&'static str] {
 
 #[cfg(test)]
 mod tests {
+    use crate::model::{MetricDirection, MetricScale};
+
     use super::*;
 
     #[test]
@@ -304,5 +457,74 @@ mod tests {
             Some(FindingKind::ReadabilityRisk)
         );
         assert_eq!(long_function.mechanism, SignalMechanism::CognitiveLoad);
+        assert_eq!(long_function.action, RefactorAction::SimplifyFunction);
+        assert_eq!(long_function.entity_scope, EntityScope::Function);
+    }
+
+    #[test]
+    fn facet_relations_match_declared_parents() {
+        for entry in detector_manifest() {
+            let facet_relations = entry
+                .relations
+                .iter()
+                .filter(|relation| relation.relation == DetectorRelationKind::FacetOf)
+                .collect::<Vec<_>>();
+
+            for relation in &facet_relations {
+                assert_eq!(entry.parent_kind, Some(relation.kind));
+                assert_eq!(entry.action, action(relation.kind));
+            }
+
+            match entry.parent_kind {
+                Some(parent) => assert_eq!(
+                    facet_relations.as_slice(),
+                    [&DetectorRelation {
+                        kind: parent,
+                        relation: DetectorRelationKind::FacetOf,
+                    }]
+                ),
+                None => assert!(facet_relations.is_empty()),
+            }
+        }
+    }
+
+    #[test]
+    fn alternative_evidence_relations_are_reciprocal() {
+        let manifest = detector_manifest();
+        for entry in &manifest {
+            for relation in entry
+                .relations
+                .iter()
+                .filter(|relation| relation.relation == DetectorRelationKind::AlternativeEvidence)
+            {
+                let reciprocal = manifest
+                    .iter()
+                    .find(|candidate| candidate.kind == relation.kind)
+                    .unwrap();
+                assert!(reciprocal.relations.iter().any(|candidate| {
+                    candidate.kind == entry.kind
+                        && candidate.relation == DetectorRelationKind::AlternativeEvidence
+                }));
+                assert_eq!(entry.action, reciprocal.action);
+            }
+        }
+    }
+
+    #[test]
+    fn raw_metric_manifest_has_unique_names_and_explicit_context_metrics() {
+        let manifest = raw_metric_manifest();
+        let mut names = manifest
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>();
+        names.sort_unstable();
+        names.dedup();
+
+        assert_eq!(names.len(), manifest.len());
+        assert!(manifest.iter().any(|entry| {
+            entry.name == "file.is_test"
+                && entry.scale == MetricScale::Boolean
+                && entry.direction == MetricDirection::ContextOnly
+        }));
     }
 }

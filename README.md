@@ -161,16 +161,18 @@ source documentation set lives in [docs/](docs/README.md), including the
 
 ## What Reforge Detects
 
-Reforge reports maintainability and refactoring data in four layers:
+Reforge reports maintainability and refactoring data in five layers:
 
-- `raw_metrics`: file, function, type, and churn measurements for the scanned
-  tree.
+- `raw_metrics` plus `raw_metric_manifest`: file, function, type, and churn
+  measurements with explicit scope, unit, scale, and direction.
 - `metrics_summary`: project-level percentile distributions such as LOC,
   complexity, imports, and churn.
 - `hotspots`: model-ranked locations with `priority`, `static_risk`, and
   `churn_risk`; both risk components use a 0-100 scale.
 - `findings`: actionable signals derived from raw metrics and pattern
   detectors.
+- `issue_clusters`: typed refactoring actions that present related atomic
+  findings once without discarding detector-level evidence.
 
 Priority is refactoring priority, not defect probability. Priority bands are
 `info` below 35, `warning` from 35 through 69, and `critical` from 70 upward.
@@ -312,7 +314,7 @@ Fail CI on current warning or critical findings:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-Compare against a prior schema 14 baseline and fail only on new or worse
+Compare against a prior schema 15 baseline and fail only on new or worse
 warning/critical findings:
 
 ```powershell
@@ -363,8 +365,8 @@ scan with the React + TypeScript report app, packaged as a single offline
 `.html` artifact with the scan data, HTML shell, styles, and inline app bundle.
 The visual report includes summary cards, risk distribution, File Overview,
 dependency map, hotspots, similar-function groups, and prioritized findings.
-JSON and YAML use schema version 14 and include `summary`,
-`metrics_summary`, `raw_metrics`, `dependency_graph`, `hotspots`,
+JSON and YAML use schema version 15 and include `summary`,
+`metrics_summary`, `raw_metrics`, `raw_metric_manifest`, `dependency_graph`, `hotspots`,
 `suppression_summary`, `issue_clusters`, `detector_manifest`, and `findings`.
 SARIF output targets SARIF 2.1.0
 with rules keyed by finding kind and results fingerprinted by Reforge finding
@@ -382,7 +384,7 @@ and YAML expose the same audit context in `suppression_summary`.
 
 `--fail-on info|warning|critical` turns selected findings into a CI gate.
 Without a baseline, the gate evaluates all current findings after writing the
-requested report. With `--baseline <PATH>`, Reforge reads a prior schema 14
+requested report. With `--baseline <PATH>`, Reforge reads a prior schema 15
 JSON or YAML report and matches findings by stable `id`. The gate does not
 fail on hotspots alone; keep hotspot output as a watchlist for follow-up
 review, dashboards, or backlog planning.
@@ -525,7 +527,7 @@ findings, not as proof that no maintainability signals were observed.
 | `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
-| `--baseline` | none | Read a prior schema 14 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 15 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
 | `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |

@@ -64,6 +64,7 @@ export type IssueCluster = {
   id: string;
   construct: string;
   mechanism: string;
+  action: string;
   path: string;
   line?: number | null;
   primary_finding_id: string;
@@ -73,15 +74,31 @@ export type IssueCluster = {
   severity: Severity;
 };
 
+export type DetectorRelation = {
+  kind: string;
+  relation: "facet_of" | "alternative_evidence" | string;
+};
+
 export type DetectorManifestEntry = {
   kind: string;
   construct: string;
   mechanism: string;
+  action: string;
+  entity_scope: string;
   approach: string;
   supported_languages: string[];
   precision_risk: string;
   parent_kind?: string | null;
-  overlaps_with: string[];
+  relations: DetectorRelation[];
+};
+
+export type RawMetricManifestEntry = {
+  name: string;
+  entity_scope: string;
+  unit: string;
+  scale: "boolean" | "count" | string;
+  direction: "higher_is_more_pressure" | "context_only" | string;
+  description: string;
 };
 
 export type Hotspot = {
@@ -162,6 +179,7 @@ export type ScanReport = {
   stats?: ScanStats;
   metrics_summary?: MetricsSummaryShape;
   raw_metrics?: RawMetrics;
+  raw_metric_manifest?: RawMetricManifestEntry[];
   dependency_graph?: DependencyGraph;
   hotspots?: Hotspot[];
   suppression_summary?: SuppressionSummary;

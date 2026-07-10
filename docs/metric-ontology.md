@@ -44,15 +44,23 @@ Mechanisms are mutually exclusive as primary classifications. They are not
 assumed to be statistically independent. Correlated raw measurements remain
 separate evidence facets and are not added together automatically.
 
-## Measurement Layers
+## Goal and Measurement Layers
 
-Reforge uses four layers:
+Reforge's measurement goal is to prioritize reviewable, behavior-preserving
+refactoring opportunities from source trees and optional repository history.
+The model follows a goal-question-metric direction: measurements are admitted
+only when they answer a declared maintenance question and support a review or
+refactoring decision.
+
+Reforge uses five layers:
 
 1. Raw metrics record observations such as LOC, complexity, fan-out, and churn.
 2. Findings interpret observations through one detector.
-3. Issue clusters join overlapping findings that describe the same entity,
-   mechanism, and likely refactoring action.
-4. Priority ranks the resulting evidence for review; it is not a quality score
+3. Constructs and mechanisms explain the maintenance capability and causal
+   pressure represented by the evidence.
+4. Issue clusters join related findings that describe the same entity and
+   typed refactoring `action`.
+5. Priority ranks the resulting evidence for review; it is not a quality score
    or defect probability.
 
 For example, a function that exceeds complexity and nesting thresholds retains
@@ -65,11 +73,13 @@ the highest-priority member as the primary issue.
 Every finding kind has an entry in the report-level `detector_manifest` with:
 
 - its primary `construct` and `mechanism`;
+- its typed refactoring `action` and `entity_scope`;
 - detection `approach`;
 - supported languages or repository scope;
 - qualitative `precision_risk`;
 - optional `parent_kind` for composite detectors;
-- `overlaps_with` relationships for detectors that can observe the same cause.
+- typed `relations`: `facet_of` for composite evidence and
+  `alternative_evidence` for detectors that can observe the same cause.
 
 Adding a detector requires adding its manifest entry. Tests enforce one entry
 per finding kind. Unsupported languages mean “not observed,” not “no issue.”
@@ -77,6 +87,8 @@ per finding kind. Unsupported languages mean “not observed,” not “no issue
 ## Orthogonality Rules
 
 - One finding has one primary construct and one primary mechanism.
+- Human-facing uniqueness is defined by refactoring action and evidence
+  identity, not by requiring raw metrics to be statistically independent.
 - One raw observation may appear as evidence in multiple atomic findings, but
   issue clustering prevents it from becoming multiple human-facing issues.
 - Parent and child findings remain traceable; they are not summed.
@@ -84,6 +96,48 @@ per finding kind. Unsupported languages mean “not observed,” not “no issue
   compensate for missing language coverage.
 - Threshold and percentile evidence are normalized within a finding by taking
   the strongest facet rather than summing correlated facets.
+- Clusters use complete-link compatibility: every member must be related to
+  every other member. A chain of shared files cannot merge unrelated endpoint
+  findings.
+
+## Raw Metric Contract
+
+The report-level `raw_metric_manifest` defines the entity scope, unit, scale,
+direction, and meaning of every raw metric family. Boolean context fields are
+not treated as numeric pressure. Counts remain ratio-scale observations, but
+their thresholds are contextual policy rather than universal quality grades.
+
+## Coverage Boundary
+
+Completeness is relative to evidence Reforge declares observable: discovered
+source paths, supported parsed syntax, the resolved dependency graph,
+repository documentation, and optional Git history. Unsupported languages,
+disabled history, excluded paths, and unresolvable dependencies mean “not
+observed,” never “no maintenance pressure.” Detector manifest language scope
+and raw metric definitions make this boundary machine-readable.
+
+| Evidence surface | Coverage state | Explicit non-coverage |
+| --- | --- | --- |
+| Source paths and physical LOC | Language-neutral for discovered source files | Excluded, hidden, generated, and dependency paths follow scan configuration. |
+| Parsed functions, types, structure, and similarity | Rust, JavaScript, TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby as declared per detector | Parse failures and unsupported grammars are not observations. |
+| Unused-function analysis | Rust, JavaScript, TypeScript/TSX, Python, and Go | Dynamic and unresolved references can reduce recall. |
+| Dependency graph | Rust, JavaScript, TypeScript/TSX, Python, Ruby, C, and C++ | Unresolved external or framework-specific edges are omitted. |
+| Repository documentation contract | Reforge repository scope | This is not a universal documentation policy for arbitrary projects. |
+| Change history | Git history when churn is enabled and available | Disabled, unavailable, binary, out-of-root, and oversized commits are omitted. |
+
+## Theoretical Basis
+
+- ISO/IEC 25010:2023 supplies the product-quality reference model and
+  maintainability constructs; it does not prescribe Reforge's detectors or
+  weights: <https://www.iso.org/standard/78176.html>.
+- ISO/IEC 25023:2016 defines product-quality measurement guidance and leaves
+  rated ranges contextual to the product and user needs:
+  <https://www.iso.org/standard/35747.html>.
+- Goal Question Metric motivates deriving measurements from explicit goals and
+  questions: <https://csis.pace.edu/~ogotel/teaching/CS777gqm.pdf>.
+- Briand, Morasca, and Basili motivate explicit entities, attributes, and
+  mathematical properties for software measures:
+  <https://www.cs.umd.edu/~basili/publications/journals/J58.pdf>.
 
 ## Validation Expectations
 

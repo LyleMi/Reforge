@@ -1,6 +1,6 @@
 import type { FileRawMetric, ScanReport } from "./reportTypes";
 
-export const REPORT_SCHEMA_VERSION = 14;
+export const REPORT_SCHEMA_VERSION = 15;
 
 export type FileOverview = {
   path: string;
