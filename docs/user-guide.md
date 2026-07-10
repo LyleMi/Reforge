@@ -197,7 +197,7 @@ Human output is organized for quick terminal triage:
 - `Watchlist`: hotspot locations ranked by static risk, churn risk, or both.
 
 HTML output renders the same report through the React + TypeScript report app
-as summary cards, a severity distribution bar, problem-dimension counts, the
+as summary cards, a severity distribution bar, construct/mechanism metadata, the
 File Overview, hotspot watchlist, similar-function groups, and prioritized
 findings.
 When `--output` is omitted, `.html` and `.htm` output-file extensions select
@@ -210,6 +210,8 @@ Reports contain four main data layers plus suppression audit context:
 - `hotspots`: file, function, and type locations ranked by static risk, churn
   risk, or both.
 - `suppression_summary`: counts of findings removed by suppressions.
+- `issue_clusters`: overlapping raw findings grouped into refactoring issues.
+- `detector_manifest`: detector coverage, classification, and overlap metadata.
 - `findings`: actionable refactoring signals derived from thresholds and
   detectors.
 
@@ -281,7 +283,7 @@ Without `--baseline`, all current findings are selected:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-With `--baseline <PATH>`, Reforge reads a prior schema 13 JSON or YAML report
+With `--baseline <PATH>`, Reforge reads a prior schema 14 JSON or YAML report
 and matches findings by stable `id`. Older reports without IDs are rejected;
 regenerate the baseline with the current Reforge.
 
@@ -361,7 +363,7 @@ git churn.
 | `--min-data-clump-occurrences` | `4` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a specific configuration file. |
-| `--baseline` | none | Read a prior schema 13 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 14 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
 | `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |

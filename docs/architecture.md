@@ -21,7 +21,7 @@ scores findings, and renders reports.
   implementations.
 - `src/scoring/mod.rs`: metric summaries, priority scoring, severity mapping,
   and hotspot ranking.
-- `src/baseline.rs`: schema 13 baseline loading, finding ID comparison, diff
+- `src/baseline.rs`: schema 14 baseline loading, finding ID comparison, diff
   classification, and `--fail-on` gate selection.
 - `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF output entry points.
 
@@ -60,11 +60,12 @@ into clearer directories.
 ## Data Flow
 
 `ScanArgs` is the input configuration. `scan_report` produces a `ScanReport`
-with schema version `13`. Detectors emit `Finding` values with metrics and
+with schema version `14`. Detectors emit `Finding` values with metrics and
 related locations. The dependency-graph detector also emits a resolved
-source-file graph snapshot. Scoring later enriches findings with dimensions,
+source-file graph snapshot. Scoring later enriches findings with constructs and mechanisms,
 normalized values, percentiles, `priority_factors`, `priority`, `severity`,
-`rank_explanation`, and stable `rf1-` IDs.
+`rank_explanation`, and stable `rf1-` IDs. After filtering and suppression,
+overlapping findings are grouped into issue clusters.
 
 Raw metrics remain available in reports so consumers can build their own
 ranking or dashboards without relying only on findings.
@@ -100,7 +101,7 @@ TypeScript report app.
 
 The data and packaging flow is:
 
-1. The Rust scanner builds a schema 13 `ScanReport`.
+1. The Rust scanner builds a schema 14 `ScanReport`.
 2. The HTML output path serializes that report as JSON.
 3. Reforge writes an HTML shell containing the serialized report data.
 4. The shell inlines the compiled React bundle and CSS.
@@ -136,8 +137,8 @@ To add a detector:
 3. Add metrics with meaningful names, units, thresholds, and related
    locations.
 4. Wire the detector into `scan_report`.
-5. Update scoring dimensions, confidence, impact, and actionability when the
-   new kind needs custom scoring.
+5. Add manifest classification, coverage, precision risk, parent, and overlap
+   metadata; update confidence, impact, and actionability when needed.
 6. Update report schema and detector docs.
 7. Add focused unit tests next to the module being changed.
 

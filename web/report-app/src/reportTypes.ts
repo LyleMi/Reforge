@@ -31,7 +31,6 @@ export type FindingMetric = {
   value?: number;
   threshold?: number | null;
   unit?: string;
-  dimension?: string;
   normalized?: number | null;
   percentile?: number | null;
 };
@@ -49,6 +48,9 @@ export type Finding = {
   path: string;
   line?: number | null;
   metrics?: FindingMetric[];
+  construct?: string;
+  mechanism?: string;
+  issue_cluster_id?: string | null;
   priority?: number;
   confidence?: number;
   priority_factors?: Record<string, number>;
@@ -56,6 +58,30 @@ export type Finding = {
   message?: string;
   recommendation?: string;
   related_locations?: RelatedLocation[];
+};
+
+export type IssueCluster = {
+  id: string;
+  construct: string;
+  mechanism: string;
+  path: string;
+  line?: number | null;
+  primary_finding_id: string;
+  finding_ids: string[];
+  kinds: string[];
+  priority: number;
+  severity: Severity;
+};
+
+export type DetectorManifestEntry = {
+  kind: string;
+  construct: string;
+  mechanism: string;
+  approach: string;
+  supported_languages: string[];
+  precision_risk: string;
+  parent_kind?: string | null;
+  overlaps_with: string[];
 };
 
 export type Hotspot = {
@@ -93,6 +119,7 @@ export type ChurnSummary = {
 export type ScanSummary = {
   scanned_files?: number;
   finding_count?: number;
+  issue_count?: number;
   hotspot_count?: number;
   similar_function_group_count?: number;
   duration_ms?: number;
@@ -138,5 +165,7 @@ export type ScanReport = {
   dependency_graph?: DependencyGraph;
   hotspots?: Hotspot[];
   suppression_summary?: SuppressionSummary;
+  issue_clusters?: IssueCluster[];
+  detector_manifest?: DetectorManifestEntry[];
   findings?: Finding[];
 };

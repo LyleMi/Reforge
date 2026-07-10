@@ -517,6 +517,8 @@ function FindingCard({ finding }: { finding: Finding }) {
         <div className="finding-head">
           <Badge className={severityClass(finding.severity)}>{finding.severity}</Badge>
           <Badge>{formatKind(finding.kind)}</Badge>
+          {finding.construct ? <Badge>{formatKind(finding.construct)}</Badge> : null}
+          {finding.mechanism ? <Badge>{formatKind(finding.mechanism)}</Badge> : null}
           <strong>{location(finding.path, finding.line)}</strong>
         </div>
         <p>{finding.message}</p>
@@ -590,9 +592,19 @@ function compareFindings(left: Finding, right: Finding, sort: string): number {
   return number(right.priority) - number(left.priority) || severityRank(right.severity) - severityRank(left.severity);
 }
 
+function reportIssues(report: ScanReport): Finding[] {
+  const primaryFindingIds = new Set(
+    (report.issue_clusters ?? []).map((cluster) => cluster.primary_finding_id),
+  );
+  return (report.findings ?? []).filter(
+    (finding) => !finding.issue_cluster_id || primaryFindingIds.has(finding.id ?? ""),
+  );
+}
+
 function ReportApp({ report }: { report: ScanReport }) {
   const displayReport = useMemo(() => toDisplayReport(report), [report]);
   const findings = displayReport.findings ?? [];
+  const issues = reportIssues(displayReport);
   const hotspots = displayReport.hotspots ?? [];
   const files = useMemo(() => deriveFileOverviews(displayReport), [displayReport]);
   const similarGroups = useMemo(() => groupSimilarFindings(findings), [findings]);
@@ -617,8 +629,8 @@ function ReportApp({ report }: { report: ScanReport }) {
           </p>
         </div>
         <div className="header-aside">
-          <strong>{formatNumber(findings.length)}</strong>
-          <span>threshold findings</span>
+          <strong>{formatNumber(issues.length)}</strong>
+          <span>refactoring issues</span>
         </div>
       </header>
 
@@ -635,8 +647,8 @@ function ReportApp({ report }: { report: ScanReport }) {
       </section>
 
       <div className="dashboard-grid">
-        <Section title="Risk Distribution" meta={`${findings.length} findings`}>
-          <RiskDistribution findings={findings} />
+        <Section title="Risk Distribution" meta={`${issues.length} issues`}>
+          <RiskDistribution findings={issues} />
         </Section>
         <Section title="Metric Percentiles">
           <MetricsSummary report={report} />
@@ -660,8 +672,8 @@ function ReportApp({ report }: { report: ScanReport }) {
         <Hotspots hotspots={hotspots} />
       </Section>
 
-      <Section title="Findings" meta={`${findings.length} total`}>
-        <Findings findings={findings} />
+      <Section title="Issues" meta={`${issues.length} issues · ${findings.length} raw signals`}>
+        <Findings findings={issues} />
       </Section>
     </main>
   );

@@ -12,6 +12,7 @@
 # Understand Results
 
 - [Metrics Model](metrics-model.md)
+- [Metric Ontology](metric-ontology.md)
 - [Detector Reference](detectors.md)
 - [Calibration Samples](calibration-samples.md)
 

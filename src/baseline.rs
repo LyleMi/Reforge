@@ -219,7 +219,7 @@ fn severity_rank(severity: Severity) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{FindingKind, PriorityFactors};
+    use crate::model::{FindingKind, PriorityFactors, QualityConstruct, SignalMechanism};
 
     fn finding(id: &str, priority: u8, severity: Severity) -> Finding {
         Finding {
@@ -229,6 +229,9 @@ mod tests {
             path: "src/a.rs".to_string(),
             line: Some(1),
             metrics: Vec::new(),
+            construct: QualityConstruct::Modifiability,
+            mechanism: SignalMechanism::ResponsibilityDispersion,
+            issue_cluster_id: None,
             priority,
             confidence: 1.0,
             priority_factors: PriorityFactors {
@@ -251,6 +254,7 @@ mod tests {
             summary: crate::model::ScanSummary {
                 scanned_files: 0,
                 finding_count: findings.len(),
+                issue_count: findings.len(),
                 hotspot_count: 0,
                 similar_function_group_count: 0,
                 duration_ms: 0,
@@ -275,6 +279,8 @@ mod tests {
             dependency_graph: crate::model::DependencyGraphSnapshot::default(),
             hotspots: Vec::new(),
             suppression_summary: crate::model::SuppressionSummary::default(),
+            issue_clusters: Vec::new(),
+            detector_manifest: Vec::new(),
             findings,
         }
     }

@@ -1,14 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cli::HotspotModel;
+use crate::detectors::manifest::classification;
 use crate::model::{
     FileRawMetric, Finding, FindingKind, FindingMetric, Hotspot, HotspotLevel,
-    METRIC_NESTING_DEPTH, METRIC_PUBLIC_ITEMS, MetricDimension, MetricPercentiles, MetricsSummary,
-    PriorityFactors, RawMetrics, RelatedLocation, Severity,
+    METRIC_NESTING_DEPTH, METRIC_PUBLIC_ITEMS, MetricPercentiles, MetricsSummary, PriorityFactors,
+    RawMetrics, RelatedLocation, Severity, SignalMechanism,
 };
 
+mod clusters;
 mod hotspots;
 
+pub(crate) use clusters::cluster_findings;
 pub(crate) use hotspots::{StaticRiskThresholds, rank_hotspots};
 
 const PERCENTILE_MIN_SAMPLE: usize = 5;
@@ -150,6 +153,7 @@ fn build_finding(input: FindingInput) -> Finding {
     let confidence = input
         .confidence
         .unwrap_or_else(|| default_confidence(input.kind));
+    let (construct, mechanism) = classification(input.kind);
     let mut finding = Finding {
         id: String::new(),
         kind: input.kind,
@@ -157,6 +161,9 @@ fn build_finding(input: FindingInput) -> Finding {
         path: input.path,
         line: input.line,
         metrics: input.metrics,
+        construct,
+        mechanism,
+        issue_cluster_id: None,
         priority: 0,
         confidence,
         priority_factors: priority_factors(
@@ -244,7 +251,6 @@ pub(crate) fn finalize_scoring(
 
     for finding in findings {
         for metric in &mut finding.metrics {
-            metric.dimension = metric_dimension(finding.kind, &metric.name);
             let threshold_normalized = metric
                 .excess_ratio
                 .map(normalized_threshold_excess)
@@ -259,10 +265,6 @@ pub(crate) fn finalize_scoring(
 }
 
 fn refresh_finding_priority(finding: &mut Finding, change_pressure: f64) {
-    for metric in &mut finding.metrics {
-        metric.dimension = metric_dimension(finding.kind, &metric.name);
-    }
-
     finding.priority_factors = priority_factors(
         finding.kind,
         &finding.metrics,
@@ -388,57 +390,6 @@ fn score_for_kind(kind: FindingKind, scores: &[(FindingKind, f64)]) -> f64 {
         .unwrap_or(50.0)
 }
 
-pub(crate) fn metric_dimension(kind: FindingKind, metric_name: &str) -> MetricDimension {
-    match kind {
-        FindingKind::LargeFile
-        | FindingKind::LargeDirectory
-        | FindingKind::LongFunction
-        | FindingKind::LargeType
-        | FindingKind::UnusedFunction => MetricDimension::Size,
-        FindingKind::ReadabilityRisk => match metric_name {
-            "function_lines" => MetricDimension::Size,
-            _ => MetricDimension::Complexity,
-        },
-        FindingKind::ComplexFunction
-        | FindingKind::DeepNesting
-        | FindingKind::ManyParameters
-        | FindingKind::FunctionProliferation => MetricDimension::Complexity,
-        FindingKind::LargePublicSurface
-        | FindingKind::ImportHeavyFile
-        | FindingKind::DependencyCycle
-        | FindingKind::DependencyHub
-        | FindingKind::AdapterBoundaryBypass => MetricDimension::Coupling,
-        FindingKind::SimilarFunctions
-        | FindingKind::RepeatedLiteral
-        | FindingKind::RepeatedErrorPattern
-        | FindingKind::DataClump
-        | FindingKind::DuplicateTypeShape => MetricDimension::Duplication,
-        FindingKind::TestDuplication | FindingKind::HappyPathOnlyTests => MetricDimension::TestRisk,
-        FindingKind::MissingDocumentationSet
-        | FindingKind::MissingUserGuide
-        | FindingKind::MissingReportSchemaDocs
-        | FindingKind::MissingMetricsModelDocs
-        | FindingKind::MissingArchitectureDocs
-        | FindingKind::StaleCliDocumentation
-        | FindingKind::StaleSchemaDocumentation => MetricDimension::Documentation,
-        FindingKind::FileNamingDrift
-        | FindingKind::DirectoryDrift
-        | FindingKind::ParallelImplementation
-        | FindingKind::ShadowedAbstraction
-        | FindingKind::ConfigKeyDrift
-        | FindingKind::FixtureFactoryDrift
-        | FindingKind::GenericBucketDrift
-        | FindingKind::StaleCompatibilityPath => MetricDimension::Drift,
-        FindingKind::DebtMarker => match metric_name {
-            "imports" | METRIC_PUBLIC_ITEMS => MetricDimension::Coupling,
-            "function_complexity" | METRIC_NESTING_DEPTH | "function_parameters" => {
-                MetricDimension::Complexity
-            }
-            _ => MetricDimension::Size,
-        },
-    }
-}
-
 pub fn normalized_threshold_excess(ratio: f64) -> f64 {
     let ratio = ratio.max(0.0);
     if ratio <= 1.0 {
@@ -455,14 +406,14 @@ fn rank_explanation(
     related_locations: &[RelatedLocation],
 ) -> String {
     let mut reasons = Vec::new();
-    reasons.push(match primary_dimension(kind) {
-        MetricDimension::Size => "high size",
-        MetricDimension::Complexity => "high complexity",
-        MetricDimension::Coupling => "coupling pressure",
-        MetricDimension::Duplication => "duplication signal",
-        MetricDimension::Drift => "drift signal",
-        MetricDimension::TestRisk => "test-risk signal",
-        MetricDimension::Documentation => "documentation signal",
+    reasons.push(match classification(kind).1 {
+        SignalMechanism::CognitiveLoad => "cognitive-load signal",
+        SignalMechanism::DependencyPropagation => "dependency-propagation signal",
+        SignalMechanism::ResponsibilityDispersion => "responsibility-dispersion signal",
+        SignalMechanism::DuplicationDivergence => "duplication-divergence signal",
+        SignalMechanism::ChangePressure => "change-pressure signal",
+        SignalMechanism::VerificationDifficulty => "verification-difficulty signal",
+        SignalMechanism::KnowledgeDrift => "knowledge-drift signal",
     });
 
     if unique_related_file_count(related_locations) > 1 {
@@ -488,10 +439,6 @@ fn rank_explanation(
     }
 
     reasons.join(", ")
-}
-
-fn primary_dimension(kind: FindingKind) -> MetricDimension {
-    metric_dimension(kind, "")
 }
 
 fn unique_related_file_count(related_locations: &[RelatedLocation]) -> usize {
@@ -575,13 +522,6 @@ fn metric_percentile(
 }
 
 fn normalized_metric_value(metric: &FindingMetric, threshold_normalized: f64) -> f64 {
-    if !matches!(
-        metric.dimension,
-        MetricDimension::Size | MetricDimension::Complexity | MetricDimension::Coupling
-    ) {
-        return threshold_normalized;
-    }
-
     let Some(percentile) = metric.percentile else {
         return threshold_normalized;
     };

@@ -107,9 +107,9 @@ fn cli_flags_doc() -> &'static str {
 }
 
 fn schema_fields_doc() -> &'static str {
-    "schema_version summary stats metrics_summary raw_metrics dependency_graph hotspots suppression_summary findings \
-id kind severity path line metrics priority confidence priority_factors \
-rank_explanation recommendation related_locations"
+    "schema_version summary stats metrics_summary raw_metrics dependency_graph hotspots suppression_summary issue_clusters detector_manifest findings \
+ id kind severity path line metrics priority confidence priority_factors construct mechanism issue_count \
+ rank_explanation recommendation related_locations"
 }
 
 fn write_complete_docs(root: &Path) -> Result<()> {
@@ -225,12 +225,12 @@ fn skips_reforge_documentation_contract_for_other_projects() -> Result<()> {
 
     fs::remove_dir_all(root)?;
 
-    assert!(report.findings.iter().all(|finding| {
-        finding
-            .metrics
+    assert!(
+        report
+            .findings
             .iter()
-            .all(|metric| metric.dimension != crate::model::MetricDimension::Documentation)
-    }));
+            .all(|finding| { finding.mechanism != crate::model::SignalMechanism::KnowledgeDrift })
+    );
     Ok(())
 }
 
@@ -245,12 +245,12 @@ fn complete_project_documentation_suppresses_documentation_findings() -> Result<
 
     fs::remove_dir_all(root)?;
 
-    assert!(report.findings.iter().all(|finding| {
-        finding
-            .metrics
+    assert!(
+        report
+            .findings
             .iter()
-            .all(|metric| metric.dimension != crate::model::MetricDimension::Documentation)
-    }));
+            .all(|finding| { finding.mechanism != crate::model::SignalMechanism::KnowledgeDrift })
+    );
     Ok(())
 }
 

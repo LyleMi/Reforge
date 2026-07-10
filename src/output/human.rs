@@ -3,7 +3,7 @@ use std::io::{self, Write};
 
 use crate::baseline::{BaselineDiff, BaselineFinding, BaselineFindingStatus};
 use crate::cli::BaselineShow;
-use crate::model::{Finding, FindingKind, Hotspot, ScanReport, Severity};
+use crate::model::{Finding, FindingKind, Hotspot, IssueCluster, ScanReport, Severity};
 
 const RELATED_LOCATION_LIMIT: usize = 3;
 const HOTSPOT_LIMIT: usize = 10;
@@ -151,8 +151,9 @@ impl ReportRenderContext<'_, '_, '_> {
         self.output
             .push_str(&paint(self.color, "Result", AnsiStyle::Section));
         self.output.push('\n');
+        self.render_summary_row("Issues", self.report.summary.issue_count);
         self.render_summary_row(
-            "Signals",
+            "Raw signals",
             format!(
                 "{}  critical {} | warning {} | info {}",
                 self.report.summary.finding_count,
@@ -213,35 +214,63 @@ impl ReportRenderContext<'_, '_, '_> {
         let title = self
             .baseline_diff
             .map(|diff| format!("Findings ({})", baseline_show_label(diff.show)))
-            .unwrap_or_else(|| "Findings".to_string());
+            .unwrap_or_else(|| "Issues".to_string());
         self.output
             .push_str(&paint(self.color, &title, AnsiStyle::Section));
         self.output.push('\n');
 
         if let Some(diff) = self.baseline_diff {
-            let findings = sorted_baseline_findings(&diff.findings);
-            if findings.is_empty() {
-                self.output.push_str(&format!(
-                    "  No findings matched --show {}.\n",
-                    baseline_show_value(diff.show)
-                ));
-                return;
-            }
-
-            for entry in findings {
-                self.output
-                    .push_str(&render_diff_finding(entry, self.color));
-
-                if has_related_location_details(entry.finding) {
-                    self.output
-                        .push_str(&render_related_locations(entry.finding, self.color));
-                }
-            }
+            self.render_baseline_findings(diff);
             return;
         }
 
-        for finding in sorted_findings(&self.report.findings) {
+        self.render_current_issues();
+    }
+
+    fn render_baseline_findings(&mut self, diff: &BaselineDiff<'_>) {
+        let findings = sorted_baseline_findings(&diff.findings);
+        if findings.is_empty() {
+            self.output.push_str(&format!(
+                "  No findings matched --show {}.\n",
+                baseline_show_value(diff.show)
+            ));
+            return;
+        }
+
+        for entry in findings {
+            self.output
+                .push_str(&render_diff_finding(entry, self.color));
+            if has_related_location_details(entry.finding) {
+                self.output
+                    .push_str(&render_related_locations(entry.finding, self.color));
+            }
+        }
+    }
+
+    fn render_current_issues(&mut self) {
+        let primary_ids = self
+            .report
+            .issue_clusters
+            .iter()
+            .map(|cluster| cluster.primary_finding_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        for finding in sorted_findings(&self.report.findings)
+            .into_iter()
+            .filter(|finding| {
+                finding.issue_cluster_id.is_none() || primary_ids.contains(finding.id.as_str())
+            })
+        {
+            let cluster_context = self
+                .report
+                .issue_clusters
+                .iter()
+                .find(|cluster| cluster.primary_finding_id == finding.id)
+                .map(|cluster| render_cluster_context(cluster, self.color));
             self.output.push_str(&render_finding(finding, self.color));
+
+            if let Some(cluster_context) = cluster_context {
+                self.output.push_str(&cluster_context);
+            }
 
             if has_related_location_details(finding) {
                 self.output
@@ -301,6 +330,20 @@ impl ReportRenderContext<'_, '_, '_> {
             value
         ));
     }
+}
+
+fn render_cluster_context(cluster: &IssueCluster, color: bool) -> String {
+    let kinds = cluster
+        .kinds
+        .iter()
+        .map(|kind| crate::model::serialized_finding_kind(*kind))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "            {} {} raw signals ({kinds})\n",
+        paint(color, "cluster", AnsiStyle::Muted),
+        cluster.finding_ids.len()
+    )
 }
 
 fn hotspot_model_label(model: crate::cli::HotspotModel) -> &'static str {

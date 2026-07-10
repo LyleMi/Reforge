@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
 use crate::cli::{ChurnMode, HotspotModel};
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 13;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 14;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 pub(crate) const METRIC_NESTING_DEPTH: &str = "nesting_depth";
 pub(crate) const METRIC_PUBLIC_ITEMS: &str = "public_items";
@@ -62,14 +62,42 @@ pub enum Severity {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum MetricDimension {
-    Size,
-    Complexity,
-    Coupling,
-    Duplication,
-    Drift,
-    TestRisk,
-    Documentation,
+pub enum QualityConstruct {
+    Modularity,
+    Reusability,
+    Analysability,
+    Modifiability,
+    Testability,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SignalMechanism {
+    CognitiveLoad,
+    DependencyPropagation,
+    ResponsibilityDispersion,
+    DuplicationDivergence,
+    ChangePressure,
+    VerificationDifficulty,
+    KnowledgeDrift,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DetectionApproach {
+    Threshold,
+    ParsedAnalysis,
+    GraphAnalysis,
+    Heuristic,
+    RepositoryAudit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrecisionRisk {
+    Low,
+    Medium,
+    High,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,7 +114,6 @@ pub struct FindingMetric {
     pub threshold: Option<usize>,
     pub unit: String,
     pub excess_ratio: Option<f64>,
-    pub dimension: MetricDimension,
     pub normalized: Option<f64>,
     pub percentile: Option<f64>,
 }
@@ -104,7 +131,6 @@ impl FindingMetric {
             threshold: Some(threshold),
             unit: unit.into(),
             excess_ratio: (threshold > 0).then_some(value as f64 / threshold as f64),
-            dimension: MetricDimension::Size,
             normalized: (threshold > 0).then_some(crate::scoring::normalized_threshold_excess(
                 value as f64 / threshold as f64,
             )),
@@ -119,7 +145,6 @@ impl FindingMetric {
             threshold: None,
             unit: unit.into(),
             excess_ratio: None,
-            dimension: MetricDimension::Size,
             normalized: None,
             percentile: None,
         }
@@ -134,6 +159,9 @@ pub struct Finding {
     pub path: String,
     pub line: Option<usize>,
     pub metrics: Vec<FindingMetric>,
+    pub construct: QualityConstruct,
+    pub mechanism: SignalMechanism,
+    pub issue_cluster_id: Option<String>,
     pub priority: u8,
     pub confidence: f64,
     pub priority_factors: PriorityFactors,
@@ -396,13 +424,16 @@ impl Serialize for Finding {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("Finding", 13)?;
+        let mut state = serializer.serialize_struct("Finding", 16)?;
         state.serialize_field("id", &self.id)?;
         state.serialize_field("kind", &self.kind)?;
         state.serialize_field("severity", &self.severity)?;
         state.serialize_field("path", &self.path)?;
         state.serialize_field("line", &self.line)?;
         state.serialize_field("metrics", &self.metrics)?;
+        state.serialize_field("construct", &self.construct)?;
+        state.serialize_field("mechanism", &self.mechanism)?;
+        state.serialize_field("issue_cluster_id", &self.issue_cluster_id)?;
         state.serialize_field("priority", &self.priority)?;
         state.serialize_field("confidence", &self.confidence)?;
         state.serialize_field("priority_factors", &self.priority_factors)?;
@@ -428,6 +459,7 @@ fn serialized_related_locations(finding: &Finding) -> &[RelatedLocation] {
 pub struct ScanSummary {
     pub scanned_files: usize,
     pub finding_count: usize,
+    pub issue_count: usize,
     pub hotspot_count: usize,
     pub similar_function_group_count: usize,
     pub duration_ms: u128,
@@ -566,6 +598,32 @@ pub struct SuppressionSummary {
     pub highest_suppressed_priority: Option<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssueCluster {
+    pub id: String,
+    pub construct: QualityConstruct,
+    pub mechanism: SignalMechanism,
+    pub path: String,
+    pub line: Option<usize>,
+    pub primary_finding_id: String,
+    pub finding_ids: Vec<String>,
+    pub kinds: Vec<FindingKind>,
+    pub priority: u8,
+    pub severity: Severity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetectorManifestEntry {
+    pub kind: FindingKind,
+    pub construct: QualityConstruct,
+    pub mechanism: SignalMechanism,
+    pub approach: DetectionApproach,
+    pub supported_languages: Vec<String>,
+    pub precision_risk: PrecisionRisk,
+    pub parent_kind: Option<FindingKind>,
+    pub overlaps_with: Vec<FindingKind>,
+}
+
 impl SuppressionSummary {
     pub fn record(&mut self, finding: &Finding) {
         self.suppressed_count += 1;
@@ -592,5 +650,7 @@ pub struct ScanReport {
     pub dependency_graph: DependencyGraphSnapshot,
     pub hotspots: Vec<Hotspot>,
     pub suppression_summary: SuppressionSummary,
+    pub issue_clusters: Vec<IssueCluster>,
+    pub detector_manifest: Vec<DetectorManifestEntry>,
     pub findings: Vec<Finding>,
 }

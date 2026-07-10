@@ -50,7 +50,7 @@ against a universal standard.
 
 Finding metrics may include a `percentile` value when at least five values are
 available for that metric. Percentiles are combined with threshold excess for
-size, complexity, and coupling dimensions.
+raw metrics that have a matching project distribution.
 
 ## Finding Priority
 
@@ -87,22 +87,18 @@ Severity bands:
 The bands are workflow labels for triage and CI policy. They do not claim that
 a file is defective or that a change is safe.
 
-## Metric Dimensions
+## Constructs, Mechanisms, and Issue Clusters
 
-Metrics are assigned one of these dimensions:
+Each finding declares one ISO/IEC 25010-aligned maintainability `construct`
+and one source-observable `mechanism`. These classifications replace the old
+metric-dimension label, which mixed measurements, symptoms, and quality
+outcomes at different abstraction levels.
 
-- `size`: file, directory, function, type, and unused-function signals.
-- `complexity`: complexity, nesting, parameter, and combined readability-risk
-  signals.
-- `coupling`: imports, public surfaces, and adapter bypass signals.
-  Dependency graph findings also use this dimension for direct fan-in/fan-out,
-  transitive reach, dependency depth, cycle edges, and cycle density.
-- `duplication`: similar functions, repeated literals, repeated error
-  patterns, data clumps, and duplicate type shapes.
-- `drift`: naming, directory, parallel implementation, abstraction, config,
-  fixture, generic bucket, adapter boundary, and compatibility-path drift.
-- `test_risk`: repeated setup and happy-path-only test risk.
-- `documentation`: missing or stale documentation.
+Correlated atomic findings remain available for filtering, baselines, and CI,
+but `issue_clusters` combine evidence that describes the same entity,
+mechanism, and likely action. Human and HTML output present the cluster's
+highest-priority finding as the issue and retain member IDs for auditability.
+See [Metric Ontology](metric-ontology.md) for definitions and invariants.
 
 ## Confidence
 
@@ -123,7 +119,7 @@ Hotspot `priority` applies the selected model, rounds the result to an integer,
 and clamps it to the same 0-100 range.
 
 Static risk is the strongest applicable structural signal for the location,
-not a blend of every detector dimension:
+not a blend of every detector mechanism:
 
 - File risk considers the file-LOC threshold, import threshold at 80% weight,
   public-item threshold at 80%, direct directory file-count threshold at 65%,

@@ -14,6 +14,7 @@ fn report(findings: Vec<Finding>) -> ScanReport {
         summary: ScanSummary {
             scanned_files: 2,
             finding_count: findings.len(),
+            issue_count: findings.len(),
             hotspot_count: 0,
             similar_function_group_count: findings
                 .iter()
@@ -41,6 +42,8 @@ fn report(findings: Vec<Finding>) -> ScanReport {
         dependency_graph: DependencyGraphSnapshot::default(),
         hotspots: Vec::new(),
         suppression_summary: SuppressionSummary::default(),
+        issue_clusters: Vec::new(),
+        detector_manifest: Vec::new(),
         findings,
     }
 }
@@ -50,6 +53,44 @@ fn report_with_hotspots(findings: Vec<Finding>, hotspots: Vec<Hotspot>) -> ScanR
     report.summary.hotspot_count = hotspots.len();
     report.hotspots = hotspots;
     report
+}
+
+#[test]
+fn human_report_renders_cluster_primary_once_and_keeps_raw_signal_count() {
+    let mut findings = vec![
+        make_finding(
+            FindingKind::ComplexFunction,
+            "src/a.rs",
+            Some(10),
+            "complex",
+            vec![FindingMetric::threshold(
+                "function_complexity",
+                20,
+                15,
+                "complexity",
+            )],
+            Vec::new(),
+        ),
+        make_finding(
+            FindingKind::DeepNesting,
+            "src/a.rs",
+            Some(10),
+            "nested",
+            vec![FindingMetric::threshold("nesting_depth", 6, 4, "levels")],
+            Vec::new(),
+        ),
+    ];
+    let clusters = crate::scoring::cluster_findings(&mut findings);
+    let mut scan_report = report(findings);
+    scan_report.summary.issue_count = 1;
+    scan_report.issue_clusters = clusters;
+
+    let output = render_human_report(&scan_report);
+
+    assert!(output.contains("Issues               1"));
+    assert!(output.contains("Raw signals          2"));
+    assert!(output.contains("cluster 2 raw signals"));
+    assert_eq!(output.matches("src/a.rs:10").count(), 1);
 }
 
 fn make_finding(
@@ -172,7 +213,8 @@ fn renders_empty_human_report_clearly() {
     assert!(output.contains("Reforge scan"));
     assert!(output.contains("2 files"));
     assert!(output.contains("Result"));
-    assert!(output.contains("Signals              0  critical 0 | warning 0 | info 0"));
+    assert!(output.contains("Issues               0"));
+    assert!(output.contains("Raw signals          0  critical 0 | warning 0 | info 0"));
     assert!(output.contains("Scan details"));
     assert!(output.contains("No threshold signals found."));
 }
@@ -214,7 +256,7 @@ fn human_report_sorts_by_priority_and_renders_priority_confidence_and_metrics() 
     assert!(output.contains("Signal mix"));
     assert!(output.contains("large file"));
     assert!(output.contains("metrics file_lines=1200/800 lines"));
-    assert!(output.contains("rank high complexity, high confidence"));
+    assert!(output.contains("rank cognitive-load signal, high confidence"));
 }
 
 #[test]
@@ -339,7 +381,7 @@ fn renders_human_baseline_diff_when_selected_findings_are_empty() {
 }
 
 #[test]
-fn renders_json_report_schema_v13_with_stable_ids_and_priority_metadata() {
+fn renders_json_report_schema_v14_with_orthogonal_classification_metadata() {
     let scan_report = report(vec![make_finding(
         FindingKind::SimilarFunctions,
         "src/a.rs",
@@ -364,6 +406,8 @@ fn renders_json_report_schema_v13_with_stable_ids_and_priority_metadata() {
     assert!(value.get("dependency_graph").is_some());
     assert!(value.get("hotspots").is_some());
     assert!(value.get("suppression_summary").is_some());
+    assert!(value.get("issue_clusters").is_some());
+    assert!(value.get("detector_manifest").is_some());
     assert!(
         value["findings"][0]["id"]
             .as_str()
@@ -375,9 +419,12 @@ fn renders_json_report_schema_v13_with_stable_ids_and_priority_metadata() {
         "Extract the shared behavior into a common helper or deliberately separate the variants if they should evolve independently."
     );
     assert_eq!(value["findings"][0]["metrics"][0]["name"], "group_size");
-    assert_eq!(
-        value["findings"][0]["metrics"][0]["dimension"],
-        "duplication"
+    assert_eq!(value["findings"][0]["construct"], "reusability");
+    assert_eq!(value["findings"][0]["mechanism"], "duplication_divergence");
+    assert!(
+        value["findings"][0]["metrics"][0]
+            .get("dimension")
+            .is_none()
     );
     assert!(value["findings"][0]["metrics"][0]["normalized"].is_number());
     assert_eq!(value["findings"][0]["priority"], 37);
@@ -387,7 +434,7 @@ fn renders_json_report_schema_v13_with_stable_ids_and_priority_metadata() {
     assert!(value["findings"][0]["rank_reason"].is_null());
     assert_eq!(
         value["findings"][0]["rank_explanation"],
-        "duplication signal, high confidence"
+        "duplication-divergence signal, high confidence"
     );
     assert!(value["findings"][0].get("magnitude").is_none());
 }

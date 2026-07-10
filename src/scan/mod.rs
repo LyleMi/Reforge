@@ -10,6 +10,7 @@ use ignore::{DirEntry, WalkBuilder};
 use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
 use crate::cli::ScanArgs;
 use crate::detectors::dependency_graph::scan_dependency_graph_report;
+use crate::detectors::manifest::detector_manifest;
 use crate::documentation::scan_documentation;
 use crate::model::{
     ChurnFileMetric, DependencyGraphSnapshot, FileRawMetric, Finding, FindingKind, FindingMetric,
@@ -17,7 +18,7 @@ use crate::model::{
     SuppressionSummary, TypeRawMetric,
 };
 use crate::scoring::{
-    FindingInput, StaticRiskThresholds, finalize_scoring, finding, rank_hotspots,
+    FindingInput, StaticRiskThresholds, cluster_findings, finalize_scoring, finding, rank_hotspots,
     summarize_raw_metrics,
 };
 use crate::similar_functions::{
@@ -130,10 +131,16 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         &effective_args,
         &effective.suppressions,
     )?;
+    let issue_clusters = cluster_findings(&mut scan.findings);
+    let clustered_facets = issue_clusters
+        .iter()
+        .map(|cluster| cluster.finding_ids.len().saturating_sub(1))
+        .sum::<usize>();
 
     let summary = ScanSummary {
         scanned_files: scan.stats.source_files_scanned,
         finding_count: scan.findings.len(),
+        issue_count: scan.findings.len().saturating_sub(clustered_facets),
         hotspot_count: hotspots.len(),
         similar_function_group_count: post_score_controls.similar_function_group_count,
         duration_ms: started_at.elapsed().as_millis(),
@@ -158,6 +165,8 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         dependency_graph: scan.dependency_graph,
         hotspots,
         suppression_summary: post_score_controls.suppression_summary,
+        issue_clusters,
+        detector_manifest: detector_manifest(),
         findings: scan.findings,
     })
 }

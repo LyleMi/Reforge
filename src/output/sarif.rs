@@ -93,6 +93,9 @@ fn sarif_result(finding: &Finding, rule_indices: &BTreeMap<FindingKind, usize>) 
             "id": finding.id,
             "priority": finding.priority,
             "severity": severity_label(finding.severity),
+            "construct": finding.construct,
+            "mechanism": finding.mechanism,
+            "issue_cluster_id": finding.issue_cluster_id,
             "confidence": finding.confidence,
             "rank_explanation": finding.rank_explanation,
             "recommendation": finding.recommendation()

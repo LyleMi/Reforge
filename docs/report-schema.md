@@ -1,6 +1,6 @@
 # Report Schema
 
-JSON and YAML reports use schema version `13`. The same Rust data model is
+JSON and YAML reports use schema version `14`. The same Rust data model is
 serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 that carries the same finding IDs in result fingerprints.
 
@@ -8,7 +8,7 @@ that carries the same finding IDs in result fingerprints.
 
 ```json
 {
-  "schema_version": 13,
+  "schema_version": 14,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
@@ -16,13 +16,15 @@ that carries the same finding IDs in result fingerprints.
   "dependency_graph": {},
   "hotspots": [],
   "suppression_summary": {},
+  "issue_clusters": [],
+  "detector_manifest": [],
   "findings": []
 }
 ```
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `13`.
+- `schema_version`: report schema version. Current value is `14`.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
@@ -31,6 +33,10 @@ Top-level fields:
 - `hotspots`: ranked file, function, and type locations.
 - `suppression_summary`: aggregate counts for findings removed by
   suppressions.
+- `issue_clusters`: overlapping atomic findings grouped into human-facing
+  refactoring issues.
+- `detector_manifest`: coverage and classification metadata for every finding
+  kind.
 - `findings`: detector findings with priority, confidence, metrics, and
   related locations.
 
@@ -45,6 +51,7 @@ Fields:
 
 - `scanned_files`: number of source files scanned.
 - `finding_count`: number of findings emitted after filters and suppressions.
+- `issue_count`: findings after clustered secondary facets are counted once.
 - `hotspot_count`: number of hotspots emitted for the watchlist.
 - `similar_function_group_count`: number of similar-function findings.
 - `duration_ms`: scan duration in milliseconds.
@@ -178,6 +185,9 @@ Finding fields:
 - `path`: primary path.
 - `line`: primary line or `null`.
 - `metrics`: finding-specific measurements.
+- `construct`: primary ISO/IEC 25010-aligned maintainability construct.
+- `mechanism`: primary source-observable maintenance mechanism.
+- `issue_cluster_id`: owning issue cluster ID or `null`.
 - `priority`: 0 through 100 refactoring priority.
 - `confidence`: detector confidence from 0.0 through 1.0.
 - `priority_factors`: scoring inputs.
@@ -193,12 +203,12 @@ Finding fields:
 - `threshold`
 - `unit`
 - `excess_ratio`
-- `dimension`
 - `normalized`
 - `percentile`
 
-`dimension` is one of `size`, `complexity`, `coupling`, `duplication`,
-`drift`, `test_risk`, or `documentation`.
+`construct` is one of `modularity`, `reusability`, `analysability`,
+`modifiability`, or `testability`. `mechanism` is defined in the
+[metric ontology](metric-ontology.md).
 
 `priority_factors` contains:
 
@@ -223,6 +233,21 @@ uses the finding kind, normalized primary location, primary line, related
 locations, and metric names. It intentionally does not include message text or
 metric values, allowing baseline comparison to recognize an existing finding
 whose priority or severity has changed.
+
+## `issue_clusters`
+
+Issue clusters contain `id`, `construct`, `mechanism`, `path`, `line`,
+`primary_finding_id`, `finding_ids`, `kinds`, `priority`, and `severity`.
+Only groups with at least two overlapping atomic findings are emitted. The
+primary member is the highest-priority finding; member findings remain in
+`findings` for baselines and detector-specific filtering.
+
+## `detector_manifest`
+
+Each entry contains `kind`, `construct`, `mechanism`, `approach`,
+`supported_languages`, `precision_risk`, optional `parent_kind`, and
+`overlaps_with`. Consumers can distinguish unsupported analysis from an
+observed absence of findings.
 
 `findings=0` means no unsuppressed findings were emitted. Consumers should
 avoid presenting that as proof that the scanned code is healthy or bug-free.
@@ -311,6 +336,8 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
+version `14` adds finding constructs and mechanisms, issue clusters, detector
+manifests, and `summary.issue_count`; it removes metric `dimension`. Schema
 version `13` does not emit the legacy v4 fields `score`, `score_breakdown`, or
 `rank_reason`; use `priority`, `priority_factors`, and `rank_explanation`
 instead. Schema version `13` includes stable finding `id`, per-finding

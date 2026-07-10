@@ -1,6 +1,6 @@
 import type { FileRawMetric, ScanReport } from "./reportTypes";
 
-export const REPORT_SCHEMA_VERSION = 13;
+export const REPORT_SCHEMA_VERSION = 14;
 
 export type FileOverview = {
   path: string;
@@ -98,6 +98,7 @@ function reportFilePaths(report: ScanReport): string[] {
       ...(finding.related_locations ?? []).map((related) => related.path),
     ]),
     ...(report.hotspots ?? []).map((hotspot) => hotspot.path),
+    ...(report.issue_clusters ?? []).map((cluster) => cluster.path),
     ...(report.dependency_graph?.nodes ?? []).map((node) => node.path),
     ...(report.dependency_graph?.edges ?? []).flatMap((edge) => [edge.from, edge.to]),
   ];
@@ -143,6 +144,10 @@ export function toDisplayReport(report: ScanReport): ScanReport {
         }
       : dependencyGraph,
     hotspots: report.hotspots?.map((hotspot) => ({ ...hotspot, path: displayPath(hotspot.path) })),
+    issue_clusters: report.issue_clusters?.map((cluster) => ({
+      ...cluster,
+      path: displayPath(cluster.path),
+    })),
     findings: report.findings?.map((finding) => ({
       ...finding,
       path: displayPath(finding.path),

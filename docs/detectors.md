@@ -5,6 +5,13 @@ git churn, and heuristic drift detectors. Findings are signals for review; they
 are not automatic proof that code must be changed, that code is low quality, or
 that a bug exists.
 
+Every finding kind is also described by the report-level `detector_manifest`.
+The manifest declares its primary maintainability construct, signal mechanism,
+detection approach, supported languages, precision risk, composite parent, and
+known overlaps. This metadata lets consumers distinguish unsupported analysis
+from an observed absence of findings and avoid double-counting related
+detectors. See [Metric Ontology](metric-ontology.md).
+
 ## File and Directory Signals
 
 - `large_file`: source file line count exceeds `--max-file-lines`.

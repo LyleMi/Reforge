@@ -55,14 +55,8 @@ reason = "test-case heuristic intentionally groups language-specific evidence ch
 [[suppressions]]
 kind = "complex_function"
 path = "src/scoring/mod.rs"
-line = 452
+line = 403
 reason = "ranking explanation is a compact mapping from scoring factors to report text"
-
-[[suppressions]]
-kind = "complex_function"
-path = "src/scoring/mod.rs"
-line = 391
-reason = "metric dimension mapping centralizes finding-kind classification for report consistency"
 
 [[suppressions]]
 kind = "complex_function"

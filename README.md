@@ -312,7 +312,7 @@ Fail CI on current warning or critical findings:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-Compare against a prior schema 13 baseline and fail only on new or worse
+Compare against a prior schema 14 baseline and fail only on new or worse
 warning/critical findings:
 
 ```powershell
@@ -363,9 +363,10 @@ scan with the React + TypeScript report app, packaged as a single offline
 `.html` artifact with the scan data, HTML shell, styles, and inline app bundle.
 The visual report includes summary cards, risk distribution, File Overview,
 dependency map, hotspots, similar-function groups, and prioritized findings.
-JSON and YAML use schema version 13 and include `summary`,
+JSON and YAML use schema version 14 and include `summary`,
 `metrics_summary`, `raw_metrics`, `dependency_graph`, `hotspots`,
-`suppression_summary`, and `findings`. SARIF output targets SARIF 2.1.0
+`suppression_summary`, `issue_clusters`, `detector_manifest`, and `findings`.
+SARIF output targets SARIF 2.1.0
 with rules keyed by finding kind and results fingerprinted by Reforge finding
 ID. Findings expose stable `id`, `priority`, `confidence`, `priority_factors`,
 `rank_explanation`, `metrics`, and `related_locations`; legacy v4 fields
@@ -381,7 +382,7 @@ and YAML expose the same audit context in `suppression_summary`.
 
 `--fail-on info|warning|critical` turns selected findings into a CI gate.
 Without a baseline, the gate evaluates all current findings after writing the
-requested report. With `--baseline <PATH>`, Reforge reads a prior schema 13
+requested report. With `--baseline <PATH>`, Reforge reads a prior schema 14
 JSON or YAML report and matches findings by stable `id`. The gate does not
 fail on hotspots alone; keep hotspot output as a watchlist for follow-up
 review, dashboards, or backlog planning.
@@ -524,7 +525,7 @@ findings, not as proof that no maintainability signals were observed.
 | `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
-| `--baseline` | none | Read a prior schema 13 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 14 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
 | `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |
