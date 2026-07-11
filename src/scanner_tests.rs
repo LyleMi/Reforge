@@ -557,10 +557,11 @@ reason = \"tracked elsewhere\"
         format!(
             "\
 // {debt_marker}: config suppressed
-// reforge:ignore-next-line debt_marker accepted generated marker
+// {directive}:ignore-next-line debt_marker accepted generated marker
 // {debt_marker}: inline suppressed
 // {debt_marker}: reported
-"
+",
+            directive = "reforge"
         ),
     )?;
 
@@ -630,11 +631,8 @@ reason = \"legacy file tracked separately\"
     );
     assert!(!report.hotspots.is_empty());
     assert!(
-        crate::baseline::gate_failures(
-            report.findings.iter(),
-            crate::cli::FailOnSeverity::Warning,
-        )
-        .is_empty()
+        crate::baseline::gate_failures(report.issues.iter(), crate::cli::FailOnSeverity::Warning,)
+            .is_empty()
     );
     Ok(())
 }

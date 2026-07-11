@@ -729,7 +729,7 @@ fn similar_function_finding(
                 "functions",
             )],
         )
-        .with_confidence(threshold)
+        .with_detection_reliability(threshold)
         .with_related_locations(related_locations),
     )
 }

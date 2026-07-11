@@ -235,17 +235,15 @@ fn percentile_risk(
         return 0.0;
     };
 
-    if value >= percentiles.p95 {
-        95.0
-    } else if value >= percentiles.p90 {
-        85.0
-    } else if value >= percentiles.p75 {
-        65.0
-    } else if value >= percentiles.p50 {
-        45.0
-    } else {
-        20.0
-    }
+    [
+        (percentiles.p95, 95.0),
+        (percentiles.p90, 85.0),
+        (percentiles.p75, 65.0),
+        (percentiles.p50, 45.0),
+    ]
+    .into_iter()
+    .find_map(|(threshold, risk)| (value >= threshold).then_some(risk))
+    .unwrap_or(20.0)
 }
 
 fn threshold_risk(value: usize, threshold: usize) -> f64 {

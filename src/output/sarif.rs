@@ -3,7 +3,7 @@ use std::io::{self, Write};
 
 use serde_json::{Value, json};
 
-use crate::model::{Finding, FindingKind, ScanReport, Severity, serialized_finding_kind};
+use crate::model::{Issue, ScanReport, Severity};
 
 pub fn print_sarif_report(report: &ScanReport) -> io::Result<()> {
     write_sarif_report(std::io::stdout().lock(), report)
@@ -19,10 +19,10 @@ pub fn render_sarif_report(report: &ScanReport) -> String {
 }
 
 fn sarif_log(report: &ScanReport) -> Value {
-    let rule_indices = rule_indices(&report.findings);
+    let rule_indices = rule_indices(&report.issues);
     let mut rules = rule_indices
         .iter()
-        .map(|(kind, index)| (*index, sarif_rule(*kind)))
+        .map(|(family, index)| (*index, sarif_rule(family)))
         .collect::<Vec<_>>();
     rules.sort_by_key(|(index, _)| *index);
 
@@ -37,36 +37,35 @@ fn sarif_log(report: &ScanReport) -> Value {
                     "rules": rules.into_iter().map(|(_, rule)| rule).collect::<Vec<_>>()
                 }
             },
-            "results": report.findings
+            "results": report.issues
                 .iter()
-                .map(|finding| sarif_result(finding, &rule_indices))
+                .map(|issue| sarif_result(issue, &rule_indices))
                 .collect::<Vec<_>>()
         }]
     })
 }
 
-fn rule_indices(findings: &[Finding]) -> BTreeMap<FindingKind, usize> {
-    let mut kinds = findings
+fn rule_indices(issues: &[Issue]) -> BTreeMap<String, usize> {
+    let mut families = issues
         .iter()
-        .map(|finding| finding.kind)
+        .map(|issue| issue.family.clone())
         .collect::<Vec<_>>();
-    kinds.sort_unstable();
-    kinds.dedup();
+    families.sort();
+    families.dedup();
 
-    kinds
+    families
         .into_iter()
         .enumerate()
-        .map(|(index, kind)| (kind, index))
+        .map(|(index, family)| (family, index))
         .collect()
 }
 
-fn sarif_rule(kind: FindingKind) -> Value {
-    let id = serialized_finding_kind(kind);
+fn sarif_rule(id: &str) -> Value {
     json!({
         "id": id,
-        "name": title_label(&id),
+        "name": title_label(id),
         "shortDescription": {
-            "text": title_label(&id)
+            "text": title_label(id)
         },
         "properties": {
             "kind": id
@@ -74,42 +73,32 @@ fn sarif_rule(kind: FindingKind) -> Value {
     })
 }
 
-fn sarif_result(finding: &Finding, rule_indices: &BTreeMap<FindingKind, usize>) -> Value {
-    let rule_id = serialized_finding_kind(finding.kind);
-    let mut result = json!({
-        "ruleId": rule_id,
-        "ruleIndex": rule_indices.get(&finding.kind).copied().unwrap_or(0),
-        "level": sarif_level(finding.severity),
-        "message": {
-            "text": result_message(finding)
-        },
+fn sarif_result(issue: &Issue, rule_indices: &BTreeMap<String, usize>) -> Value {
+    json!({
+        "ruleId": issue.family,
+        "ruleIndex": rule_indices.get(&issue.family).copied().unwrap_or(0),
+        "level": sarif_level(issue.severity),
+        "message": { "text": issue.summary },
         "locations": [{
-            "physicalLocation": physical_location(&finding.path, finding.line)
+            "physicalLocation": physical_location(&issue.path, issue.line)
         }],
         "partialFingerprints": {
-            "reforgeFindingId": finding.id
+            "reforgeIssueId": issue.id
         },
         "properties": {
-            "id": finding.id,
-            "priority": finding.priority,
-            "severity": severity_label(finding.severity),
-            "construct": finding.construct,
-            "mechanism": finding.mechanism,
-            "issue_cluster_id": finding.issue_cluster_id,
-            "confidence": finding.confidence,
-            "rank_explanation": finding.rank_explanation,
-            "recommendation": finding.recommendation()
+            "id": issue.id,
+            "family": issue.family,
+            "priority": issue.priority,
+            "severity": severity_label(issue.severity),
+            "construct": issue.construct,
+            "mechanism": issue.mechanism,
+            "action": issue.action,
+            "evidence_ids": issue.finding_ids,
+            "detection_reliability": issue.detection_reliability,
+            "interpretation_reliability": issue.interpretation_reliability,
+            "priority_factors": issue.priority_factors
         }
-    });
-
-    let related = related_locations(finding);
-    if !related.is_empty()
-        && let Some(object) = result.as_object_mut()
-    {
-        object.insert("relatedLocations".to_string(), Value::Array(related));
-    }
-
-    result
+    })
 }
 
 fn physical_location(path: &str, line: Option<usize>) -> Value {
@@ -121,34 +110,6 @@ fn physical_location(path: &str, line: Option<usize>) -> Value {
             "startLine": line.unwrap_or(1).max(1)
         }
     })
-}
-
-fn related_locations(finding: &Finding) -> Vec<Value> {
-    finding
-        .related_locations
-        .iter()
-        .enumerate()
-        .map(|(index, location)| {
-            let mut related = json!({
-                "id": index + 1,
-                "physicalLocation": physical_location(&location.path, Some(location.line))
-            });
-            if let Some(name) = &location.name
-                && let Some(object) = related.as_object_mut()
-            {
-                object.insert("message".to_string(), json!({ "text": name }));
-            }
-            related
-        })
-        .collect()
-}
-
-fn result_message(finding: &Finding) -> String {
-    if finding.message.is_empty() {
-        title_label(&serialized_finding_kind(finding.kind))
-    } else {
-        finding.message.clone()
-    }
 }
 
 fn sarif_level(severity: Severity) -> &'static str {

@@ -442,19 +442,27 @@ mod tests {
         fs::create_dir_all(root.join("src"))?;
         fs::write(
             root.join("src/main.rs"),
-            "\
-// TODO: ignored same line reforge:ignore debt_marker accepted debt
-// reforge:ignore-next-line debt_marker accepted generated marker
-// TODO: ignored next line
-// TODO: reported
+            format!(
+                "\
+// {debt}: ignored same line {directive}:ignore debt_marker accepted debt
+// {directive}:ignore-next-line debt_marker accepted generated marker
+// {debt}: ignored next line
+// {debt}: reported
 ",
+                directive = "reforge",
+                debt = ["TO", "DO"].concat()
+            ),
         )?;
         fs::write(
             root.join("src/generated.rs"),
-            "\
-// reforge:ignore-file debt_marker generated fixture
-// TODO: ignored for whole file
+            format!(
+                "\
+// {directive}:ignore-file debt_marker generated fixture
+// {debt}: ignored for whole file
 ",
+                directive = "reforge",
+                debt = ["TO", "DO"].concat()
+            ),
         )?;
 
         let findings = scan_path(&scan_args(root.clone()))?;

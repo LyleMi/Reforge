@@ -89,7 +89,6 @@ type Occurrence = RelatedLocation;
 
 const FUNCTION_DENSITY_LINE_UNIT: usize = 100;
 const MIN_TEST_SETUP_OCCURRENCES: usize = 5;
-const MIN_READABILITY_RISK_SIGNALS: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum FileNamingStyle {
@@ -302,7 +301,6 @@ fn scan_function_metrics(
             }
             push_function_threshold_finding(file, function, options, signals, signal);
         }
-        push_readability_risk_finding(file, function, options, signals, &readability_signals);
         collect_data_clumps(file, function, options, signals);
     }
 }
@@ -348,56 +346,6 @@ fn push_function_threshold_finding(
                 threshold,
                 signal.unit(),
             )],
-        )));
-}
-
-fn push_readability_risk_finding(
-    file: &SourceFile,
-    function: &FunctionMetric,
-    options: &StructureOptions,
-    signals: &mut FileSignals,
-    readability_signals: &[FunctionFindingSignal],
-) {
-    if readability_signals.len() < MIN_READABILITY_RISK_SIGNALS {
-        return;
-    }
-
-    let mut metrics = readability_signals
-        .iter()
-        .map(|signal| {
-            FindingMetric::threshold(
-                signal.metric_name(),
-                signal.value(function),
-                signal.threshold(options),
-                signal.unit(),
-            )
-        })
-        .collect::<Vec<_>>();
-    metrics.push(FindingMetric::threshold(
-        MetricId::ReadabilitySignalCount,
-        readability_signals.len(),
-        MIN_READABILITY_RISK_SIGNALS,
-        "signals",
-    ));
-
-    let evidence = readability_signals
-        .iter()
-        .map(|signal| signal.readability_label(function))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    signals
-        .findings
-        .push(crate::scanner::scored_finding(FindingInput::new(
-            FindingKind::ReadabilityRisk,
-            file.display_path.clone(),
-            Some(function.line),
-            format!(
-                "function `{}` combines {} readability risks: {evidence}",
-                function.name,
-                readability_signals.len()
-            ),
-            metrics,
         )));
 }
 
@@ -469,15 +417,6 @@ impl FunctionFindingSignal {
                 "function `{}` has {} parameters; consider grouping related data",
                 function.name, function.parameter_count
             ),
-        }
-    }
-
-    fn readability_label(self, function: &FunctionMetric) -> String {
-        match self {
-            Self::LongFunction => format!("{} lines", function.lines),
-            Self::ComplexFunction => format!("complexity {}", function.complexity),
-            Self::DeepNesting => format!("nesting depth {}", function.nesting_depth),
-            Self::ManyParameters => format!("{} parameters", function.parameter_count),
         }
     }
 }

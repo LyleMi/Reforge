@@ -193,5 +193,29 @@ reason = "structure analysis exposes parser helpers used by nested aggregation m
 [[suppressions]]
 kind = "long_function"
 path = "src/scan/mod.rs"
-line = 90
+line = 94
 reason = "scan_report keeps the scan pipeline phases in one ordered orchestration path"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/manifest.rs"
+line = 126
+reason = "issue-family classification is intentionally exhaustive so every detector has one stable family"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/manifest.rs"
+line = 190
+reason = "typed detector input registry is intentionally exhaustive so metric contracts remain centrally auditable"
+
+[[suppressions]]
+kind = "large_type"
+path = "src/cli/scan_args.rs"
+line = 4
+reason = "ScanArgs mirrors the public CLI surface and is intentionally explicit"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/scan/mod.rs"
+line = 1
+reason = "scan orchestration keeps source collection, coverage accounting, and pipeline sequencing together"

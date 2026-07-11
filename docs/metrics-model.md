@@ -1,5 +1,11 @@
 # Metrics Model
 
+Priority is `round(100 × refactor_utility × action_probability)`, where
+`action_probability = detection_reliability × interpretation_reliability`.
+Coverage is reported independently and never discounts an already observed
+issue. Utility uses non-negative weights summing to one; correlated metrics use
+the strongest evidence within a factor rather than being added together.
+
 Reforge separates measurement from interpretation. The scanner first collects
 raw directory, file, function, type, and churn metrics, then derives summaries, hotspots,
 and findings from that model. The model reports maintainability and
@@ -72,7 +78,8 @@ Priority factors:
 - `spread`: how broadly related locations cross files.
 - `change_pressure`: churn pressure from matching hotspots.
 - `actionability`: how directly the signal suggests a refactoring action.
-- `confidence`: detector confidence multiplier.
+- `detection_reliability`: estimated probability that the evidence is correct.
+- `interpretation_reliability`: conditional probability that the proposed action is suitable.
 
 The weighted priority formula is:
 
@@ -82,7 +89,7 @@ The weighted priority formula is:
  + (spread * 0.15)
  + (change_pressure * 0.15)
  + (actionability * 0.10))
-* confidence
+* detection reliability × interpretation reliability
 ```
 
 Severity bands:
@@ -102,7 +109,7 @@ metric-dimension label, which mixed measurements, symptoms, and quality
 outcomes at different abstraction levels.
 
 Correlated atomic findings remain available for filtering, baselines, and CI,
-but `issue_clusters` combine evidence that describes the same entity,
+but `issues` combine evidence in the same family for the same normalized subject,
 mechanism, and likely action. Human and HTML output present the cluster's
 highest-priority finding as the issue and retain member IDs for auditability.
 See [Metric Ontology](metric-ontology.md) for definitions and invariants.

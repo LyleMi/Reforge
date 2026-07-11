@@ -2,8 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cli::HotspotModel;
 use crate::detectors::manifest::{
-    actionability, classification, default_confidence as manifest_default_confidence, impact,
-    input_metrics,
+    actionability, classification, default_detection_reliability, impact, input_metrics,
 };
 use crate::model::{
     FileRawMetric, Finding, FindingKind, FindingMetric, Hotspot, HotspotLevel, MetricId,
@@ -28,7 +27,8 @@ pub struct FindingInput {
     line: Option<usize>,
     message: String,
     metrics: Vec<FindingMetric>,
-    confidence: Option<f64>,
+    detection_reliability: Option<f64>,
+    interpretation_reliability: Option<f64>,
     related_locations: Vec<RelatedLocation>,
 }
 
@@ -46,13 +46,14 @@ impl FindingInput {
             line,
             message: message.into(),
             metrics,
-            confidence: None,
+            detection_reliability: None,
+            interpretation_reliability: None,
             related_locations: Vec::new(),
         }
     }
 
-    pub fn with_confidence(mut self, confidence: f64) -> Self {
-        self.confidence = Some(confidence);
+    pub fn with_detection_reliability(mut self, reliability: f64) -> Self {
+        self.detection_reliability = Some(reliability);
         self
     }
 
@@ -80,9 +81,10 @@ fn build_finding(input: FindingInput) -> Finding {
         "finding {:?} emitted a metric outside its detector contract",
         input.kind
     );
-    let confidence = input
-        .confidence
-        .unwrap_or_else(|| default_confidence(input.kind));
+    let detection_reliability = input
+        .detection_reliability
+        .unwrap_or_else(|| detection_reliability(input.kind));
+    let interpretation_reliability = input.interpretation_reliability.unwrap_or(0.90);
     let (construct, mechanism) = classification(input.kind);
     let mut finding = Finding {
         id: Default::default(),
@@ -93,16 +95,18 @@ fn build_finding(input: FindingInput) -> Finding {
         metrics: input.metrics,
         construct,
         mechanism,
-        issue_cluster_id: None,
+        issue_id: None,
         priority: 0,
-        confidence,
-        priority_factors: priority_factors(
-            input.kind,
-            &[],
-            confidence,
-            &input.related_locations,
-            0.0,
-        ),
+        detection_reliability,
+        interpretation_reliability,
+        priority_factors: priority_factors(PriorityFactorInput {
+            kind: input.kind,
+            metrics: &[],
+            detection_reliability,
+            interpretation_reliability,
+            related_locations: &input.related_locations,
+            change_pressure: 0.0,
+        }),
         rank_explanation: String::new(),
         message: input.message,
         related_locations: input.related_locations,
@@ -124,15 +128,22 @@ pub fn severity_for_priority(priority: u8) -> Severity {
 pub fn priority_score(
     kind: FindingKind,
     metrics: &[FindingMetric],
-    confidence: f64,
+    detection_reliability: f64,
     related_locations: &[RelatedLocation],
 ) -> u8 {
-    let factors = priority_factors(kind, metrics, confidence, related_locations, 0.0);
+    let factors = priority_factors(PriorityFactorInput {
+        kind,
+        metrics,
+        detection_reliability,
+        interpretation_reliability: 0.90,
+        related_locations,
+        change_pressure: 0.0,
+    });
     priority_from_factors(&factors)
 }
 
-pub fn default_confidence(kind: FindingKind) -> f64 {
-    manifest_default_confidence(kind)
+pub fn detection_reliability(kind: FindingKind) -> f64 {
+    default_detection_reliability(kind)
 }
 
 pub(crate) fn finalize_scoring(
@@ -158,13 +169,14 @@ pub(crate) fn finalize_scoring(
 }
 
 fn refresh_finding_priority(finding: &mut Finding, change_pressure: f64) {
-    finding.priority_factors = priority_factors(
-        finding.kind,
-        &finding.metrics,
-        finding.confidence,
-        &finding.related_locations,
+    finding.priority_factors = priority_factors(PriorityFactorInput {
+        kind: finding.kind,
+        metrics: &finding.metrics,
+        detection_reliability: finding.detection_reliability,
+        interpretation_reliability: finding.interpretation_reliability,
+        related_locations: &finding.related_locations,
         change_pressure,
-    );
+    });
     finding.priority = priority_from_factors(&finding.priority_factors);
     finding.severity = severity_for_priority(finding.priority);
     finding.rank_explanation = rank_explanation(
@@ -175,30 +187,34 @@ fn refresh_finding_priority(finding: &mut Finding, change_pressure: f64) {
     finding.refresh_id();
 }
 
-fn priority_factors(
+struct PriorityFactorInput<'a> {
     kind: FindingKind,
-    metrics: &[FindingMetric],
-    confidence: f64,
-    related_locations: &[RelatedLocation],
+    metrics: &'a [FindingMetric],
+    detection_reliability: f64,
+    interpretation_reliability: f64,
+    related_locations: &'a [RelatedLocation],
     change_pressure: f64,
-) -> PriorityFactors {
+}
+
+fn priority_factors(input: PriorityFactorInput<'_>) -> PriorityFactors {
     PriorityFactors {
-        impact: impact_score(kind),
-        intensity: intensity_score(metrics),
-        spread: spread_score(related_locations),
-        change_pressure,
-        actionability: actionability_score(kind),
-        confidence: confidence.clamp(0.0, 1.0),
+        impact: impact_score(input.kind),
+        intensity: intensity_score(input.metrics),
+        spread: spread_score(input.related_locations),
+        change_pressure: input.change_pressure,
+        actionability: actionability_score(input.kind),
+        detection_reliability: input.detection_reliability.clamp(0.0, 1.0),
+        interpretation_reliability: input.interpretation_reliability.clamp(0.0, 1.0),
     }
 }
 
-fn priority_from_factors(factors: &PriorityFactors) -> u8 {
+pub(crate) fn priority_from_factors(factors: &PriorityFactors) -> u8 {
     let weighted = (factors.impact * 0.30)
         + (factors.intensity * 0.30)
         + (factors.spread * 0.15)
         + (factors.change_pressure * 0.15)
         + (factors.actionability * 0.10);
-    (weighted * factors.confidence)
+    (weighted * factors.detection_reliability * factors.interpretation_reliability)
         .round()
         .clamp(MIN_SCORE, MAX_SCORE) as u8
 }
@@ -291,8 +307,23 @@ fn rank_explanation(
     factors: &PriorityFactors,
     related_locations: &[RelatedLocation],
 ) -> String {
-    let mut reasons = Vec::new();
-    reasons.push(match classification(kind).1 {
+    let mut reasons = vec![mechanism_explanation(classification(kind).1)];
+
+    if unique_related_file_count(related_locations) > 1 {
+        reasons.push("cross-file spread");
+    }
+    if let Some(reason) = change_pressure_explanation(factors.change_pressure) {
+        reasons.push(reason);
+    }
+    reasons.push(action_probability_explanation(factors));
+    if factors.actionability < 60.0 {
+        reasons.push("lower actionability");
+    }
+    reasons.join(", ")
+}
+
+fn mechanism_explanation(mechanism: SignalMechanism) -> &'static str {
+    match mechanism {
         SignalMechanism::CognitiveLoad => "cognitive-load signal",
         SignalMechanism::DependencyPropagation => "dependency-propagation signal",
         SignalMechanism::ResponsibilityDispersion => "responsibility-dispersion signal",
@@ -300,31 +331,28 @@ fn rank_explanation(
         SignalMechanism::ChangePressure => "change-pressure signal",
         SignalMechanism::VerificationDifficulty => "verification-difficulty signal",
         SignalMechanism::KnowledgeDrift => "knowledge-drift signal",
-    });
-
-    if unique_related_file_count(related_locations) > 1 {
-        reasons.push("cross-file spread");
     }
+}
 
-    if factors.change_pressure >= 70.0 {
-        reasons.push("high churn pressure");
-    } else if factors.change_pressure >= 35.0 {
-        reasons.push("moderate churn pressure");
-    }
-
-    if factors.confidence >= 0.85 {
-        reasons.push("high confidence");
-    } else if factors.confidence >= 0.65 {
-        reasons.push("medium confidence");
+fn change_pressure_explanation(change_pressure: f64) -> Option<&'static str> {
+    if change_pressure >= 70.0 {
+        Some("high churn pressure")
+    } else if change_pressure >= 35.0 {
+        Some("moderate churn pressure")
     } else {
-        reasons.push("low confidence");
+        None
     }
+}
 
-    if factors.actionability < 60.0 {
-        reasons.push("lower actionability");
+fn action_probability_explanation(factors: &PriorityFactors) -> &'static str {
+    let probability = factors.detection_reliability * factors.interpretation_reliability;
+    if probability >= 0.85 {
+        "high action probability"
+    } else if probability >= 0.65 {
+        "medium action probability"
+    } else {
+        "low action probability"
     }
-
-    reasons.join(", ")
 }
 
 fn unique_related_file_count(related_locations: &[RelatedLocation]) -> usize {

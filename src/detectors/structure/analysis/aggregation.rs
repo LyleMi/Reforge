@@ -342,7 +342,7 @@ pub(in crate::detectors::structure) fn group_occurrences(
                     message(&key, group.len()),
                     metrics,
                 )
-                .with_confidence(repeated_literal_confidence(&key, &group))
+                .with_detection_reliability(repeated_literal_confidence(&key, &group))
                 .with_related_locations(related_locations),
             )
         } else {

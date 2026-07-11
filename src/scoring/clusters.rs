@@ -1,33 +1,32 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
-use crate::detectors::manifest::{action, parent_kind, relations};
-use crate::model::{Finding, FindingKind, IssueCluster, IssueKey, SignalMechanism};
+use crate::detectors::manifest::{action, entity_scope, evidence_role, issue_family};
+use crate::model::{
+    EntityScope, EvidenceRole, EvidenceSubject, Finding, Issue, IssueKey, RefactorAction,
+    SignalMechanism,
+};
 
-pub(crate) fn cluster_findings(findings: &mut [Finding]) -> Vec<IssueCluster> {
-    let mut candidate_indices = findings
-        .iter()
-        .enumerate()
-        .filter_map(|(index, finding)| is_cluster_candidate(finding).then_some(index))
-        .collect::<Vec<_>>();
-    candidate_indices.sort_unstable_by(|left, right| findings[*left].id.cmp(&findings[*right].id));
-    let mut components = Vec::<Vec<usize>>::new();
-
-    for finding_index in candidate_indices {
-        if let Some(component) = components.iter_mut().find(|component| {
-            component
-                .iter()
-                .all(|member| findings_overlap(&findings[finding_index], &findings[*member]))
-        }) {
-            component.push(finding_index);
-        } else {
-            components.push(vec![finding_index]);
+pub(crate) fn cluster_findings(findings: &mut [Finding]) -> Vec<Issue> {
+    let mut groups =
+        BTreeMap::<(String, EvidenceSubject, SignalMechanism, RefactorAction), Vec<usize>>::new();
+    for (index, finding) in findings.iter().enumerate() {
+        if evidence_role(finding.kind) != EvidenceRole::CompositeSummary {
+            groups
+                .entry((
+                    issue_family(finding.kind).into(),
+                    subject(finding),
+                    finding.mechanism,
+                    action(finding.kind),
+                ))
+                .or_default()
+                .push(index);
         }
     }
-
-    let mut clusters = components
+    let mut clusters = groups
         .into_iter()
-        .filter(|members| members.len() > 1)
-        .map(|members| build_cluster(findings, members))
+        .map(|((family, subject, _, _), members)| {
+            build_cluster(findings, &family, subject, members)
+        })
         .collect::<Vec<_>>();
     clusters.sort_by(|left, right| {
         right
@@ -40,68 +39,42 @@ pub(crate) fn cluster_findings(findings: &mut [Finding]) -> Vec<IssueCluster> {
     clusters
 }
 
-fn is_cluster_candidate(finding: &Finding) -> bool {
-    parent_kind(finding.kind).is_some()
-        || !relations(finding.kind).is_empty()
-        || matches!(
-            finding.kind,
-            FindingKind::ReadabilityRisk | FindingKind::MissingDocumentationSet
-        )
+fn subject(finding: &Finding) -> EvidenceSubject {
+    match entity_scope(finding.kind) {
+        EntityScope::Repository => EvidenceSubject::Repository,
+        EntityScope::Directory => EvidenceSubject::Directory {
+            path: finding.path.clone(),
+        },
+        EntityScope::File => EvidenceSubject::File {
+            path: finding.path.clone(),
+        },
+        EntityScope::Function => EvidenceSubject::Function {
+            path: finding.path.clone(),
+            line: finding.line.unwrap_or(0),
+        },
+        EntityScope::Type => EvidenceSubject::Type {
+            path: finding.path.clone(),
+            line: finding.line.unwrap_or(0),
+        },
+        EntityScope::FindingGroup => EvidenceSubject::Group {
+            locations: std::iter::once(format!("{}:{}", finding.path, finding.line.unwrap_or(0)))
+                .chain(
+                    finding
+                        .related_locations
+                        .iter()
+                        .map(|location| format!("{}:{}", location.path, location.line)),
+                )
+                .collect(),
+        },
+    }
 }
 
-fn kinds_related(left: FindingKind, right: FindingKind) -> bool {
-    if left == right {
-        return false;
-    }
-
-    if parent_kind(left) == Some(right) || parent_kind(right) == Some(left) {
-        return true;
-    }
-    if parent_kind(left).is_some() && parent_kind(left) == parent_kind(right) {
-        return true;
-    }
-
-    relations(left)
-        .iter()
-        .any(|relation| relation.kind == right)
-        || relations(right)
-            .iter()
-            .any(|relation| relation.kind == left)
-}
-
-fn findings_overlap(left: &Finding, right: &Finding) -> bool {
-    if left.construct != right.construct
-        || left.mechanism != right.mechanism
-        || action(left.kind) != action(right.kind)
-        || !kinds_related(left.kind, right.kind)
-    {
-        return false;
-    }
-    if left.path == right.path && left.line == right.line {
-        return true;
-    }
-    if left.mechanism == SignalMechanism::CognitiveLoad {
-        return false;
-    }
-
-    let left_paths = evidence_paths(left);
-    evidence_paths(right)
-        .iter()
-        .any(|path| left_paths.contains(path))
-}
-
-fn evidence_paths(finding: &Finding) -> BTreeSet<&str> {
-    std::iter::once(finding.path.as_str())
-        .chain(
-            finding
-                .related_locations
-                .iter()
-                .map(|location| location.path.as_str()),
-        )
-        .collect()
-}
-
-fn build_cluster(findings: &mut [Finding], mut members: Vec<usize>) -> IssueCluster {
+fn build_cluster(
+    findings: &mut [Finding],
+    family: &str,
+    subject: EvidenceSubject,
+    mut members: Vec<usize>,
+) -> Issue {
     members.sort_by(|left, right| {
         findings[*right]
             .priority
@@ -115,14 +88,17 @@ fn build_cluster(findings: &mut [Finding], mut members: Vec<usize>) -> IssueClus
     let path = primary.path.clone();
     let line = primary.line;
     let primary_finding_id = primary.id.clone();
-    let priority = primary.priority;
-    let severity = primary.severity;
+    let priority_factors = strongest_factors(findings, &members);
+    let detection_reliability = priority_factors.detection_reliability;
+    let interpretation_reliability = priority_factors.interpretation_reliability;
+    let priority = crate::scoring::priority_from_factors(&priority_factors);
+    let severity = crate::scoring::severity_for_priority(priority);
     let mut finding_ids = members
         .iter()
         .map(|index| findings[*index].id.clone())
         .collect::<Vec<_>>();
     finding_ids.sort();
-    let id = IssueKey::from_evidence(&finding_ids);
+    let id = IssueKey::from_family_and_subject(family, &subject);
     let mut kinds = members
         .iter()
         .map(|index| findings[*index].kind)
@@ -131,11 +107,13 @@ fn build_cluster(findings: &mut [Finding], mut members: Vec<usize>) -> IssueClus
     kinds.dedup();
 
     for index in members {
-        findings[index].issue_cluster_id = Some(id.clone());
+        findings[index].issue_id = Some(id.clone());
     }
 
-    IssueCluster {
+    Issue {
         id,
+        family: family.to_string(),
+        summary: issue_summary(family, &subject),
         construct,
         mechanism,
         action,
@@ -146,12 +124,41 @@ fn build_cluster(findings: &mut [Finding], mut members: Vec<usize>) -> IssueClus
         kinds,
         priority,
         severity,
+        priority_factors,
+        subject,
+        detection_reliability,
+        interpretation_reliability,
     }
+}
+
+fn strongest_factors(findings: &[Finding], members: &[usize]) -> crate::model::PriorityFactors {
+    let mut result = crate::model::PriorityFactors::default();
+    for factors in members
+        .iter()
+        .map(|index| &findings[*index].priority_factors)
+    {
+        result.impact = result.impact.max(factors.impact);
+        result.intensity = result.intensity.max(factors.intensity);
+        result.spread = result.spread.max(factors.spread);
+        result.change_pressure = result.change_pressure.max(factors.change_pressure);
+        result.actionability = result.actionability.max(factors.actionability);
+        result.detection_reliability = result
+            .detection_reliability
+            .max(factors.detection_reliability);
+        result.interpretation_reliability = result
+            .interpretation_reliability
+            .max(factors.interpretation_reliability);
+    }
+    result
+}
+
+fn issue_summary(family: &str, subject: &EvidenceSubject) -> String {
+    format!("{} at {}", family.replace('_', " "), subject.identity())
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::model::RelatedLocation;
+    use crate::model::{FindingKind, RelatedLocation};
     use crate::scoring::{FindingInput, finding};
 
     use super::*;
@@ -193,15 +200,15 @@ mod tests {
 
         let clusters = cluster_findings(&mut findings);
 
-        assert_eq!(clusters.len(), 1);
+        assert_eq!(clusters.len(), 2);
         assert_eq!(clusters[0].finding_ids.len(), 2);
         assert_eq!(
             clusters[0].action,
             crate::model::RefactorAction::SimplifyFunction
         );
         assert_eq!(clusters[0].primary_finding_id, findings[0].id);
-        assert_eq!(findings[0].issue_cluster_id, findings[1].issue_cluster_id);
-        assert!(findings[2].issue_cluster_id.is_none());
+        assert_eq!(findings[0].issue_id, findings[1].issue_id);
+        assert!(findings[2].issue_id.is_some());
     }
 
     #[test]
@@ -213,12 +220,8 @@ mod tests {
 
         let clusters = cluster_findings(&mut findings);
 
-        assert!(clusters.is_empty());
-        assert!(
-            findings
-                .iter()
-                .all(|finding| finding.issue_cluster_id.is_none())
-        );
+        assert_eq!(clusters.len(), 2);
+        assert!(findings.iter().all(|finding| finding.issue_id.is_some()));
     }
 
     #[test]
@@ -235,14 +238,14 @@ mod tests {
 
         let clusters = cluster_findings(&mut findings);
 
-        assert_eq!(clusters.len(), 1);
-        assert_eq!(clusters[0].finding_ids.len(), 2);
+        assert_eq!(clusters.len(), 3);
+        assert!(clusters.iter().all(|issue| issue.finding_ids.len() == 1));
         assert_eq!(
             findings
                 .iter()
-                .filter(|finding| finding.issue_cluster_id.is_none())
+                .filter(|finding| finding.issue_id.is_none())
                 .count(),
-            1
+            0
         );
     }
 
@@ -293,13 +296,14 @@ mod tests {
     }
 
     #[test]
-    fn issue_key_depends_only_on_the_evidence_set() {
-        let first = crate::model::EvidenceId::from("rf2-first".to_string());
-        let second = crate::model::EvidenceId::from("rf2-second".to_string());
-
+    fn issue_key_depends_only_on_family_and_subject() {
+        let subject = EvidenceSubject::Function {
+            path: "src/lib.rs".into(),
+            line: 10,
+        };
         assert_eq!(
-            IssueKey::from_evidence([&first, &second]),
-            IssueKey::from_evidence([&second, &first, &second])
+            IssueKey::from_family_and_subject("readability", &subject),
+            IssueKey::from_family_and_subject("readability", &subject)
         );
     }
 }

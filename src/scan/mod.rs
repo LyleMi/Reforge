@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -10,13 +10,13 @@ use ignore::{DirEntry, WalkBuilder};
 use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
 use crate::cli::ScanArgs;
 use crate::detectors::dependency_graph::scan_dependency_graph_report;
-use crate::detectors::manifest::{detector_manifest, raw_metric_manifest};
+use crate::detectors::manifest::{detector_manifest, evidence_role, raw_metric_manifest};
 use crate::documentation::scan_documentation;
 use crate::model::{
-    ChurnFileMetric, DependencyGraphSnapshot, DirectoryRawMetric, FileRawMetric, Finding,
-    FindingKind, FindingMetric, FunctionRawMetric, MetricId, RawMetrics,
-    SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary, SuppressionSummary,
-    TypeRawMetric,
+    ChurnFileMetric, CoverageManifestEntry, CoverageStatus, CoverageSummary,
+    DependencyGraphSnapshot, DirectoryRawMetric, EvidenceRole, FileRawMetric, Finding, FindingKind,
+    FindingMetric, FunctionRawMetric, MetricId, RawMetrics, SCAN_REPORT_SCHEMA_VERSION, ScanReport,
+    ScanStats, ScanSummary, SuppressionSummary, TypeRawMetric,
 };
 use crate::scoring::{
     FindingInput, StaticRiskThresholds, cluster_findings, finalize_scoring, finding, rank_hotspots,
@@ -124,6 +124,8 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
             .expect("effective args should set hotspot model"),
         StaticRiskThresholds::from(&effective_args),
     );
+    scan.findings
+        .retain(|finding| evidence_role(finding.kind) != EvidenceRole::CompositeSummary);
     finalize_scoring(&mut scan.findings, &scan.raw_metrics, &hotspots);
     let post_score_controls = apply_post_score_finding_controls(
         &mut scan,
@@ -131,16 +133,20 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         &effective_args,
         &effective.suppressions,
     )?;
-    let issue_clusters = cluster_findings(&mut scan.findings);
-    let clustered_facets = issue_clusters
-        .iter()
-        .map(|cluster| cluster.finding_ids.len().saturating_sub(1))
-        .sum::<usize>();
+    let issues = cluster_findings(&mut scan.findings);
+    let manifest = detector_manifest();
+    let (coverage_manifest, coverage_summary) = coverage(
+        &manifest,
+        &scan.stats,
+        &scan.structure_sources,
+        scan.raw_metrics.types.len(),
+        issues.len(),
+    );
 
     let summary = ScanSummary {
         scanned_files: scan.stats.source_files_scanned,
         finding_count: scan.findings.len(),
-        issue_count: scan.findings.len().saturating_sub(clustered_facets),
+        issue_count: issues.len(),
         hotspot_count: hotspots.len(),
         similar_function_group_count: post_score_controls.similar_function_group_count,
         duration_ms: started_at.elapsed().as_millis(),
@@ -150,11 +156,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         churn: churn_summary,
     };
 
-    progress.report(&format!(
-        "Finished scan: {} files, {} findings",
-        summary.scanned_files, summary.finding_count
-    ));
-    progress.finish();
+    finish_progress(progress, &summary);
 
     Ok(ScanReport {
         schema_version: SCAN_REPORT_SCHEMA_VERSION,
@@ -166,10 +168,130 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         dependency_graph: scan.dependency_graph,
         hotspots,
         suppression_summary: post_score_controls.suppression_summary,
-        issue_clusters,
-        detector_manifest: detector_manifest(),
+        coverage_manifest,
+        coverage_summary,
+        issues,
+        detector_manifest: manifest,
         findings: scan.findings,
     })
+}
+
+fn finish_progress(progress: &mut dyn ProgressSink, summary: &ScanSummary) {
+    progress.report(&format!(
+        "Finished scan: {} files, {} findings",
+        summary.scanned_files, summary.finding_count
+    ));
+    progress.finish();
+}
+
+fn coverage(
+    manifest: &[crate::model::DetectorManifestEntry],
+    stats: &ScanStats,
+    source_files: &[SourceFile],
+    type_count: usize,
+    issue_count: usize,
+) -> (Vec<CoverageManifestEntry>, CoverageSummary) {
+    let detected_languages = source_files
+        .iter()
+        .filter_map(|source| detected_language(&source.path))
+        .collect::<BTreeSet<_>>();
+    let mut cells = BTreeMap::<_, Vec<_>>::new();
+    for entry in manifest {
+        cells
+            .entry((entry.mechanism, entry.entity_scope))
+            .or_default()
+            .push(entry);
+    }
+    let coverage_manifest = cells
+        .into_iter()
+        .map(|((mechanism, entity_scope), entries)| {
+            let applicable = entries
+                .iter()
+                .copied()
+                .filter(|entry| detector_is_applicable(entry, &detected_languages))
+                .collect::<Vec<_>>();
+            let observed = !applicable.is_empty();
+            CoverageManifestEntry {
+                mechanism,
+                entity_scope,
+                status: if observed {
+                    CoverageStatus::Observed
+                } else {
+                    CoverageStatus::Unsupported
+                },
+                reason: if observed {
+                    "applicable detectors completed for this scan".into()
+                } else {
+                    "no detected language is supported by detectors in this coverage cell".into()
+                },
+                detectors: entries.into_iter().map(|entry| entry.kind).collect(),
+            }
+        })
+        .collect();
+    let coverage_summary = CoverageSummary {
+        detected_languages: detected_languages.iter().cloned().collect(),
+        applicable_detectors: manifest
+            .iter()
+            .filter(|entry| detector_is_applicable(entry, &detected_languages))
+            .map(|entry| entry.kind)
+            .collect(),
+        analyzed_entities: BTreeMap::from([
+            (crate::model::EntityScope::Repository, 1),
+            (
+                crate::model::EntityScope::Directory,
+                stats.directories_scanned,
+            ),
+            (crate::model::EntityScope::File, stats.source_files_scanned),
+            (
+                crate::model::EntityScope::Function,
+                stats.function_candidates,
+            ),
+            (crate::model::EntityScope::Type, type_count),
+            (crate::model::EntityScope::FindingGroup, issue_count),
+        ]),
+        parse_failures: 0,
+        unobservable_reasons: Vec::new(),
+    };
+    (coverage_manifest, coverage_summary)
+}
+
+fn detector_is_applicable(
+    entry: &crate::model::DetectorManifestEntry,
+    detected_languages: &BTreeSet<String>,
+) -> bool {
+    entry.supported_languages.iter().any(|language| {
+        matches!(language.as_str(), "repository" | "language_neutral_paths")
+            || detected_languages.contains(language)
+    })
+}
+
+fn detected_language(path: &Path) -> Option<String> {
+    const EXTENSION_LANGUAGES: &[(&str, &str)] = &[
+        ("rs", "rust"),
+        ("js", "javascript"),
+        ("jsx", "javascript"),
+        ("ts", "typescript"),
+        ("tsx", "tsx"),
+        ("py", "python"),
+        ("go", "go"),
+        ("java", "java"),
+        ("cs", "csharp"),
+        ("kt", "kotlin"),
+        ("php", "php"),
+        ("rb", "ruby"),
+        ("c", "c"),
+        ("h", "c"),
+        ("cc", "cpp"),
+        ("cpp", "cpp"),
+        ("cxx", "cpp"),
+        ("hh", "cpp"),
+        ("hpp", "cpp"),
+        ("hxx", "cpp"),
+    ];
+    let extension = path.extension()?.to_str()?;
+    EXTENSION_LANGUAGES
+        .iter()
+        .find_map(|(candidate, language)| (*candidate == extension).then(|| (*language).into()))
 }
 
 fn run_scan_signals(

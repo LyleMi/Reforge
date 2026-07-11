@@ -46,7 +46,9 @@ const REQUIRED_SCHEMA_FIELDS: &[&str] = &[
     "dependency_graph",
     "hotspots",
     "suppression_summary",
-    "issue_clusters",
+    "coverage_manifest",
+    "coverage_summary",
+    "issues",
     "detector_manifest",
     "findings",
     "id",
@@ -56,21 +58,23 @@ const REQUIRED_SCHEMA_FIELDS: &[&str] = &[
     "line",
     "metrics",
     "priority",
-    "confidence",
+    "detection_reliability",
+    "interpretation_reliability",
     "priority_factors",
     "rank_explanation",
     "recommendation",
     "related_locations",
     "action",
     "entity_scope",
-    "relations",
+    "issue_family",
+    "evidence_role",
+    "constituent_kinds",
 ];
 
 #[derive(Debug)]
 struct DocumentationInventory {
     root: PathBuf,
     readme: Option<PathBuf>,
-    docs_dir: PathBuf,
     docs_index: Option<PathBuf>,
     user_guide: Option<PathBuf>,
     configuration: Option<PathBuf>,
@@ -144,7 +148,6 @@ impl DocumentationInventory {
         let mut inventory = Self {
             root: root.to_path_buf(),
             readme,
-            docs_dir,
             docs_index,
             user_guide,
             configuration,
@@ -194,9 +197,6 @@ impl DocumentationInventory {
     fn findings(&self) -> Result<Vec<Finding>> {
         let mut findings = Vec::new();
 
-        if let Some(finding) = self.missing_documentation_set() {
-            findings.push(finding);
-        }
         if let Some(finding) = self.missing_user_guide() {
             findings.push(finding);
         }
@@ -229,39 +229,6 @@ impl DocumentationInventory {
         }
 
         Ok(findings)
-    }
-
-    fn missing_documentation_set(&self) -> Option<Finding> {
-        let missing_count = [
-            self.docs_index.as_ref(),
-            self.user_guide.as_ref(),
-            self.configuration.as_ref(),
-            self.report_schema.as_ref(),
-            self.metrics_model.as_ref(),
-            self.detectors.as_ref(),
-            self.architecture.as_ref(),
-            self.contributing.as_ref(),
-        ]
-        .into_iter()
-        .filter(|path| path.is_none())
-        .count();
-
-        if self.docs_dir.is_dir() && missing_count == 0 {
-            return None;
-        }
-
-        Some(finding(FindingInput::new(
-            FindingKind::MissingDocumentationSet,
-            display_path(&self.root),
-            None,
-            "missing independent docs set; README should link to stable docs for users and maintainers",
-            vec![FindingMetric::threshold(
-                MetricId::DocumentationMissingRequiredDocs,
-                missing_count.max(1),
-                1,
-                "documents",
-            )],
-        )))
     }
 
     fn missing_user_guide(&self) -> Option<Finding> {

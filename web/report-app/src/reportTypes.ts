@@ -50,9 +50,10 @@ export type Finding = {
   metrics?: FindingMetric[];
   construct?: string;
   mechanism?: string;
-  issue_cluster_id?: string | null;
+  issue_id?: string | null;
   priority?: number;
-  confidence?: number;
+  detection_reliability?: number;
+  interpretation_reliability?: number;
   priority_factors?: Record<string, number>;
   rank_explanation?: string;
   message?: string;
@@ -60,7 +61,7 @@ export type Finding = {
   related_locations?: RelatedLocation[];
 };
 
-export type IssueCluster = {
+export type Issue = {
   id: string;
   construct: string;
   mechanism: string;
@@ -74,11 +75,6 @@ export type IssueCluster = {
   severity: Severity;
 };
 
-export type DetectorRelation = {
-  kind: string;
-  relation: "facet_of" | "alternative_evidence" | string;
-};
-
 export type DetectorManifestEntry = {
   kind: string;
   construct: string;
@@ -88,8 +84,6 @@ export type DetectorManifestEntry = {
   approach: string;
   supported_languages: string[];
   precision_risk: string;
-  parent_kind?: string | null;
-  relations: DetectorRelation[];
 };
 
 export type RawMetricManifestEntry = {
@@ -183,7 +177,7 @@ export type ScanReport = {
   dependency_graph?: DependencyGraph;
   hotspots?: Hotspot[];
   suppression_summary?: SuppressionSummary;
-  issue_clusters?: IssueCluster[];
+  issues?: Issue[];
   detector_manifest?: DetectorManifestEntry[];
   findings?: Finding[];
 };

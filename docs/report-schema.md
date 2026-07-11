@@ -1,6 +1,13 @@
 # Report Schema
 
-JSON and YAML reports use schema version `17`. The same Rust data model is
+Schema 18 separates atomic evidence (`findings`) from decision units (`issues`).
+Each finding exposes `detection_reliability` and `interpretation_reliability`;
+the manifest declares `issue_family`, `evidence_role`, and
+`constituent_kinds`. `coverage_manifest` declares the supported mechanism and
+entity-scope matrix, while `coverage_summary` records observed languages,
+analyzed entities, parse failures, and unobservable reasons for this run.
+
+JSON and YAML reports use schema version `18`. Version 17 reports and baselines are rejected and must be regenerated. The same Rust data model is
 serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 that carries the same finding IDs in result fingerprints.
 
@@ -8,7 +15,7 @@ that carries the same finding IDs in result fingerprints.
 
 ```json
 {
-  "schema_version": 17,
+  "schema_version": 18,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
@@ -17,7 +24,9 @@ that carries the same finding IDs in result fingerprints.
   "dependency_graph": {},
   "hotspots": [],
   "suppression_summary": {},
-  "issue_clusters": [],
+  "coverage_manifest": [],
+  "coverage_summary": {},
+  "issues": [],
   "detector_manifest": [],
   "findings": []
 }
@@ -25,7 +34,7 @@ that carries the same finding IDs in result fingerprints.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `17`.
+- `schema_version`: report schema version. Current value is `18`.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
@@ -36,7 +45,7 @@ Top-level fields:
 - `hotspots`: ranked file, function, and type locations.
 - `suppression_summary`: aggregate counts for findings removed by
   suppressions.
-- `issue_clusters`: overlapping atomic findings grouped into human-facing
+- `issues`: compatible atomic evidence grouped into stable human-facing
   refactoring issues.
 - `detector_manifest`: coverage and classification metadata for every finding
   kind.
@@ -189,16 +198,17 @@ hard CI gate failures by themselves.
 Finding fields:
 
 - `kind`: detector-specific finding kind.
-- `id`: stable finding identifier in the form `rf2-<hex>`.
+- `id`: stable evidence identifier in the form `rf3-<hex>`.
 - `severity`: `info`, `warning`, or `critical`.
 - `path`: primary path.
 - `line`: primary line or `null`.
 - `metrics`: finding-specific measurements.
 - `construct`: primary ISO/IEC 25010-aligned maintainability construct.
 - `mechanism`: primary source-observable maintenance mechanism.
-- `issue_cluster_id`: owning issue cluster ID or `null`.
+- `issue_id`: owning issue ID or `null`.
 - `priority`: 0 through 100 refactoring priority.
-- `confidence`: detector confidence from 0.0 through 1.0.
+- `detection_reliability`: detector reliability from 0.0 through 1.0.
+- `interpretation_reliability`: interpretation reliability from 0.0 through 1.0.
 - `priority_factors`: scoring inputs.
 - `rank_explanation`: short ranking explanation.
 - `message`: human-readable summary.
@@ -226,7 +236,8 @@ Finding fields:
 - `spread`
 - `change_pressure`
 - `actionability`
-- `confidence`
+- `detection_reliability`
+- `interpretation_reliability`
 
 `related_locations` entries contain:
 
@@ -237,21 +248,21 @@ Finding fields:
 Very large `similar_functions` groups serialize at most 50 related locations
 to keep reports bounded.
 
-Finding IDs are deterministic for the same evidence identity. The `rf2-` ID
+Finding IDs are deterministic for the same evidence identity. The `rf3-` ID
 uses the finding kind, metric names, and the normalized, sorted, deduplicated
 set of primary and related path/line locations. It intentionally does not
 include the representative location choice, related-location order, names,
 message text, or metric values. Baseline comparison therefore recognizes the
 same evidence group when detector traversal order or ranking changes.
 
-## `issue_clusters`
+## `issues`
 
-Issue clusters contain `id`, `construct`, `mechanism`, `action`, `path`, `line`,
+Issues contain `id`, `construct`, `mechanism`, `action`, `path`, `line`,
 `primary_finding_id`, `finding_ids`, `kinds`, `priority`, and `severity`.
-Finding `id` values are stable `EvidenceId` values (`rf2-...`). Cluster `id`
-values are stable `IssueKey` values (`ic2-...`) derived from the sorted member
-EvidenceIds, not from the primary finding or detector input order.
-Only groups with at least two overlapping atomic findings are emitted. The
+Finding `id` values are stable `EvidenceId` values (`rf3-...`). Issue `id`
+values are stable `IssueKey` values (`ri3-...`) derived only from the issue
+family and canonical subject, not from evidence membership or input order.
+Every compatible atomic evidence group emits an issue. The
 primary member is the highest-priority finding; member findings remain in
 `findings` for baselines and detector-specific filtering.
 
@@ -259,10 +270,9 @@ primary member is the highest-priority finding; member findings remain in
 
 Each entry contains `kind`, `construct`, `mechanism`, `action`, `entity_scope`,
 `approach`, `supported_languages`, `precision_risk`, typed `input_metrics`,
-`default_confidence`, `impact`, `actionability`, optional `parent_kind`, and
-typed `relations`. A relation is either `facet_of` or
-`alternative_evidence`; clustering consumes these relations instead of
-inferring overlap from a shared mechanism alone. Consumers can distinguish
+`issue_family`, `evidence_role`, `constituent_kinds`,
+`default_detection_reliability`, `default_interpretation_reliability`, `impact`,
+and `actionability`. Consumers can distinguish
 unsupported analysis from an observed absence of findings.
 
 ## `raw_metric_manifest`
@@ -361,10 +371,9 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `17` formalizes `rf2-` EvidenceIds over canonical evidence-location
-sets and derives stable IssueKeys from cluster membership. Clustering orders
-evidence by EvidenceId before complete-link grouping, eliminating detector/input
-ordering from membership, primary selection, and cluster identity. Schema
+version `18` formalizes `rf3-` EvidenceIds and `ri3-` IssueKeys over canonical
+subjects. Issue identity is independent of alternative evidence membership and
+input ordering. Schema
 version `16` gives every finding metric a canonical dotted ID, adds directory
 raw metrics and percentile summaries, removes repeated parent-directory counts
 from file raw metrics and file hotspots, and exposes detector metric and

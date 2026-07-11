@@ -10,6 +10,8 @@ use crate::scanner::{
 };
 
 fn report(findings: Vec<Finding>) -> ScanReport {
+    let mut findings = findings;
+    let issues = crate::scoring::cluster_findings(&mut findings);
     ScanReport {
         schema_version: SCAN_REPORT_SCHEMA_VERSION,
         summary: ScanSummary {
@@ -45,7 +47,9 @@ fn report(findings: Vec<Finding>) -> ScanReport {
         dependency_graph: DependencyGraphSnapshot::default(),
         hotspots: Vec::new(),
         suppression_summary: SuppressionSummary::default(),
-        issue_clusters: Vec::new(),
+        coverage_manifest: Vec::new(),
+        coverage_summary: crate::model::CoverageSummary::default(),
+        issues,
         detector_manifest: Vec::new(),
         findings,
     }
@@ -91,7 +95,7 @@ fn human_report_renders_cluster_primary_once_and_keeps_raw_signal_count() {
     let clusters = crate::scoring::cluster_findings(&mut findings);
     let mut scan_report = report(findings);
     scan_report.summary.issue_count = 1;
-    scan_report.issue_clusters = clusters;
+    scan_report.issues = clusters;
 
     let output = render_human_report(&scan_report);
 
@@ -274,12 +278,12 @@ fn human_report_sorts_by_priority_and_renders_priority_confidence_and_metrics() 
     let info_index = output.find("src/info.rs:3").unwrap();
     assert!(critical_index < warning_index);
     assert!(warning_index < info_index);
-    assert!(output.contains("warning  p=58 c=1.00"));
-    assert!(output.contains("warning  p=48 c=1.00"));
+    assert!(output.contains("warning  p=52 c=0.90"));
+    assert!(output.matches("c=0.90").count() >= 2);
     assert!(output.contains("Signal mix"));
     assert!(output.contains("large file"));
     assert!(output.contains("metrics file.loc=1200/800 lines"));
-    assert!(output.contains("rank cognitive-load signal, high confidence"));
+    assert!(output.contains("rank cognitive-load signal, high action probability"));
 }
 
 #[test]
@@ -287,7 +291,7 @@ fn renders_colored_human_report_when_enabled() {
     let output = render_human_report_colored(&report(vec![large_file("src/a.rs", 900)]), true);
 
     assert!(output.contains("\u{1b}[1;36mReforge scan\u{1b}[0m"));
-    assert!(output.contains("\u{1b}[1;33mwarning \u{1b}[0m p=47 c=1.00"));
+    assert!(output.contains("\u{1b}[1;33mwarning \u{1b}[0m p=42 c=0.90"));
 }
 
 #[test]
@@ -345,8 +349,8 @@ fn renders_human_baseline_diff_summary_and_selected_findings() {
     old_worse.priority = old_worse.priority.saturating_sub(1);
     let baseline = report(vec![same.clone(), old_worse, resolved]);
     let scan_report = report(vec![same, worse, new]);
-    let diff = crate::baseline::diff_findings(
-        &scan_report.findings,
+    let diff = crate::baseline::diff_issues(
+        &scan_report.issues,
         &baseline,
         crate::cli::BaselineShow::NewOrWorse,
     );
@@ -374,7 +378,7 @@ fn renders_human_baseline_diff_summary_and_selected_findings() {
             .lines()
             .any(|line| line.contains("Resolved") && line.ends_with("1"))
     );
-    assert!(output.contains("Findings (new or worse)"));
+    assert!(output.contains("Issues (new or worse)"));
     assert!(output.contains("worse    warning"));
     assert!(output.contains("new      warning"));
     assert!(output.contains("src/worse.rs:1"));
@@ -389,8 +393,8 @@ fn renders_human_baseline_diff_when_selected_findings_are_empty() {
     let resolved = large_file("src/resolved.rs", 900);
     let baseline = report(vec![same.clone(), resolved]);
     let scan_report = report(vec![same]);
-    let diff = crate::baseline::diff_findings(
-        &scan_report.findings,
+    let diff = crate::baseline::diff_issues(
+        &scan_report.issues,
         &baseline,
         crate::cli::BaselineShow::New,
     );
@@ -398,8 +402,8 @@ fn renders_human_baseline_diff_when_selected_findings_are_empty() {
     let output = render_human_report_with_baseline(&scan_report, &diff);
 
     assert!(output.contains("Baseline diff"));
-    assert!(output.contains("Findings (new)"));
-    assert!(output.contains("No findings matched --show new."));
+    assert!(output.contains("Issues (new)"));
+    assert!(output.contains("No issues matched --show new."));
     assert!(!output.contains("src/same.rs:1"));
 }
 
@@ -435,12 +439,14 @@ fn renders_json_report_schema_v16_with_measurement_contract_metadata() {
     assert!(value.get("dependency_graph").is_some());
     assert!(value.get("hotspots").is_some());
     assert!(value.get("suppression_summary").is_some());
-    assert!(value.get("issue_clusters").is_some());
+    assert!(value.get("issues").is_some());
+    assert!(value.get("coverage_manifest").is_some());
+    assert!(value.get("coverage_summary").is_some());
     assert!(value.get("detector_manifest").is_some());
     assert!(
         value["findings"][0]["id"]
             .as_str()
-            .is_some_and(|id| id.starts_with("rf2-"))
+            .is_some_and(|id| id.starts_with("rf3-"))
     );
     assert_eq!(value["findings"][0]["kind"], "similar_functions");
     assert_eq!(
@@ -456,14 +462,14 @@ fn renders_json_report_schema_v16_with_measurement_contract_metadata() {
             .is_none()
     );
     assert!(value["findings"][0]["metrics"][0]["normalized"].is_number());
-    assert_eq!(value["findings"][0]["priority"], 37);
+    assert_eq!(value["findings"][0]["priority"], 33);
     assert!(value["findings"][0]["priority_factors"]["impact"].is_number());
     assert!(value["findings"][0]["score"].is_null());
     assert!(value["findings"][0]["score_breakdown"].is_null());
     assert!(value["findings"][0]["rank_reason"].is_null());
     assert_eq!(
         value["findings"][0]["rank_explanation"],
-        "duplication-divergence signal, high confidence"
+        "duplication-divergence signal, medium action probability"
     );
     assert!(value["findings"][0].get("magnitude").is_none());
 }
@@ -483,7 +489,7 @@ fn caps_serialized_similar_function_locations() {
                 "functions",
             )],
         )
-        .with_confidence(0.85)
+        .with_detection_reliability(0.85)
         .with_related_locations(
             (0..75)
                 .map(|index| RelatedLocation {
@@ -573,7 +579,7 @@ fn finding_ids_are_stable_for_equivalent_identity_inputs() {
     );
 
     assert_eq!(left.id, right.id);
-    assert!(left.id.starts_with("rf2-"));
+    assert!(left.id.starts_with("rf3-"));
 }
 
 #[test]
@@ -618,7 +624,7 @@ fn finding_ids_are_stable_when_group_representative_rotates() {
 
 #[test]
 fn renders_sarif_report_with_rules_results_and_fingerprints() {
-    let scan_report = report(vec![make_finding(
+    let mut findings = vec![make_finding(
         FindingKind::LargeFile,
         "src/a.rs",
         Some(1),
@@ -630,7 +636,10 @@ fn renders_sarif_report_with_rules_results_and_fingerprints() {
             "lines",
         )],
         Vec::new(),
-    )]);
+    )];
+    let issues = crate::scoring::cluster_findings(&mut findings);
+    let mut scan_report = report(findings);
+    scan_report.issues = issues;
 
     let value: serde_json::Value =
         serde_json::from_str(&render_sarif_report(&scan_report)).unwrap();
@@ -639,21 +648,24 @@ fn renders_sarif_report_with_rules_results_and_fingerprints() {
     assert_eq!(value["runs"][0]["tool"]["driver"]["name"], "Reforge");
     assert_eq!(
         value["runs"][0]["tool"]["driver"]["rules"][0]["id"],
-        "large_file"
+        "responsibility_decomposition"
     );
-    assert_eq!(value["runs"][0]["results"][0]["ruleId"], "large_file");
+    assert_eq!(
+        value["runs"][0]["results"][0]["ruleId"],
+        "responsibility_decomposition"
+    );
     assert_eq!(value["runs"][0]["results"][0]["level"], "warning");
     assert_eq!(
         value["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]["uri"],
         "src/a.rs"
     );
     assert_eq!(
-        value["runs"][0]["results"][0]["partialFingerprints"]["reforgeFindingId"],
-        scan_report.findings[0].id.as_str()
+        value["runs"][0]["results"][0]["partialFingerprints"]["reforgeIssueId"],
+        scan_report.issues[0].id.to_string()
     );
     assert_eq!(
-        value["runs"][0]["results"][0]["properties"]["recommendation"],
-        "Split the file around cohesive responsibilities and move shared helpers behind clear module boundaries."
+        value["runs"][0]["results"][0]["properties"]["evidence_ids"][0],
+        scan_report.findings[0].id.as_str()
     );
 }
 

@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 
-use crate::baseline::{BaselineDiff, BaselineFinding, BaselineFindingStatus};
+use crate::baseline::{BaselineDiff, BaselineIssue, BaselineIssueStatus};
 use crate::cli::BaselineShow;
-use crate::model::{Finding, FindingKind, Hotspot, IssueCluster, MetricId, ScanReport, Severity};
+use crate::model::{Finding, FindingKind, Hotspot, Issue, MetricId, ScanReport, Severity};
 
 const RELATED_LOCATION_LIMIT: usize = 3;
 const HOTSPOT_LIMIT: usize = 10;
@@ -203,8 +203,8 @@ impl ReportRenderContext<'_, '_, '_> {
             format!(
                 "{} ({} of {} current)",
                 baseline_show_label(diff.show),
-                diff.findings.len(),
-                self.report.findings.len()
+                diff.issues.len(),
+                self.report.issues.len()
             ),
         );
     }
@@ -213,56 +213,51 @@ impl ReportRenderContext<'_, '_, '_> {
         self.output.push('\n');
         let title = self
             .baseline_diff
-            .map(|diff| format!("Findings ({})", baseline_show_label(diff.show)))
+            .map(|diff| format!("Issues ({})", baseline_show_label(diff.show)))
             .unwrap_or_else(|| "Issues".to_string());
         self.output
             .push_str(&paint(self.color, &title, AnsiStyle::Section));
         self.output.push('\n');
 
         if let Some(diff) = self.baseline_diff {
-            self.render_baseline_findings(diff);
+            self.render_baseline_issues(diff);
             return;
         }
 
         self.render_current_issues();
     }
 
-    fn render_baseline_findings(&mut self, diff: &BaselineDiff<'_>) {
-        let findings = sorted_baseline_findings(&diff.findings);
-        if findings.is_empty() {
+    fn render_baseline_issues(&mut self, diff: &BaselineDiff<'_>) {
+        let issues = sorted_baseline_issues(&diff.issues);
+        if issues.is_empty() {
             self.output.push_str(&format!(
-                "  No findings matched --show {}.\n",
+                "  No issues matched --show {}.\n",
                 baseline_show_value(diff.show)
             ));
             return;
         }
 
-        for entry in findings {
-            self.output
-                .push_str(&render_diff_finding(entry, self.color));
-            if has_related_location_details(entry.finding) {
-                self.output
-                    .push_str(&render_related_locations(entry.finding, self.color));
-            }
+        for entry in issues {
+            self.output.push_str(&render_diff_issue(entry, self.color));
         }
     }
 
     fn render_current_issues(&mut self) {
         let primary_ids = self
             .report
-            .issue_clusters
+            .issues
             .iter()
             .map(|cluster| cluster.primary_finding_id.as_str())
             .collect::<std::collections::BTreeSet<_>>();
         for finding in sorted_findings(&self.report.findings)
             .into_iter()
             .filter(|finding| {
-                finding.issue_cluster_id.is_none() || primary_ids.contains(finding.id.as_str())
+                finding.issue_id.is_none() || primary_ids.contains(finding.id.as_str())
             })
         {
             let cluster_context = self
                 .report
-                .issue_clusters
+                .issues
                 .iter()
                 .find(|cluster| cluster.primary_finding_id == finding.id)
                 .map(|cluster| render_cluster_context(cluster, self.color));
@@ -332,7 +327,7 @@ impl ReportRenderContext<'_, '_, '_> {
     }
 }
 
-fn render_cluster_context(cluster: &IssueCluster, color: bool) -> String {
+fn render_cluster_context(cluster: &Issue, color: bool) -> String {
     let kinds = cluster
         .kinds
         .iter()
@@ -366,20 +361,17 @@ fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
     sorted
 }
 
-fn sorted_baseline_findings<'a>(
-    findings: &'a [BaselineFinding<'a>],
-) -> Vec<&'a BaselineFinding<'a>> {
-    let mut sorted = findings.iter().collect::<Vec<_>>();
-    sorted.sort_by(|left, right| compare_findings(left.finding, right.finding));
+fn sorted_baseline_issues<'a>(issues: &'a [BaselineIssue<'a>]) -> Vec<&'a BaselineIssue<'a>> {
+    let mut sorted = issues.iter().collect::<Vec<_>>();
+    sorted.sort_by(|left, right| {
+        right
+            .issue
+            .priority
+            .cmp(&left.issue.priority)
+            .then_with(|| left.issue.path.cmp(&right.issue.path))
+            .then_with(|| left.issue.line.cmp(&right.issue.line))
+    });
     sorted
-}
-
-fn compare_findings(left: &Finding, right: &Finding) -> std::cmp::Ordering {
-    right
-        .priority
-        .cmp(&left.priority)
-        .then_with(|| left.path.cmp(&right.path))
-        .then_with(|| left.line.cmp(&right.line))
 }
 
 fn render_finding(finding: &Finding, color: bool) -> String {
@@ -393,7 +385,7 @@ fn render_finding(finding: &Finding, color: bool) -> String {
         "  {} p={:>2} c={:.2}  {}\n            {}\n",
         render_severity_cell(finding.severity, color),
         finding.priority,
-        finding.confidence,
+        finding.detection_reliability * finding.interpretation_reliability,
         concise_finding_message(finding),
         paint(color, &location, AnsiStyle::Path),
     );
@@ -415,32 +407,23 @@ fn should_render_recommendation(finding: &Finding) -> bool {
     finding.priority >= 35
 }
 
-fn render_diff_finding(entry: &BaselineFinding<'_>, color: bool) -> String {
-    let finding = entry.finding;
-    let location = finding
+fn render_diff_issue(entry: &BaselineIssue<'_>, color: bool) -> String {
+    let issue = entry.issue;
+    let location = issue
         .line
-        .map(|line| format!("{}:{line}", display_path(&finding.path)))
-        .unwrap_or_else(|| display_path(&finding.path));
-    let metrics = render_metric_summary(finding);
+        .map(|line| format!("{}:{line}", display_path(&issue.path)))
+        .unwrap_or_else(|| display_path(&issue.path));
 
-    let mut output = format!(
-        "  {} {} p={:>2} c={:.2}  {}\n            {}\n",
+    format!(
+        "  {} {} p={:>2} reliability={:.2}  {}\n            {}\n            evidence {}\n",
         render_status_cell(entry.status, color),
-        render_severity_cell(finding.severity, color),
-        finding.priority,
-        finding.confidence,
-        concise_finding_message(finding),
+        render_severity_cell(issue.severity, color),
+        issue.priority,
+        issue.detection_reliability * issue.interpretation_reliability,
+        issue.summary,
         paint(color, &location, AnsiStyle::Path),
-    );
-
-    if let Some(metrics) = metrics {
-        output.push_str(&format!("            metrics {metrics}\n"));
-    }
-    if !finding.rank_explanation.is_empty() {
-        output.push_str(&format!("            rank {}\n", finding.rank_explanation));
-    }
-
-    output
+        issue.finding_ids.len(),
+    )
 }
 
 fn render_watchlist_item(hotspot: &Hotspot, color: bool) -> String {
@@ -990,14 +973,14 @@ enum AnsiStyle {
     Info,
 }
 
-fn render_status_cell(status: BaselineFindingStatus, color: bool) -> String {
+fn render_status_cell(status: BaselineIssueStatus, color: bool) -> String {
     paint(
         color,
         &format!("{:<8}", baseline_status_label(status)),
         match status {
-            BaselineFindingStatus::New => AnsiStyle::Info,
-            BaselineFindingStatus::Worse => AnsiStyle::Warning,
-            BaselineFindingStatus::Same => AnsiStyle::Muted,
+            BaselineIssueStatus::New => AnsiStyle::Info,
+            BaselineIssueStatus::Worse => AnsiStyle::Warning,
+            BaselineIssueStatus::Same => AnsiStyle::Muted,
         },
     )
 }
@@ -1014,11 +997,11 @@ fn render_severity_cell(severity: Severity, color: bool) -> String {
     )
 }
 
-fn baseline_status_label(status: BaselineFindingStatus) -> &'static str {
+fn baseline_status_label(status: BaselineIssueStatus) -> &'static str {
     match status {
-        BaselineFindingStatus::New => "new",
-        BaselineFindingStatus::Worse => "worse",
-        BaselineFindingStatus::Same => "same",
+        BaselineIssueStatus::New => "new",
+        BaselineIssueStatus::Worse => "worse",
+        BaselineIssueStatus::Same => "same",
     }
 }
 

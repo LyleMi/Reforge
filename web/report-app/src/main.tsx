@@ -530,7 +530,7 @@ function FindingCard({ finding }: { finding: Finding }) {
       <div className="finding-score">
         <span>priority</span>
         <strong>{number(finding.priority)}</strong>
-        <small>{Math.round(number(finding.confidence) * 100)}% conf</small>
+        <small>{Math.round(number(finding.detection_reliability) * number(finding.interpretation_reliability) * 100)}% action probability</small>
       </div>
     </article>
   );
@@ -594,10 +594,10 @@ function compareFindings(left: Finding, right: Finding, sort: string): number {
 
 function reportIssues(report: ScanReport): Finding[] {
   const primaryFindingIds = new Set(
-    (report.issue_clusters ?? []).map((cluster) => cluster.primary_finding_id),
+    (report.issues ?? []).map((issue) => issue.primary_finding_id),
   );
   return (report.findings ?? []).filter(
-    (finding) => !finding.issue_cluster_id || primaryFindingIds.has(finding.id ?? ""),
+    (finding) => !finding.issue_id || primaryFindingIds.has(finding.id ?? ""),
   );
 }
 

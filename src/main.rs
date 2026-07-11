@@ -1,4 +1,5 @@
 mod baseline;
+mod calibration;
 mod cli;
 mod detectors;
 mod lang;
@@ -60,6 +61,7 @@ fn main() -> Result<()> {
         Command::Init(args) => run_init(args)?,
         Command::Config(args) => run_config(args)?,
         Command::Scan(args) => run_scan(*args)?,
+        Command::Calibrate(args) => calibration::run(args)?,
     }
 
     Ok(())
@@ -187,9 +189,9 @@ fn run_scan(args: ScanArgs) -> Result<()> {
     let report = scan_with_progress(&args, stderr_is_tty)?;
     let baseline_diff = baseline_report
         .as_ref()
-        .map(|baseline| baseline::diff_findings(&report.findings, baseline, args.ci.show));
-    let selected = baseline::selected_findings(
-        &report.findings,
+        .map(|baseline| baseline::diff_issues(&report.issues, baseline, args.ci.show));
+    let selected = baseline::selected_issues(
+        &report.issues,
         baseline_report.as_ref(),
         args.ci.baseline_mode,
     );
@@ -207,7 +209,7 @@ fn run_scan(args: ScanArgs) -> Result<()> {
 
     if !gate_failures.is_empty() {
         bail!(
-            "scan failed: {} selected unsuppressed findings met --fail-on {:?}",
+            "scan failed: {} selected unsuppressed issues met --fail-on {:?}",
             gate_failures.len(),
             args.ci.fail_on.expect("gate failures require fail-on")
         );

@@ -107,8 +107,8 @@ fn cli_flags_doc() -> &'static str {
 }
 
 fn schema_fields_doc() -> &'static str {
-    "schema_version summary stats metrics_summary raw_metrics raw_metric_manifest dependency_graph hotspots suppression_summary issue_clusters detector_manifest findings \
- id kind severity path line metrics priority confidence priority_factors construct mechanism action entity_scope relations issue_count \
+    "schema_version summary stats metrics_summary raw_metrics raw_metric_manifest dependency_graph hotspots suppression_summary coverage_manifest coverage_summary issues detector_manifest findings \
+ id kind severity path line metrics priority detection_reliability interpretation_reliability priority_factors construct mechanism action entity_scope issue_family evidence_role constituent_kinds issue_count \
  rank_explanation recommendation related_locations"
 }
 
@@ -147,7 +147,7 @@ fn write_complete_docs(root: &Path) -> Result<()> {
     )?;
     fs::write(
         docs.join("metrics-model.md"),
-        "Metrics model covers raw metrics, findings, hotspots, priority, scoring, and confidence.\n",
+        "Metrics model covers raw metrics, findings, hotspots, priority, scoring, detection reliability, and interpretation reliability.\n",
     )?;
     fs::write(
         docs.join("detectors.md"),
@@ -176,7 +176,7 @@ fn reports_missing_project_documentation_for_project_roots() -> Result<()> {
 
     fs::remove_dir_all(root)?;
 
-    assert!(has_kind(
+    assert!(!has_kind(
         &report.findings,
         FindingKind::MissingDocumentationSet
     ));
@@ -268,7 +268,8 @@ fn readme_only_project_is_not_treated_as_complete_documentation() -> Result<()> 
 
     fs::remove_dir_all(root)?;
 
-    assert!(has_kind(&findings, FindingKind::MissingDocumentationSet));
+    assert!(!has_kind(&findings, FindingKind::MissingDocumentationSet));
+    assert!(has_kind(&findings, FindingKind::MissingUserGuide));
     Ok(())
 }
 

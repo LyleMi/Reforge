@@ -78,7 +78,7 @@ pub fn process(a: i32, b: i32, c: i32, d: i32) -> i32 {
 }
 
 #[test]
-fn reports_readability_risk_for_combined_function_signals() -> Result<()> {
+fn keeps_combined_function_signals_as_constituent_evidence() -> Result<()> {
     let source = r#"
 pub fn process(a: i32, b: i32, c: i32, d: i32) -> i32 {
     if a > 0 {
@@ -93,15 +93,19 @@ pub fn process(a: i32, b: i32, c: i32, d: i32) -> i32 {
 "#;
 
     let findings = scan_structure(&[source_file("src/lib.rs", source)], &options())?;
-    let finding = findings
-        .iter()
-        .find(|finding| finding.kind == FindingKind::ReadabilityRisk)
-        .expect("combined function threshold signals should produce readability risk");
-
-    assert_eq!(finding.line, Some(2));
-    assert_eq!(metric_value(finding, "readability.signal_count"), Some(4));
-    assert_eq!(metric_value(finding, "function.loc"), Some(10));
-    assert!(finding.message.contains("combines 4 readability risks"));
+    assert!(
+        !findings
+            .iter()
+            .any(|finding| finding.kind == FindingKind::ReadabilityRisk)
+    );
+    for kind in [
+        FindingKind::LongFunction,
+        FindingKind::ComplexFunction,
+        FindingKind::DeepNesting,
+        FindingKind::ManyParameters,
+    ] {
+        assert!(findings.iter().any(|finding| finding.kind == kind));
+    }
     Ok(())
 }
 
@@ -477,7 +481,7 @@ fn keeps_cross_file_domain_repeated_literals() -> Result<()> {
         .expect("domain repeated literal should be reported");
 
     assert_eq!(metric_value(finding, "group.size"), Some(3));
-    assert!(finding.confidence >= 0.80);
+    assert!(finding.detection_reliability >= 0.80);
     Ok(())
 }
 

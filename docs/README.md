@@ -54,7 +54,7 @@ cargo run -- scan . --output-file reforge-report.html --progress never
   troubleshoot common failures.
 - [Configuration](configuration.md): configure thresholds, exclusions,
   suppressions, churn, and precedence.
-- [Report Schema](report-schema.md): consume JSON/YAML schema 17 and SARIF 2.1.0.
+- [Report Schema](report-schema.md): consume JSON/YAML schema 18 and SARIF 2.1.0.
 - [HTML Report](report-app.md): build and use the self-contained visual report.
 
 ### Understand Results

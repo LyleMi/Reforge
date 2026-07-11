@@ -252,7 +252,7 @@ fn unused_function_finding(definition: FunctionDefinition) -> Finding {
                 "references",
             )],
         )
-        .with_confidence(0.65),
+        .with_detection_reliability(0.65),
     )
 }
 

@@ -77,11 +77,8 @@ Every finding kind has an entry in the report-level `detector_manifest` with:
 - detection `approach`;
 - supported languages or repository scope;
 - qualitative `precision_risk`;
-- canonical `input_metrics` plus the default confidence, impact, and
-  actionability policy values;
-- optional `parent_kind` for composite detectors;
-- typed `relations`: `facet_of` for composite evidence and
-  `alternative_evidence` for detectors that can observe the same cause.
+- canonical `input_metrics`, dual reliability, impact, and actionability policy values;
+- `issue_family`, `evidence_role`, and `constituent_kinds` for composition.
 
 Adding a detector requires adding its manifest entry. Tests enforce one entry
 per finding kind. Unsupported languages mean “not observed,” not “no issue.”
