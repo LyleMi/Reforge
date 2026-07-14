@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -14,11 +14,24 @@ import type {
 } from "./reportTypes";
 import {
   deriveFileOverviews,
+  buildRepositoryTree,
+  deriveFileInspector,
+  deriveRepositoryFiles,
   formatRiskScore,
+  keepSelectedWithinLimit,
+  layoutRepositoryTreemap,
   toDisplayReport,
   validateReport,
   type FileOverview,
+  type MapLayer,
+  type RepositoryFileView,
 } from "./reportModel";
+import {
+  parseViewState,
+  serializeViewState,
+  type MapLayer as ViewMapLayer,
+  type ViewState,
+} from "./viewState";
 
 type PositionedNode = DependencyGraphNode & {
   x: number;
@@ -33,6 +46,7 @@ const INITIAL_HOTSPOT_LIMIT = 12;
 const INITIAL_SIMILAR_GROUP_LIMIT = 8;
 const DEPENDENCY_MAP_NODE_LIMIT = 28;
 const DEPENDENCY_MAP_EDGE_LIMIT = 70;
+const BUTTON_TYPE = "button";
 const severityOrder: Record<string, number> = { critical: 3, warning: 2, info: 1 };
 const riskLabels = ["calm", "watch", "elevated", "high"];
 
@@ -136,11 +150,13 @@ function dependencyContext(findings: Finding[]) {
 
 function dependencyLayout(
   report: ScanReport,
+  selectedPath?: string | null,
 ): { nodes: PositionedNode[]; edges: DependencyGraphEdge[]; totalNodes: number; selectedEdges: number } {
   const nodes = report.dependency_graph?.nodes ?? [];
   const edges = report.dependency_graph?.edges ?? [];
   const context = dependencyContext(report.findings ?? []);
-  const selected = [...nodes]
+  const candidates = selectedPath ? nodes.filter((node) => node.path === selectedPath || edges.some((edge) => (edge.from === selectedPath && edge.to === node.path) || (edge.to === selectedPath && edge.from === node.path))) : nodes;
+  const ranked = [...candidates]
     .sort((left, right) => {
       const leftPriority = context.priority.get(left.path) ?? 0;
       const rightPriority = context.priority.get(right.path) ?? 0;
@@ -151,8 +167,8 @@ function dependencyLayout(
         number(right.fan_in) + number(right.fan_out) - (number(left.fan_in) + number(left.fan_out)) ||
         left.path.localeCompare(right.path)
       );
-    })
-    .slice(0, DEPENDENCY_MAP_NODE_LIMIT);
+    });
+  const selected = keepSelectedWithinLimit(ranked, selectedPath, DEPENDENCY_MAP_NODE_LIMIT);
 
   const selectedPaths = new Set(selected.map((node) => node.path));
   const radius = 36;
@@ -223,7 +239,7 @@ function ShowMoreButton({
   }
 
   return (
-    <button className="text-button" type="button" onClick={onToggle}>
+    <button className="text-button" onClick={onToggle}>
       {expanded ? `Show first ${formatNumber(initialLimit)}` : `Show all ${formatNumber(total)}`}
     </button>
   );
@@ -251,31 +267,40 @@ function RiskDistribution({ findings }: { findings: Finding[] }) {
   );
 }
 
-function MetricsSummary({ report }: { report: ScanReport }) {
-  const fileMetrics = Object.entries(report.metrics_summary?.files ?? {}).slice(0, 4);
-  const functionMetrics = Object.entries(report.metrics_summary?.functions ?? {}).slice(0, 4);
-  const rows = [...fileMetrics.map(([name, value]) => ["file", name, value] as const), ...functionMetrics.map(([name, value]) => ["fn", name, value] as const)];
+const layerLabels: Record<MapLayer, string> = { priority: "Priority", severity: "Severity", churn: "Churn", findings: "Findings" };
 
-  if (rows.length === 0) {
-    return <p className="empty">No percentile metrics were included in this report.</p>;
-  }
-
-  return (
-    <div className="metric-grid">
-      {rows.map(([scope, name, value]) => (
-        <div className="metric-tile" key={`${scope}-${name}`}>
-          <span>{scope}</span>
-          <strong>{name.replace(/_/g, " ")}</strong>
-          <small>
-            p90 {formatNumber(number(value.p90))} · max {formatNumber(number(value.max))}
-          </small>
-        </div>
-      ))}
-    </div>
-  );
+function mapColor(file: RepositoryFileView, layer: MapLayer, maxima: { churn: number; findings: number }) {
+  if (layer === "severity") return file.severity === "critical" ? "#b63846" : file.severity === "warning" ? "#c66b3d" : file.findings ? "#68a3aa" : "#d8e2e0";
+  const value = layer === "priority" ? file.priority / 100 : layer === "churn" ? file.churn / maxima.churn : file.findings / maxima.findings;
+  const light = 92 - Math.min(1, value || 0) * 52;
+  return layer === "churn" ? `hsl(186 47% ${light}%)` : layer === "findings" ? `hsl(20 54% ${light}%)` : `hsl(193 43% ${light}%)`;
 }
 
-function FileOverviewList({ files }: { files: FileOverview[] }) {
+function RepositoryMap({ files, selectedPath, onSelectPath, layer, onLayerChange }: { files: RepositoryFileView[]; selectedPath: string | null; onSelectPath: (path: string) => void; layer: MapLayer; onLayerChange: (layer: MapLayer) => void }) {
+  const rectangles = useMemo(() => layoutRepositoryTreemap(buildRepositoryTree(files)), [files]);
+  const maxima = { churn: Math.max(1, ...files.map((file) => file.churn)), findings: Math.max(1, ...files.map((file) => file.findings)) };
+  if (!files.length) return <p className="empty">No file metrics, findings, hotspots, or dependency nodes were included.</p>;
+  return <section className="repository-workbench panel" id="repository-map">
+    <div className="map-toolbar"><div><span className="eyebrow">Repository topography</span><h2>Find the load-bearing code</h2><p>Footprint is lines of code. Tone is {layerLabels[layer].toLowerCase()}. Select a file to trace its signals.</p></div><div className="layer-switch" aria-label="Map data layer">{(Object.keys(layerLabels) as MapLayer[]).map((item) => <button type={BUTTON_TYPE} className={layer === item ? "active" : ""} aria-pressed={layer === item} onClick={() => onLayerChange(item)} key={item}>{layerLabels[item]}</button>)}</div></div>
+    <div className="map-legend"><span><i className="legend-low" />low</span><span><i className="legend-high" />high</span><strong>{files.length} files visible</strong></div>
+    <div className="treemap" role="group" aria-label={`${layerLabels[layer]} repository treemap`}>
+      {rectangles.filter((rect) => rect.file).map((rect) => { const file = rect.file!; return <button type={BUTTON_TYPE} key={file.path} className={`treemap-file ${selectedPath === file.path ? "selected" : ""}`} style={{ left: `${rect.x / 10}%`, top: `${rect.y / 5.2}%`, width: `${rect.width / 10}%`, height: `${rect.height / 5.2}%`, background: mapColor(file, layer, maxima) }} onClick={() => onSelectPath(file.path)} title={`${file.path}\n${file.loc} LOC · p${file.priority} · ${file.findings} findings · churn ${file.churn}`}><span>{file.path.split("/").pop()}</span></button>; })}
+    </div>
+  </section>;
+}
+
+function ReviewStrip({ files, onSelectPath }: { files: RepositoryFileView[]; onSelectPath: (path: string) => void }) {
+  const critical = files.filter((file) => file.severity === "critical").sort((a,b) => b.priority-a.priority)[0];
+  const cycle = files.filter((file) => file.isCycle).sort((a,b) => b.priority-a.priority)[0];
+  const churn = [...files].sort((a,b) => b.churn-a.churn)[0];
+  const directoryTotals = new Map<string, number>(); files.forEach((file) => { const dir = file.path.includes("/") ? file.path.slice(0,file.path.lastIndexOf("/")) : "."; directoryTotals.set(dir,(directoryTotals.get(dir)??0)+file.priority); });
+  const directory = [...directoryTotals].sort((a,b)=>b[1]-a[1])[0];
+  const items = [critical && { label: "Critical issues", value: critical.path, path: critical.path }, cycle && { label: "Dependency cycle", value: cycle.path, path: cycle.path }, churn?.churn ? { label: "Highest churn", value: `${churn.path} · ${formatNumber(churn.churn)}`, path: churn.path } : null, directory?.[1] ? { label: "Risk concentration", value: directory[0], path: files.filter(f=>f.path.startsWith(directory[0])) .sort((a,b)=>b.priority-a.priority)[0]?.path } : null].filter(Boolean) as {label:string;value:string;path:string}[];
+  if (!items.length) return <div className="review-strip calm"><strong>Review strip</strong><span>No priority, dependency, or churn signals were included.</span></div>;
+  return <nav className="review-strip" aria-label="Review priorities">{items.map((item)=><button type={BUTTON_TYPE} key={item.label} onClick={()=>onSelectPath(item.path)}><span>{item.label}</span><strong>{item.value}</strong></button>)}</nav>;
+}
+
+function FileOverviewList({ files, onSelectPath }: { files: FileOverview[]; onSelectPath: (path:string)=>void }) {
   const [expanded, setExpanded] = useState(false);
 
   if (files.length === 0) return <p className="empty">No raw file metrics were included in this report.</p>;
@@ -284,7 +309,7 @@ function FileOverviewList({ files }: { files: FileOverview[] }) {
   return (
     <div className="file-list">
       {visibleFiles.map((file) => (
-        <div className="file-row" key={file.path}>
+        <button type={BUTTON_TYPE} className="file-row selectable-row" key={file.path} onClick={()=>onSelectPath(file.path)}>
           <div>
             <strong>{file.path}</strong>
             <span>
@@ -301,14 +326,14 @@ function FileOverviewList({ files }: { files: FileOverview[] }) {
           <Badge className={file.hotspotPriority === null ? "" : `band-${scoreBand(file.hotspotPriority)}`}>
             {file.hotspotPriority === null ? "unranked" : `p${file.hotspotPriority}`}
           </Badge>
-        </div>
+        </button>
       ))}
       <ShowMoreButton expanded={expanded} initialLimit={INITIAL_FILE_LIMIT} onToggle={() => setExpanded(!expanded)} total={files.length} />
     </div>
   );
 }
 
-function Hotspots({ hotspots }: { hotspots: Hotspot[] }) {
+function Hotspots({ hotspots, onSelectPath }: { hotspots: Hotspot[]; onSelectPath: (path:string)=>void }) {
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -337,7 +362,7 @@ function Hotspots({ hotspots }: { hotspots: Hotspot[] }) {
       ) : (
         <div className="row-stack">
           {visibleHotspots.map((hotspot) => (
-            <article className="row-card" key={`${hotspot.path}-${hotspot.line ?? 0}-${hotspot.name ?? ""}`}>
+            <article className="row-card selectable-row" tabIndex={0} role="button" onClick={()=>onSelectPath(hotspot.path)} onKeyDown={(event)=>event.key==="Enter"&&onSelectPath(hotspot.path)} key={`${hotspot.path}-${hotspot.line ?? 0}-${hotspot.name ?? ""}`}>
               <div>
                 <div className="row-title">{location(hotspot.path, hotspot.line, hotspot.name)}</div>
                 <p>{hotspot.reason || "No reason supplied."}</p>
@@ -358,7 +383,7 @@ function Hotspots({ hotspots }: { hotspots: Hotspot[] }) {
   );
 }
 
-function SimilarGroups({ groups }: { groups: Finding[] }) {
+function SimilarGroups({ groups, onSelectPath }: { groups: Finding[]; onSelectPath: (path:string)=>void }) {
   const [expanded, setExpanded] = useState(false);
 
   if (groups.length === 0) return <p className="empty">No similar function groups crossed the configured threshold.</p>;
@@ -367,7 +392,7 @@ function SimilarGroups({ groups }: { groups: Finding[] }) {
   return (
     <div className="row-stack">
       {visibleGroups.map((finding) => (
-        <article className="row-card" key={finding.id ?? `${finding.path}-${finding.line ?? 0}`}>
+        <article className="row-card selectable-row" role="button" tabIndex={0} onClick={()=>onSelectPath(finding.path)} onKeyDown={(event)=>event.key==="Enter"&&onSelectPath(finding.path)} key={finding.id ?? `${finding.path}-${finding.line ?? 0}`}>
           <div>
             <div className="row-title">{location(finding.path, finding.line)}</div>
             <p>{finding.message}</p>
@@ -385,8 +410,8 @@ function SimilarGroups({ groups }: { groups: Finding[] }) {
   );
 }
 
-function DependencyMap({ report }: { report: ScanReport }) {
-  const graph = useMemo(() => dependencyLayout(report), [report]);
+function DependencyMap({ report, selectedPath, onSelectPath }: { report: ScanReport; selectedPath: string|null; onSelectPath:(path:string)=>void }) {
+  const graph = useMemo(() => dependencyLayout(report, selectedPath), [report, selectedPath]);
   const nodeByPath = new Map(graph.nodes.map((node) => [node.path, node]));
 
   if (graph.nodes.length === 0) return <p className="empty">No dependency graph data was included in this report.</p>;
@@ -402,7 +427,8 @@ function DependencyMap({ report }: { report: ScanReport }) {
           return <line key={`${edge.from}->${edge.to}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} className={hot ? "edge edge-hot" : "edge"} />;
         })}
         {graph.nodes.map((node) => (
-          <g key={node.path}>
+          <g key={node.path} className={selectedPath === node.path ? "selected-node" : ""} role="button" tabIndex={0} onClick={()=>onSelectPath(node.path)} onKeyDown={(event)=>event.key==="Enter"&&onSelectPath(node.path)}>
+            {selectedPath === node.path ? <circle cx={node.x} cy={node.y} r={4} className="node-ring" /> : null}
             <circle cx={node.x} cy={node.y} r={node.isCycle ? 2.7 : node.isHub ? 2.3 : 1.9} className={node.isCycle ? "node cycle" : node.isHub ? "node hub" : "node"} />
             <title>{`${node.path} · in ${number(node.fan_in)} · out ${number(node.fan_out)}`}</title>
           </g>
@@ -410,13 +436,13 @@ function DependencyMap({ report }: { report: ScanReport }) {
       </svg>
       <div className="dependency-list">
         {graph.nodes.map((node) => (
-          <div key={node.path}>
+          <button type={BUTTON_TYPE} key={node.path} onClick={()=>onSelectPath(node.path)}>
             <strong>{node.path}</strong>
             <span>
               fan-in {number(node.fan_in)} · fan-out {number(node.fan_out)}
               {node.isCycle ? " · cycle" : node.isHub ? " · hub" : ""}
             </span>
-          </div>
+          </button>
         ))}
         {(graph.nodes.length < graph.totalNodes || graph.edges.length < graph.selectedEdges) && (
           <p className="dependency-note">
@@ -428,33 +454,29 @@ function DependencyMap({ report }: { report: ScanReport }) {
   );
 }
 
-function Findings({ findings }: { findings: Finding[] }) {
+function Findings({ findings, onSelectPath, view, onViewChange }: { findings: Finding[]; onSelectPath: (path:string)=>void; view: ViewState; onViewChange: (patch: Partial<ViewState>) => void }) {
   const kinds = [...new Set(findings.map((finding) => finding.kind))].sort();
-  const [query, setQuery] = useState("");
-  const [severity, setSeverity] = useState("");
-  const [kind, setKind] = useState("");
-  const [sort, setSort] = useState("priority");
-  const filtered = filterFindings(findings, query, severity, kind, sort);
+  const filtered = filterFindings(findings, view.query, view.severity, view.kind, view.sort);
 
   return (
     <>
       <FindingControls
-        kind={kind}
+        kind={view.kind}
         kinds={kinds}
-        query={query}
-        setKind={setKind}
-        setQuery={setQuery}
-        setSeverity={setSeverity}
-        setSort={setSort}
-        severity={severity}
-        sort={sort}
+        query={view.query}
+        setKind={(kind) => onViewChange({ kind })}
+        setQuery={(query) => onViewChange({ query })}
+        setSeverity={(severity) => onViewChange({ severity: severity as ViewState["severity"] })}
+        setSort={(sort) => onViewChange({ sort: sort as ViewState["sort"] })}
+        severity={view.severity}
+        sort={view.sort}
       />
       {filtered.length === 0 ? (
         <p className="empty">No matching findings.</p>
       ) : (
         <div className="finding-list">
           {filtered.map((finding) => (
-            <FindingCard finding={finding} key={finding.id ?? `${finding.kind}-${finding.path}-${finding.line ?? 0}`} />
+            <FindingCard finding={finding} onSelectPath={onSelectPath} key={finding.id ?? `${finding.kind}-${finding.path}-${finding.line ?? 0}`} />
           ))}
         </div>
       )}
@@ -476,10 +498,10 @@ function FindingControls({
   kind: string;
   kinds: string[];
   query: string;
-  setKind: React.Dispatch<React.SetStateAction<string>>;
-  setQuery: React.Dispatch<React.SetStateAction<string>>;
-  setSeverity: React.Dispatch<React.SetStateAction<string>>;
-  setSort: React.Dispatch<React.SetStateAction<string>>;
+  setKind: (value: string) => void;
+  setQuery: (value: string) => void;
+  setSeverity: (value: string) => void;
+  setSort: (value: string) => void;
   severity: string;
   sort: string;
 }) {
@@ -510,9 +532,9 @@ function FindingControls({
   );
 }
 
-function FindingCard({ finding }: { finding: Finding }) {
+function FindingCard({ finding, onSelectPath }: { finding: Finding; onSelectPath: (path:string)=>void }) {
   return (
-    <article className="finding-card">
+    <article className="finding-card selectable-row" tabIndex={0} role="button" onClick={()=>onSelectPath(finding.path)} onKeyDown={(event)=>event.key==="Enter"&&onSelectPath(finding.path)}>
       <div className="finding-main">
         <div className="finding-head">
           <Badge className={severityClass(finding.severity)}>{finding.severity}</Badge>
@@ -601,80 +623,58 @@ function reportIssues(report: ScanReport): Finding[] {
   );
 }
 
+function Inspector({ report, file, onClose, onSelectPath }: { report: ScanReport; file: RepositoryFileView; onClose:()=>void; onSelectPath:(path:string)=>void }) {
+  const data = useMemo(()=>deriveFileInspector(report,file),[report,file]);
+  useEffect(()=>{ const close=(event:KeyboardEvent)=>{if(event.key==="Escape") onClose();}; window.addEventListener("keydown",close); return()=>window.removeEventListener("keydown",close); },[onClose]);
+  return <aside className="inspector" aria-label="File inspector"><div className="inspector-head"><div><span className="eyebrow">File inspector</span><h2>{data.path}</h2></div><button type={BUTTON_TYPE} onClick={onClose} aria-label="Close inspector">×</button></div>
+    <div className="inspector-metrics"><span><strong>{formatNumber(data.loc)}</strong> LOC</span><span><strong>{data.priority}</strong> priority</span><span><strong>{data.findings}</strong> findings</span><span><strong>{formatNumber(data.churn)}</strong> churn</span></div>
+    {data.riskReasons.length ? <section><h3>Why this file is here</h3>{data.riskReasons.slice(0,4).map(reason=><p key={reason}>{reason}</p>)}</section>:null}
+    <section><h3>Signals</h3>{data.fileFindings.length ? data.fileFindings.map(finding=><button className="inspector-item" type={BUTTON_TYPE} key={finding.id??`${finding.kind}-${finding.line}`}><strong>{formatKind(finding.kind)}</strong><span>{finding.message}</span></button>):<p className="empty">No direct findings for this file.</p>}</section>
+    {data.similarityGroups.length ? <section><h3>Similar groups</h3><p>{data.similarityGroups.length} group{data.similarityGroups.length===1?"":"s"} include this file.</p></section>:null}
+    <section><h3>Dependencies</h3><p>fan-in {data.fanIn} · fan-out {data.fanOut}{data.isCycle?" · cycle":""}{data.isHub?" · hub":""}</p><div className="inspector-links">{[...data.incoming,...data.outgoing].slice(0,12).map(path=><button type={BUTTON_TYPE} onClick={()=>onSelectPath(path)} key={path}>{path}</button>)}</div></section>
+  </aside>;
+}
+
+function ReportLead({ report, issues }: { report: ScanReport; issues: Finding[] }) {
+  const summary = report.summary ?? {};
+  const stats = report.stats ?? {};
+  return <>
+    <header className="report-header"><div><span className="eyebrow">Reforge report · schema {report.schema_version}</span><h1>Refactoring review</h1><p>{formatNumber(number(summary.scanned_files, number(stats.source_files_scanned)))} files scanned in {formatDuration(number(summary.duration_ms))} · churn {summary.churn?.enabled ? "included" : "not available"}</p></div><div className="header-aside"><small>Issues to review</small><strong>{formatNumber(issues.length)}</strong></div></header>
+  </>;
+}
+
+const tabs = [{id:"overview",label:"Overview"},{id:"issues",label:"Issues"},{id:"map",label:"Code map"},{id:"metrics",label:"Metrics"}] as const;
+
+function MetricsPage({ report, view, update }: { report: ScanReport; view: ViewState; update: (patch: Partial<ViewState>) => void }) {
+  const values = report.metrics_summary?.[view.scope] ?? {};
+  return <div className="page-stack"><div className="page-heading"><div><span className="eyebrow">Distribution</span><h2>Metrics</h2><p>Compare percentile pressure across the scanned population.</p></div><div className="scope-tabs" aria-label="Metric scope">{(["files","functions","types","churn"] as const).map(scope=><button type={BUTTON_TYPE} className={view.scope===scope?"active":""} aria-pressed={view.scope===scope} onClick={()=>update({scope})} key={scope}>{scope}</button>)}</div></div><Section title={`${view.scope} percentiles`}>{Object.keys(values).length?<div className="percentile-table">{Object.entries(values).map(([name,value])=><div className="percentile-row" key={name}><strong>{formatKind(name)}</strong>{(["p50","p75","p90","p95","max"] as const).map(key=><span key={key}><small>{key}</small>{formatNumber(number(value[key]))}</span>)}</div>)}</div>:<p className="empty">No {view.scope} percentile data was included. Enable the matching metrics and generate the report again.</p>}</Section></div>;
+}
+
 function ReportApp({ report }: { report: ScanReport }) {
   const displayReport = useMemo(() => toDisplayReport(report), [report]);
   const findings = displayReport.findings ?? [];
   const issues = reportIssues(displayReport);
   const hotspots = displayReport.hotspots ?? [];
   const files = useMemo(() => deriveFileOverviews(displayReport), [displayReport]);
+  const repositoryFiles = useMemo(() => deriveRepositoryFiles(displayReport), [displayReport]);
   const similarGroups = useMemo(() => groupSimilarFindings(findings), [findings]);
-  const summary = displayReport.summary ?? {};
-  const stats = displayReport.stats ?? {};
-  const suppression = displayReport.suppression_summary ?? {};
-  const suppressedCount = number(suppression.suppressed_count);
-  const highestSuppressedPriority = suppression.highest_suppressed_priority;
-  const suppressionMeta =
-    typeof highestSuppressedPriority === "number" && Number.isFinite(highestSuppressedPriority)
-      ? `highest p${highestSuppressedPriority}`
-      : "accepted";
+  const [view, setView] = useState<ViewState>(()=>parseViewState(window.location.hash,displayReport));
+  const update = (patch:Partial<ViewState>)=>setView(current=>({...current,...patch}));
+  useEffect(()=>{const sync=()=>setView(parseViewState(window.location.hash,displayReport));window.addEventListener("hashchange",sync);return()=>window.removeEventListener("hashchange",sync);},[displayReport]);
+  useEffect(()=>{const hash=serializeViewState(view);if(window.location.hash!==hash) history.replaceState(null,"",hash);},[view]);
+  const selectedFile = repositoryFiles.find(file=>file.path===view.file);
+  const selectFile=(file:string)=>update({file});
+  const counts={overview:null,issues:issues.length,map:repositoryFiles.length,metrics:Object.values(displayReport.metrics_summary??{}).reduce((n,group)=>n+Object.keys(group??{}).length,0)};
 
   return (
     <main className="report-shell">
-      <header className="report-header">
-        <div>
-          <span className="eyebrow">Reforge schema {displayReport.schema_version}</span>
-          <h1>Reforge scan report</h1>
-          <p>
-            {formatNumber(number(summary.scanned_files, number(stats.source_files_scanned)))} files scanned in {formatDuration(number(summary.duration_ms))}; churn is {summary.churn?.enabled ? "enabled" : "disabled"}.
-          </p>
-        </div>
-        <div className="header-aside">
-          <strong>{formatNumber(issues.length)}</strong>
-          <span>refactoring issues</span>
-        </div>
-      </header>
-
-      <section className="summary-grid" aria-label="Report summary">
-        <SummaryCard label="Hotspots" value={formatNumber(hotspots.length)} meta={text(summary.hotspot_model, "model")} />
-        <SummaryCard
-          label="Suppressed"
-          value={formatNumber(suppressedCount)}
-          meta={suppressionMeta}
-        />
-        <SummaryCard label="Similar groups" value={formatNumber(similarGroups.length)} meta="duplication" />
-        <SummaryCard label="Functions" value={formatNumber(number(stats.function_candidates))} meta="candidates" />
-        <SummaryCard label="Directories" value={formatNumber(number(stats.directories_scanned))} meta="scanned" />
-      </section>
-
-      <div className="dashboard-grid">
-        <Section title="Risk Distribution" meta={`${issues.length} issues`}>
-          <RiskDistribution findings={issues} />
-        </Section>
-        <Section title="Metric Percentiles">
-          <MetricsSummary report={report} />
-        </Section>
-      </div>
-
-      <Section title="File Overview" meta={`${files.length} files · priority then churn`}>
-        <FileOverviewList files={files} />
-      </Section>
-
-      <div className="dashboard-grid wide-left">
-        <Section title="Dependency Map" meta={`${displayReport.dependency_graph?.nodes?.length ?? 0} nodes`}>
-          <DependencyMap report={displayReport} />
-        </Section>
-        <Section title="Similar Function Groups" meta={`${similarGroups.length} groups`}>
-          <SimilarGroups groups={similarGroups} />
-        </Section>
-      </div>
-
-      <Section title="Watchlist" meta={`${hotspots.length} hotspots`}>
-        <Hotspots hotspots={hotspots} />
-      </Section>
-
-      <Section title="Issues" meta={`${issues.length} issues · ${findings.length} raw signals`}>
-        <Findings findings={issues} />
-      </Section>
+      <ReportLead report={displayReport} issues={issues} />
+      <nav className="app-tabs" aria-label="Report sections" role="tablist">{tabs.map(tab=><a role="tab" aria-selected={view.tab===tab.id} className={view.tab===tab.id?"active":""} href={`#${tab.id}`} key={tab.id}>{tab.label}{counts[tab.id]!==null?<span>{counts[tab.id]}</span>:null}</a>)}</nav>
+      {view.tab==="overview"&&<div className="page-stack"><section className="summary-grid" aria-label="Report summary"><SummaryCard label="Issues" value={formatNumber(issues.length)} meta={`${findings.length} raw signals`}/><SummaryCard label="Hotspots" value={formatNumber(hotspots.length)} meta="watchlist"/><SummaryCard label="Similar groups" value={formatNumber(similarGroups.length)} meta="duplication"/><SummaryCard label="Suppressed" value={formatNumber(number(displayReport.suppression_summary?.suppressed_count))} meta="accepted"/></section><ReviewStrip files={repositoryFiles} onSelectPath={file=>update({tab:"map",file})}/><div className="dashboard-grid"><Section title="Risk distribution" meta={`${issues.length} issues`}><RiskDistribution findings={issues}/></Section><Section title="Highest-risk files"><FileOverviewList files={files.slice(0,6)} onSelectPath={file=>update({tab:"map",file})}/></Section></div></div>}
+      {view.tab==="issues"&&<div className="page-stack"><div className="page-heading"><div><span className="eyebrow">Review queue</span><h2>Issues</h2><p>Filter actionable signals without losing your place.</p></div></div><Section title="Issues" meta={`${issues.length} issues · ${findings.length} raw signals`}><Findings findings={issues} onSelectPath={selectFile} view={view} onViewChange={update}/></Section><div className="dashboard-grid"><Section title="Watchlist" meta={`${hotspots.length} hotspots`}><Hotspots hotspots={hotspots} onSelectPath={selectFile}/></Section><Section title="Similar groups" meta={`${similarGroups.length} groups`}><SimilarGroups groups={similarGroups} onSelectPath={selectFile}/></Section></div></div>}
+      {view.tab==="map"&&<div className="page-stack"><RepositoryMap files={repositoryFiles} selectedPath={view.file} onSelectPath={selectFile} layer={view.layer as MapLayer} onLayerChange={layer=>update({layer:layer as ViewMapLayer})}/><div className="dashboard-grid wide-left"><Section title="Dependency graph" meta={`${displayReport.dependency_graph?.nodes?.length??0} nodes`}><DependencyMap report={displayReport} selectedPath={view.file} onSelectPath={selectFile}/></Section><Section title="File overview" meta={`${files.length} files`}><FileOverviewList files={files} onSelectPath={selectFile}/></Section></div></div>}
+      {view.tab==="metrics"&&<MetricsPage report={displayReport} view={view} update={update}/>} 
+      {selectedFile?<Inspector report={displayReport} file={selectedFile} onClose={()=>update({file:null})} onSelectPath={selectFile}/>:null}
     </main>
   );
 }

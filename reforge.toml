@@ -2,6 +2,7 @@ churn = "auto"
 hotspot-model = "hybrid"
 ignore-paths = [
   "assets/report-app.js",
+  "web/report-app/src/vite-env.d.ts",
 ]
 
 [[suppressions]]

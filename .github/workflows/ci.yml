@@ -47,6 +47,25 @@ jobs:
       - name: Check embedded assets
         run: git diff --exit-code -- assets/report-app.js assets/report-app.css
 
+      - name: Install Playwright Chromium
+        working-directory: web/report-app
+        run: npx playwright install --with-deps chromium
+
+      - name: Run report app browser tests
+        working-directory: web/report-app
+        run: npm run test:e2e
+
+      - name: Upload browser test report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: report-app-playwright
+          path: |
+            web/report-app/playwright-report
+            target/playwright/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
   documentation:
     name: documentation
     runs-on: ubuntu-latest

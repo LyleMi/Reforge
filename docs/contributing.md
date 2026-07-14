@@ -58,11 +58,19 @@ cd web\report-app
 npm ci
 npm run test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
 
 The build refreshes `assets/report-app.js` and `assets/report-app.css`. Rust
 embeds those files in offline HTML reports, so commit both generated assets
 with the frontend source change.
+
+The Playwright suite generates a report with deliberately strict thresholds
+and opens the final self-contained HTML file in Chromium. It covers browser
+rendering, report interactions, and desktop/mobile layout. Failure screenshots,
+traces, and videos are written below `target/playwright`; the HTML test report
+is written to `web/report-app/playwright-report` in CI.
 
 ## Documentation Site
 

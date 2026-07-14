@@ -1,4 +1,4 @@
-import type { FileRawMetric, ScanReport } from "./reportTypes";
+import type { Finding, FileRawMetric, ScanReport, Severity } from "./reportTypes";
 
 export const REPORT_SCHEMA_VERSION = 18;
 
@@ -13,8 +13,153 @@ export type FileOverview = {
   isTest: boolean;
 };
 
+export type MapLayer = "priority" | "severity" | "churn" | "findings";
+
+export type RepositoryFileView = {
+  path: string;
+  loc: number;
+  weight: number;
+  priority: number;
+  severity: Severity;
+  findings: number;
+  issues: number;
+  churn: number;
+  fanIn: number;
+  fanOut: number;
+  isCycle: boolean;
+  isHub: boolean;
+  similarityGroups: Finding[];
+};
+
+export type RepositoryTreeNode = {
+  name: string;
+  path: string;
+  weight: number;
+  children: RepositoryTreeNode[];
+  file?: RepositoryFileView;
+};
+
+export type TreemapRect = {
+  path: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  depth: number;
+  file?: RepositoryFileView;
+};
+
+export type FileInspectorData = RepositoryFileView & {
+  fileFindings: Finding[];
+  incoming: string[];
+  outgoing: string[];
+  riskReasons: string[];
+};
+
+export function keepSelectedWithinLimit<T extends { path: string }>(
+  items: T[],
+  selectedPath: string | null | undefined,
+  limit: number,
+): T[] {
+  if (!selectedPath) return items.slice(0, limit);
+  const selected = items.find((item) => item.path === selectedPath);
+  if (!selected) return items.slice(0, limit);
+  return [selected, ...items.filter((item) => item !== selected)].slice(0, limit);
+}
+
 function number(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+const severityRank: Record<string, number> = { info: 1, warning: 2, critical: 3 };
+
+function maxSeverity(left: Severity, right: Severity): Severity {
+  return (severityRank[String(right).toLowerCase()] ?? 0) >
+    (severityRank[String(left).toLowerCase()] ?? 0)
+    ? right
+    : left;
+}
+
+export function deriveRepositoryFiles(report: ScanReport): RepositoryFileView[] {
+  const paths = new Set(reportFilePaths(report).filter(Boolean).map(normalizeReportPath));
+  const raw = new Map((report.raw_metrics?.files ?? []).map((file) => [normalizeReportPath(file.path), file]));
+  const nodes = new Map((report.dependency_graph?.nodes ?? []).map((node) => [normalizeReportPath(node.path), node]));
+  const cycles = new Set<string>();
+  const hubs = new Set<string>();
+  for (const finding of report.findings ?? []) {
+    if (finding.kind === "dependency_cycle") {
+      cycles.add(normalizeReportPath(finding.path));
+      for (const related of finding.related_locations ?? []) cycles.add(normalizeReportPath(related.path));
+    }
+    if (finding.kind === "dependency_hub") hubs.add(normalizeReportPath(finding.path));
+  }
+
+  return [...paths].sort().map((path) => {
+    const metric = raw.get(path);
+    const fileFindings = (report.findings ?? []).filter((finding) => normalizeReportPath(finding.path) === path);
+    const fileIssues = (report.issues ?? []).filter((issue) => normalizeReportPath(issue.path) === path);
+    const hotspot = (report.hotspots ?? []).filter((item) => normalizeReportPath(item.path) === path);
+    const priority = Math.max(0, ...fileFindings.map((item) => number(item.priority)), ...fileIssues.map((item) => number(item.priority)), ...hotspot.map((item) => number(item.priority)));
+    const severity = [...fileFindings.map((item) => item.severity), ...fileIssues.map((item) => item.severity), ...hotspot.map((item) => item.severity ?? "info")].reduce<Severity>(maxSeverity, "info");
+    const dependency = nodes.get(path);
+    const similarityGroups = (report.findings ?? []).filter((finding) => finding.kind === "similar_functions" && [finding.path, ...(finding.related_locations ?? []).map((item) => item.path)].map(normalizeReportPath).includes(path));
+    const loc = number(metric?.loc);
+    return { path, loc, weight: loc || 1, priority, severity, findings: fileFindings.length, issues: fileIssues.length, churn: number(metric?.churn?.recent_weighted_churn), fanIn: number(dependency?.fan_in), fanOut: number(dependency?.fan_out), isCycle: cycles.has(path), isHub: hubs.has(path), similarityGroups };
+  });
+}
+
+export function buildRepositoryTree(files: RepositoryFileView[]): RepositoryTreeNode {
+  const root: RepositoryTreeNode = { name: "repository", path: "", weight: 0, children: [] };
+  for (const file of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
+    const parts = file.path.split("/").filter(Boolean);
+    let node = root;
+    parts.forEach((part, index) => {
+      const path = parts.slice(0, index + 1).join("/");
+      let child = node.children.find((candidate) => candidate.name === part);
+      if (!child) {
+        child = { name: part, path, weight: 0, children: [] };
+        node.children.push(child);
+      }
+      node = child;
+    });
+    node.file = file;
+  }
+  const total = (node: RepositoryTreeNode): number => {
+    node.children.sort((a, b) => a.path.localeCompare(b.path));
+    node.weight = node.file?.weight ?? node.children.reduce((sum, child) => sum + total(child), 0);
+    return node.weight;
+  };
+  total(root);
+  return root;
+}
+
+export function layoutRepositoryTreemap(tree: RepositoryTreeNode, width = 1000, height = 520): TreemapRect[] {
+  const rectangles: TreemapRect[] = [];
+  const place = (node: RepositoryTreeNode, bounds: { x: number; y: number; w: number; h: number; depth: number }) => {
+    const { x, y, w, h, depth } = bounds;
+    rectangles.push({ path: node.path, x, y, width: w, height: h, depth, file: node.file });
+    if (!node.children.length || node.weight <= 0) return;
+    let cursor = 0;
+    const horizontal = w >= h;
+    for (const child of node.children) {
+      const share = child.weight / node.weight;
+      const childW = horizontal ? w * share : w;
+      const childH = horizontal ? h : h * share;
+      place(child, { x: x + (horizontal ? cursor : 0), y: y + (horizontal ? 0 : cursor), w: childW, h: childH, depth: depth + 1 });
+      cursor += horizontal ? childW : childH;
+    }
+  };
+  place(tree, { x: 0, y: 0, w: width, h: height, depth: 0 });
+  return rectangles;
+}
+
+export function deriveFileInspector(report: ScanReport, file: RepositoryFileView): FileInspectorData {
+  const edges = report.dependency_graph?.edges ?? [];
+  const fileFindings = (report.findings ?? []).filter((finding) => normalizeReportPath(finding.path) === file.path);
+  const incoming = edges.filter((edge) => normalizeReportPath(edge.to) === file.path).map((edge) => normalizeReportPath(edge.from)).sort();
+  const outgoing = edges.filter((edge) => normalizeReportPath(edge.from) === file.path).map((edge) => normalizeReportPath(edge.to)).sort();
+  const riskReasons = [...new Set([...(report.hotspots ?? []).filter((item) => normalizeReportPath(item.path) === file.path).map((item) => item.reason).filter((value): value is string => Boolean(value)), ...fileFindings.map((item) => item.rank_explanation).filter((value): value is string => Boolean(value))])];
+  return { ...file, fileFindings, incoming, outgoing, riskReasons };
 }
 
 export function formatRiskScore(value: unknown): number {
