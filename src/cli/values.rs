@@ -113,6 +113,7 @@ impl ScanArgs {
             min_data_clump_occurrences: thresholds.repetition.min_data_clump_occurrences,
             include_test_structure: false,
             config: None,
+            scoring_policy: None,
             ci: CiArgs::default(),
             churn: None,
             hotspot_model: None,

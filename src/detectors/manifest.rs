@@ -93,7 +93,7 @@ pub(crate) fn classification(kind: FindingKind) -> (QualityConstruct, SignalMech
 }
 
 pub(crate) fn detector_manifest() -> Vec<DetectorManifestEntry> {
-    ALL_FINDING_KINDS
+    let manifest = ALL_FINDING_KINDS
         .iter()
         .copied()
         .map(|kind| {
@@ -120,7 +120,55 @@ pub(crate) fn detector_manifest() -> Vec<DetectorManifestEntry> {
                 actionability: actionability(kind),
             }
         })
-        .collect()
+        .collect::<Vec<_>>();
+    assert_manifest_invariants(&manifest);
+    manifest
+}
+
+fn assert_manifest_invariants(manifest: &[DetectorManifestEntry]) {
+    let raw = raw_metric_manifest();
+    let raw_names = raw
+        .iter()
+        .map(|entry| entry.name)
+        .collect::<std::collections::BTreeSet<_>>();
+    for entry in manifest {
+        assert!(
+            entry
+                .input_metrics
+                .iter()
+                .all(|metric| raw_names.contains(metric)),
+            "detector {:?} declares an unknown input metric",
+            entry.kind
+        );
+        if entry.evidence_role == EvidenceRole::CompositeSummary {
+            assert!(
+                !entry.constituent_kinds.is_empty(),
+                "composite detector {:?} has no constituents",
+                entry.kind
+            );
+            for constituent in &entry.constituent_kinds {
+                assert_ne!(
+                    *constituent, entry.kind,
+                    "composite detector cycle at {:?}",
+                    entry.kind
+                );
+                let other = manifest
+                    .iter()
+                    .find(|candidate| candidate.kind == *constituent)
+                    .expect("composite constituent must exist");
+                assert_eq!(
+                    other.mechanism, entry.mechanism,
+                    "composite mechanism mismatch"
+                );
+                assert_eq!(other.action, entry.action, "composite action mismatch");
+            }
+        } else {
+            assert!(
+                entry.constituent_kinds.is_empty(),
+                "only composite detectors may declare constituents"
+            );
+        }
+    }
 }
 
 pub(crate) fn issue_family(kind: FindingKind) -> &'static str {

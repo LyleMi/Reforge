@@ -84,6 +84,7 @@ export type DetectorManifestEntry = {
   approach: string;
   supported_languages: string[];
   precision_risk: string;
+  input_metrics?: string[];
 };
 
 export type RawMetricManifestEntry = {
@@ -167,6 +168,30 @@ export type DependencyGraph = {
   edges?: DependencyGraphEdge[];
 };
 
+export type CoverageCell = {
+  mechanism: string;
+  entity_scope: string;
+  expectation: "required" | "planned" | "intentionally_out_of_scope" | string;
+  status: "observed" | "partially_observed" | "unsupported" | "no_entities" | "planned" | "intentionally_out_of_scope" | string;
+  reason: string;
+  detectors?: string[];
+  completed_detectors?: string[];
+  entity_count?: number;
+  unobservable_reasons?: string[];
+};
+
+export type DetectorExecutionReceipt = {
+  kind: string;
+  status: string;
+  analyzed_entities?: number;
+  candidate_groups?: number;
+  unobservable_count?: number;
+  unobservable_reasons?: string[];
+};
+
+export type RawMetricCoverage = { metric: string; status: string; entity_count?: number; reason: string; unobservable_reasons?: string[] };
+export type EffectiveScoringPolicy = { source: string; path?: string | null; policy_id: string; version: number; fingerprint: string; global_weights?: Record<string, number> };
+
 export type ScanReport = {
   schema_version: number;
   summary?: ScanSummary;
@@ -177,6 +202,11 @@ export type ScanReport = {
   dependency_graph?: DependencyGraph;
   hotspots?: Hotspot[];
   suppression_summary?: SuppressionSummary;
+  coverage_manifest?: CoverageCell[];
+  coverage_summary?: Record<string, unknown>;
+  detector_execution?: DetectorExecutionReceipt[];
+  raw_metric_coverage?: RawMetricCoverage[];
+  scoring_policy?: EffectiveScoringPolicy;
   issues?: Issue[];
   detector_manifest?: DetectorManifestEntry[];
   findings?: Finding[];

@@ -1,13 +1,13 @@
 # Report Schema
 
-Schema 18 separates atomic evidence (`findings`) from decision units (`issues`).
+Schema 19 separates atomic evidence (`findings`) from decision units (`issues`) and makes measurement coverage and scoring provenance auditable.
 Each finding exposes `detection_reliability` and `interpretation_reliability`;
 the manifest declares `issue_family`, `evidence_role`, and
 `constituent_kinds`. `coverage_manifest` declares the supported mechanism and
 entity-scope matrix, while `coverage_summary` records observed languages,
 analyzed entities, parse failures, and unobservable reasons for this run.
 
-JSON and YAML reports use schema version `18`. Version 17 reports and baselines are rejected and must be regenerated. The same Rust data model is
+JSON and YAML reports use schema version `19`. Older reports and baselines, including v18, are rejected and must be regenerated. The same Rust data model is
 serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 that carries the same finding IDs in result fingerprints.
 
@@ -15,7 +15,7 @@ that carries the same finding IDs in result fingerprints.
 
 ```json
 {
-  "schema_version": 18,
+  "schema_version": 19,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
@@ -26,6 +26,9 @@ that carries the same finding IDs in result fingerprints.
   "suppression_summary": {},
   "coverage_manifest": [],
   "coverage_summary": {},
+  "detector_execution": [],
+  "raw_metric_coverage": [],
+  "scoring_policy": {},
   "issues": [],
   "detector_manifest": [],
   "findings": []
@@ -34,7 +37,11 @@ that carries the same finding IDs in result fingerprints.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `18`.
+- `schema_version`: report schema version. Current value is `19`.
+- `coverage_manifest`: normative 7 mechanisms × 6 entity scopes matrix with expectation, runtime status, detectors, entity count, and unobservable reasons.
+- `detector_execution`: one execution receipt per detector, including completed zero-finding runs.
+- `raw_metric_coverage`: observation state for all 18 canonical raw metrics. Disabled churn is `unavailable`, never observed zero pressure.
+- `scoring_policy`: effective source, ID, version, stable consistency fingerprint, weights, and reliability overrides.
 - `summary`: scan totals, duration, hotspot model, and churn status.
 - `stats`: source files, directories, and function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
@@ -371,7 +378,7 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `18` formalizes `rf3-` EvidenceIds and `ri3-` IssueKeys over canonical
+version `19` retains `rf3-` EvidenceIds and `ri3-` IssueKeys over canonical
 subjects. Issue identity is independent of alternative evidence membership and
 input ordering. Schema
 version `16` gives every finding metric a canonical dotted ID, adds directory

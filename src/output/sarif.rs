@@ -40,7 +40,15 @@ fn sarif_log(report: &ScanReport) -> Value {
             "results": report.issues
                 .iter()
                 .map(|issue| sarif_result(issue, &rule_indices))
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
+            "properties": {
+                "reforgeSchemaVersion": report.schema_version,
+                "coverage": {
+                    "cells": report.coverage_manifest,
+                    "summary": report.coverage_summary
+                },
+                "scoringPolicy": report.scoring_policy
+            }
         }]
     })
 }

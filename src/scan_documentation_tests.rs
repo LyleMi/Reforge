@@ -52,6 +52,7 @@ fn scan_args(path: std::path::PathBuf) -> ScanArgs {
         min_data_clump_occurrences: 3,
         include_test_structure: false,
         config: None,
+        scoring_policy: None,
         ci: crate::cli::CiArgs {
             baseline: None,
             baseline_mode: crate::cli::BaselineMode::NewOrWorse,
@@ -101,13 +102,13 @@ fn cli_flags_doc() -> &'static str {
 --max-type-members --max-imports --max-public-items \
 --max-functions-per-file --max-functions-per-100-lines --max-small-function-ratio \
 --min-repeated-literal-occurrences --min-data-clump-occurrences \
---include-test-structure --config --churn --hotspot-model \
+--include-test-structure --config --scoring-policy --churn --hotspot-model \
 --baseline --baseline-mode --show --fail-on --churn-window-days --churn-max-commit-lines --output --output-file \
 --progress --color"
 }
 
 fn schema_fields_doc() -> &'static str {
-    "schema_version summary stats metrics_summary raw_metrics raw_metric_manifest dependency_graph hotspots suppression_summary coverage_manifest coverage_summary issues detector_manifest findings \
+    "schema_version summary stats metrics_summary raw_metrics raw_metric_manifest dependency_graph hotspots suppression_summary coverage_manifest coverage_summary detector_execution raw_metric_coverage scoring_policy issues detector_manifest findings \
  id kind severity path line metrics priority detection_reliability interpretation_reliability priority_factors construct mechanism action entity_scope issue_family evidence_role constituent_kinds issue_count \
  rank_explanation recommendation related_locations"
 }

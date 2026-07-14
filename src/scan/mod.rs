@@ -13,14 +13,18 @@ use crate::detectors::dependency_graph::scan_dependency_graph_report;
 use crate::detectors::manifest::{detector_manifest, evidence_role, raw_metric_manifest};
 use crate::documentation::scan_documentation;
 use crate::model::{
-    ChurnFileMetric, CoverageManifestEntry, CoverageStatus, CoverageSummary,
-    DependencyGraphSnapshot, DirectoryRawMetric, EvidenceRole, FileRawMetric, Finding, FindingKind,
-    FindingMetric, FunctionRawMetric, MetricId, RawMetrics, SCAN_REPORT_SCHEMA_VERSION, ScanReport,
-    ScanStats, ScanSummary, SuppressionSummary, TypeRawMetric,
+    ChurnFileMetric, CoverageExpectation, CoverageManifestEntry, CoverageStatus, CoverageSummary,
+    DependencyGraphSnapshot, DetectorExecutionReceipt, DetectorExecutionStatus, DirectoryRawMetric,
+    EvidenceRole, FileRawMetric, Finding, FindingKind, FindingMetric, FunctionRawMetric, MetricId,
+    ParseFailure, ParseFailureReason, RawMetricCoverage, RawMetricCoverageStatus, RawMetrics,
+    SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary, SuppressionSummary,
+    TypeRawMetric,
 };
+#[cfg(test)]
+use crate::scoring::finalize_scoring;
 use crate::scoring::{
-    FindingInput, StaticRiskThresholds, cluster_findings, finalize_scoring, finding, rank_hotspots,
-    summarize_raw_metrics,
+    FindingInput, StaticRiskThresholds, cluster_findings, finalize_scoring_with_policy, finding,
+    load_scoring_policy, rank_hotspots, summarize_raw_metrics,
 };
 use crate::similar_functions::{
     ParsedSourceFile, SimilarFunctionOptions, SimilarFunctionProgress, SourceFile,
@@ -71,6 +75,8 @@ struct SourceScan {
     raw_metrics: RawMetrics,
     dependency_graph: DependencyGraphSnapshot,
     stats: ScanStats,
+    parse_failures: Vec<ParseFailure>,
+    unresolved_dependency_edges: usize,
 }
 
 #[derive(Debug, Default)]
@@ -95,6 +101,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     let started_at = Instant::now();
     let root = resolve_scan_root(args)?;
     let effective = effective_scan_config(args, &root)?;
+    let scoring_policy = load_scoring_policy(effective.scoring_policy_path.as_deref())?;
     let effective_args = effective.args;
     let mut scan = SourceScan::default();
     let source_plan = collect_source_scan_plan(&root, &effective_args)?;
@@ -126,7 +133,12 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     );
     scan.findings
         .retain(|finding| evidence_role(finding.kind) != EvidenceRole::CompositeSummary);
-    finalize_scoring(&mut scan.findings, &scan.raw_metrics, &hotspots);
+    finalize_scoring_with_policy(
+        &mut scan.findings,
+        &scan.raw_metrics,
+        &hotspots,
+        &scoring_policy,
+    );
     let post_score_controls = apply_post_score_finding_controls(
         &mut scan,
         &root,
@@ -135,13 +147,18 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     )?;
     let issues = cluster_findings(&mut scan.findings);
     let manifest = detector_manifest();
-    let (coverage_manifest, coverage_summary) = coverage(
-        &manifest,
-        &scan.stats,
-        &scan.structure_sources,
-        scan.raw_metrics.types.len(),
-        issues.len(),
-    );
+    let (coverage_manifest, coverage_summary, detector_execution, raw_metric_coverage) =
+        coverage(CoverageProjectionInput {
+            manifest: &manifest,
+            stats: &scan.stats,
+            source_files: &scan.structure_sources,
+            function_count: scan.raw_metrics.functions.len(),
+            type_count: scan.raw_metrics.types.len(),
+            findings: &scan.findings,
+            parse_failures: &scan.parse_failures,
+            unresolved_dependency_edges: scan.unresolved_dependency_edges,
+            churn: &churn_summary,
+        });
 
     let summary = ScanSummary {
         scanned_files: scan.stats.source_files_scanned,
@@ -170,6 +187,9 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         suppression_summary: post_score_controls.suppression_summary,
         coverage_manifest,
         coverage_summary,
+        detector_execution,
+        raw_metric_coverage,
+        scoring_policy,
         issues,
         detector_manifest: manifest,
         findings: scan.findings,
@@ -184,50 +204,143 @@ fn finish_progress(progress: &mut dyn ProgressSink, summary: &ScanSummary) {
     progress.finish();
 }
 
-fn coverage(
-    manifest: &[crate::model::DetectorManifestEntry],
-    stats: &ScanStats,
-    source_files: &[SourceFile],
+struct CoverageProjectionInput<'a> {
+    manifest: &'a [crate::model::DetectorManifestEntry],
+    stats: &'a ScanStats,
+    source_files: &'a [SourceFile],
+    function_count: usize,
     type_count: usize,
-    issue_count: usize,
-) -> (Vec<CoverageManifestEntry>, CoverageSummary) {
+    findings: &'a [Finding],
+    parse_failures: &'a [ParseFailure],
+    unresolved_dependency_edges: usize,
+    churn: &'a crate::model::ChurnSummary,
+}
+
+fn coverage(
+    input: CoverageProjectionInput<'_>,
+) -> (
+    Vec<CoverageManifestEntry>,
+    CoverageSummary,
+    Vec<DetectorExecutionReceipt>,
+    Vec<RawMetricCoverage>,
+) {
+    let CoverageProjectionInput {
+        manifest,
+        stats,
+        source_files,
+        function_count,
+        type_count,
+        findings,
+        parse_failures,
+        unresolved_dependency_edges,
+        churn,
+    } = input;
     let detected_languages = source_files
         .iter()
         .filter_map(|source| detected_language(&source.path))
         .collect::<BTreeSet<_>>();
-    let mut cells = BTreeMap::<_, Vec<_>>::new();
-    for entry in manifest {
-        cells
-            .entry((entry.mechanism, entry.entity_scope))
-            .or_default()
-            .push(entry);
-    }
-    let coverage_manifest = cells
-        .into_iter()
-        .map(|((mechanism, entity_scope), entries)| {
-            let applicable = entries
-                .iter()
-                .copied()
-                .filter(|entry| detector_is_applicable(entry, &detected_languages))
-                .collect::<Vec<_>>();
-            let observed = !applicable.is_empty();
+    let entity_counts = BTreeMap::from([
+        (crate::model::EntityScope::Repository, 1),
+        (
+            crate::model::EntityScope::Directory,
+            stats.directories_scanned,
+        ),
+        (crate::model::EntityScope::File, stats.source_files_scanned),
+        (crate::model::EntityScope::Function, function_count),
+        (crate::model::EntityScope::Type, type_count),
+    ]);
+    let detector_execution = manifest
+        .iter()
+        .map(|entry| {
+            let applicable = detector_is_applicable(entry, &detected_languages);
+            let analyzed_entities = if applicable {
+                entity_counts
+                    .get(&entry.entity_scope)
+                    .copied()
+                    .unwrap_or_else(|| {
+                        findings
+                            .iter()
+                            .filter(|finding| finding.kind == entry.kind)
+                            .count()
+                    })
+            } else {
+                0
+            };
+            let parse_sensitive = detector_requires_parse(entry);
+            let unresolved = if entry.approach == crate::model::DetectionApproach::GraphAnalysis {
+                unresolved_dependency_edges
+            } else {
+                0
+            };
+            DetectorExecutionReceipt {
+                kind: entry.kind,
+                status: if applicable {
+                    DetectorExecutionStatus::Completed
+                } else {
+                    DetectorExecutionStatus::NotApplicable
+                },
+                analyzed_entities,
+                candidate_groups: if entry.entity_scope == crate::model::EntityScope::FindingGroup {
+                    findings
+                        .iter()
+                        .filter(|finding| finding.kind == entry.kind)
+                        .count()
+                } else {
+                    0
+                },
+                unobservable_count: if applicable && parse_sensitive {
+                    parse_failures.len() + unresolved
+                } else {
+                    0
+                },
+                unobservable_reasons: if applicable {
+                    [
+                        (!parse_failures.is_empty() && parse_sensitive).then(|| {
+                            format!(
+                                "{} source files failed syntax parsing",
+                                parse_failures.len()
+                            )
+                        }),
+                        (unresolved > 0).then(|| {
+                            format!("{unresolved} dependency edges could not be resolved")
+                        }),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect()
+                } else {
+                    Vec::new()
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+    let coverage_manifest = coverage_targets().into_iter().map(|(mechanism, entity_scope, expectation)| {
+            let entries = manifest.iter().filter(|entry| entry.mechanism == mechanism && entry.entity_scope == entity_scope).collect::<Vec<_>>();
+            let applicable = entries.iter().filter(|entry| detector_is_applicable(entry, &detected_languages)).collect::<Vec<_>>();
+            let completed_detectors = applicable.iter().map(|entry| entry.kind).collect::<Vec<_>>();
+            let entity_count = entity_counts.get(&entity_scope).copied().unwrap_or_else(|| applicable.iter().map(|entry| findings.iter().filter(|finding| finding.kind == entry.kind).count()).sum());
+            let graph_cell = applicable.iter().any(|entry| entry.approach == crate::model::DetectionApproach::GraphAnalysis);
+            let partial = (!parse_failures.is_empty() && applicable.iter().any(|entry| detector_requires_parse(entry))) || (graph_cell && unresolved_dependency_edges > 0);
+            let status = match expectation {
+                CoverageExpectation::Planned => CoverageStatus::Planned,
+                CoverageExpectation::IntentionallyOutOfScope => CoverageStatus::IntentionallyOutOfScope,
+                CoverageExpectation::Required if applicable.is_empty() => CoverageStatus::Unsupported,
+                CoverageExpectation::Required if partial => CoverageStatus::PartiallyObserved,
+                CoverageExpectation::Required if entity_count == 0 => CoverageStatus::NoEntities,
+                CoverageExpectation::Required => CoverageStatus::Observed,
+            };
             CoverageManifestEntry {
                 mechanism,
                 entity_scope,
-                status: if observed {
-                    CoverageStatus::Observed
-                } else {
-                    CoverageStatus::Unsupported
-                },
-                reason: if observed {
-                    "applicable detectors completed for this scan".into()
-                } else {
-                    "no detected language is supported by detectors in this coverage cell".into()
-                },
+                expectation,
+                status,
+                reason: coverage_reason(status).into(),
                 detectors: entries.into_iter().map(|entry| entry.kind).collect(),
+                completed_detectors,
+                entity_count,
+                unobservable_reasons: if partial { [(!parse_failures.is_empty()).then(|| format!("{} source files failed syntax parsing", parse_failures.len())), (graph_cell && unresolved_dependency_edges > 0).then(|| format!("{unresolved_dependency_edges} dependency edges could not be resolved"))].into_iter().flatten().collect() } else { Vec::new() },
             }
-        })
-        .collect();
+        }).collect();
     let coverage_summary = CoverageSummary {
         detected_languages: detected_languages.iter().cloned().collect(),
         applicable_detectors: manifest
@@ -235,24 +348,217 @@ fn coverage(
             .filter(|entry| detector_is_applicable(entry, &detected_languages))
             .map(|entry| entry.kind)
             .collect(),
-        analyzed_entities: BTreeMap::from([
-            (crate::model::EntityScope::Repository, 1),
-            (
-                crate::model::EntityScope::Directory,
-                stats.directories_scanned,
-            ),
-            (crate::model::EntityScope::File, stats.source_files_scanned),
-            (
-                crate::model::EntityScope::Function,
-                stats.function_candidates,
-            ),
-            (crate::model::EntityScope::Type, type_count),
-            (crate::model::EntityScope::FindingGroup, issue_count),
-        ]),
-        parse_failures: 0,
-        unobservable_reasons: Vec::new(),
+        analyzed_entities: entity_counts,
+        parse_failures: parse_failures.to_vec(),
+        unresolved_dependency_edges,
+        unobservable_reasons: if parse_failures.is_empty() {
+            Vec::new()
+        } else {
+            vec![format!(
+                "{} source files failed syntax parsing",
+                parse_failures.len()
+            )]
+        },
     };
-    (coverage_manifest, coverage_summary)
+    let raw_metric_coverage = canonical_raw_metrics()
+        .iter()
+        .copied()
+        .map(|metric| {
+            raw_metric_observation(
+                metric,
+                stats,
+                function_count,
+                type_count,
+                parse_failures,
+                churn,
+            )
+        })
+        .collect();
+    (
+        coverage_manifest,
+        coverage_summary,
+        detector_execution,
+        raw_metric_coverage,
+    )
+}
+
+fn detector_requires_parse(entry: &crate::model::DetectorManifestEntry) -> bool {
+    matches!(
+        entry.entity_scope,
+        crate::model::EntityScope::Function | crate::model::EntityScope::Type
+    ) || matches!(
+        entry.approach,
+        crate::model::DetectionApproach::ParsedAnalysis
+            | crate::model::DetectionApproach::GraphAnalysis
+    )
+}
+
+fn coverage_targets() -> Vec<(
+    crate::model::SignalMechanism,
+    crate::model::EntityScope,
+    CoverageExpectation,
+)> {
+    use crate::model::{EntityScope as E, SignalMechanism as M};
+    const MECHANISMS: [M; 7] = [
+        M::CognitiveLoad,
+        M::DependencyPropagation,
+        M::ResponsibilityDispersion,
+        M::DuplicationDivergence,
+        M::ChangePressure,
+        M::VerificationDifficulty,
+        M::KnowledgeDrift,
+    ];
+    const SCOPES: [E; 6] = [
+        E::Repository,
+        E::Directory,
+        E::File,
+        E::Function,
+        E::Type,
+        E::FindingGroup,
+    ];
+    let required = |m, e| {
+        matches!(
+            (m, e),
+            (M::CognitiveLoad, E::Function)
+                | (M::DependencyPropagation, E::File | E::FindingGroup)
+                | (
+                    M::ResponsibilityDispersion,
+                    E::Directory | E::File | E::Type
+                )
+                | (M::DuplicationDivergence, E::FindingGroup)
+                | (M::ChangePressure, E::File | E::FindingGroup)
+                | (M::VerificationDifficulty, E::FindingGroup)
+                | (M::KnowledgeDrift, E::Directory | E::Repository)
+        )
+    };
+    MECHANISMS
+        .into_iter()
+        .flat_map(|m| {
+            SCOPES.into_iter().map(move |e| {
+                (
+                    m,
+                    e,
+                    if required(m, e) {
+                        CoverageExpectation::Required
+                    } else {
+                        CoverageExpectation::IntentionallyOutOfScope
+                    },
+                )
+            })
+        })
+        .collect()
+}
+
+fn coverage_reason(status: CoverageStatus) -> &'static str {
+    match status {
+        CoverageStatus::Observed => "all applicable detectors completed",
+        CoverageStatus::PartiallyObserved => {
+            "applicable detectors completed with unobservable entities"
+        }
+        CoverageStatus::Unsupported => "no detector supports the detected languages",
+        CoverageStatus::NoEntities => "no entities were available for analysis",
+        CoverageStatus::Planned => "coverage is planned for a future schema",
+        CoverageStatus::IntentionallyOutOfScope => {
+            "this mechanism and scope are intentionally out of scope"
+        }
+    }
+}
+
+fn canonical_raw_metrics() -> &'static [MetricId] {
+    use MetricId::*;
+    &[
+        FileLoc,
+        FileImports,
+        FilePublicItems,
+        FileIsTest,
+        DirectorySourceFiles,
+        FunctionLoc,
+        FunctionComplexity,
+        FunctionNestingDepth,
+        FunctionParameterCount,
+        FunctionIsTest,
+        TypeLoc,
+        TypeMemberCount,
+        TypeIsTest,
+        ChurnCommitsTouched,
+        ChurnLinesAdded,
+        ChurnLinesDeleted,
+        ChurnAuthorsCount,
+        ChurnRecentWeighted,
+    ]
+}
+
+fn raw_metric_observation(
+    metric: MetricId,
+    stats: &ScanStats,
+    function_count: usize,
+    type_count: usize,
+    failures: &[ParseFailure],
+    churn: &crate::model::ChurnSummary,
+) -> RawMetricCoverage {
+    let is_churn = matches!(
+        metric,
+        MetricId::ChurnCommitsTouched
+            | MetricId::ChurnLinesAdded
+            | MetricId::ChurnLinesDeleted
+            | MetricId::ChurnAuthorsCount
+            | MetricId::ChurnRecentWeighted
+    );
+    let parse_sensitive = matches!(
+        metric,
+        MetricId::FunctionLoc
+            | MetricId::FunctionComplexity
+            | MetricId::FunctionNestingDepth
+            | MetricId::FunctionParameterCount
+            | MetricId::FunctionIsTest
+            | MetricId::TypeLoc
+            | MetricId::TypeMemberCount
+            | MetricId::TypeIsTest
+            | MetricId::FileImports
+            | MetricId::FilePublicItems
+    );
+    let entity_count = match metric {
+        MetricId::DirectorySourceFiles => stats.directories_scanned,
+        MetricId::FunctionLoc
+        | MetricId::FunctionComplexity
+        | MetricId::FunctionNestingDepth
+        | MetricId::FunctionParameterCount
+        | MetricId::FunctionIsTest => function_count,
+        MetricId::TypeLoc | MetricId::TypeMemberCount | MetricId::TypeIsTest => type_count,
+        _ => stats.source_files_scanned,
+    };
+    let status = if is_churn && !churn.enabled {
+        RawMetricCoverageStatus::Unavailable
+    } else if parse_sensitive && !failures.is_empty() {
+        RawMetricCoverageStatus::PartiallyObserved
+    } else {
+        RawMetricCoverageStatus::Observed
+    };
+    RawMetricCoverage {
+        metric,
+        status,
+        entity_count,
+        reason: match status {
+            RawMetricCoverageStatus::Observed => "metric observed for available entities",
+            RawMetricCoverageStatus::PartiallyObserved => {
+                "metric unavailable for files that failed parsing"
+            }
+            RawMetricCoverageStatus::Unavailable => {
+                "Git churn collection was disabled or unavailable"
+            }
+        }
+        .into(),
+        unobservable_reasons: if status == RawMetricCoverageStatus::PartiallyObserved {
+            vec![format!(
+                "{} source files failed syntax parsing",
+                failures.len()
+            )]
+        } else if status == RawMetricCoverageStatus::Unavailable {
+            churn.reason.clone().into_iter().collect()
+        } else {
+            Vec::new()
+        },
+    }
 }
 
 fn detector_is_applicable(
@@ -395,6 +701,7 @@ impl ScanSignalContext<'_> {
             self.scan.structure_sources.len()
         ));
         let dependency_scan = scan_dependency_graph_report(&self.scan.structure_sources, self.root);
+        self.scan.unresolved_dependency_edges = dependency_scan.unresolved_edges;
         self.scan.dependency_graph = dependency_scan.snapshot;
         self.scan.findings.extend(dependency_scan.findings);
     }
@@ -686,8 +993,13 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
             source: Arc::clone(&source),
         };
 
-        if let Some(parsed) = parse_source_file(source_file.clone())? {
-            scan.parsed_sources.push(parsed);
+        match parse_source_file(source_file.clone())? {
+            Some(parsed) => scan.parsed_sources.push(parsed),
+            None => scan.parse_failures.push(ParseFailure {
+                path: display_path.clone(),
+                language: detected_language(path).unwrap_or_else(|| "unknown".into()),
+                reason: ParseFailureReason::SyntaxError,
+            }),
         }
 
         scan.structure_sources.push(source_file);

@@ -5,10 +5,14 @@ use crate::detectors::similarity::SourceFile;
 
 use super::DependencyGraph;
 
-pub(super) fn build_dependency_graph(sources: &[SourceFile], root: &Path) -> DependencyGraph {
+pub(super) fn build_dependency_graph(
+    sources: &[SourceFile],
+    root: &Path,
+) -> (DependencyGraph, usize) {
     let root = normalize_path(root);
     let index = source_index(sources);
     let mut graph = DependencyGraph::default();
+    let mut unresolved_edges = 0;
 
     for source in sources {
         graph.add_node(source.display_path.clone());
@@ -18,11 +22,21 @@ pub(super) fn build_dependency_graph(sources: &[SourceFile], root: &Path) -> Dep
                 resolve_import(source, specifier.as_str(), language, &root, &index)
             {
                 graph.add_edge(source.display_path.clone(), target);
+            } else if is_local_specifier(specifier.as_str(), language) {
+                unresolved_edges += 1;
             }
         }
     }
 
-    graph
+    (graph, unresolved_edges)
+}
+
+fn is_local_specifier(specifier: &str, language: Language) -> bool {
+    match language {
+        Language::JavaScript => specifier.starts_with('.'),
+        Language::Python | Language::Ruby | Language::Rust | Language::CLike => true,
+        Language::Other => false,
+    }
 }
 
 fn source_index(sources: &[SourceFile]) -> BTreeMap<PathBuf, String> {

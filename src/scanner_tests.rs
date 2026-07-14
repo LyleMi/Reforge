@@ -3,6 +3,71 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::*;
 use crate::model::{Hotspot, HotspotLevel, MetricId, Severity};
 
+#[test]
+fn coverage_ontology_has_exactly_42_static_cells() {
+    let targets = coverage_targets();
+    assert_eq!(targets.len(), 42);
+    let unique = targets
+        .iter()
+        .map(|(mechanism, scope, _)| (*mechanism, *scope))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(unique.len(), 42);
+    assert_eq!(
+        targets
+            .iter()
+            .filter(
+                |(_, _, expectation)| *expectation == crate::model::CoverageExpectation::Required
+            )
+            .count(),
+        12
+    );
+    assert_eq!(
+        targets
+            .iter()
+            .filter(|(_, _, expectation)| *expectation
+                == crate::model::CoverageExpectation::IntentionallyOutOfScope)
+            .count(),
+        30
+    );
+}
+
+#[test]
+fn every_required_coverage_cell_has_a_detector() {
+    let manifest = crate::detectors::manifest::detector_manifest();
+    for (mechanism, scope, expectation) in coverage_targets() {
+        if expectation == crate::model::CoverageExpectation::Required {
+            assert!(
+                manifest
+                    .iter()
+                    .any(|entry| entry.mechanism == mechanism && entry.entity_scope == scope),
+                "missing detector for {mechanism:?}/{scope:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn syntax_failures_make_parse_dependent_coverage_partial() -> anyhow::Result<()> {
+    let root = test_root("coverage-parse-failure");
+    std::fs::create_dir_all(&root)?;
+    std::fs::write(root.join("broken.rs"), "fn broken( {\n")?;
+    let args = scan_args(root.clone(), false);
+    let mut progress = NoopProgress;
+    let report = scan_report(&args, &mut progress)?;
+    std::fs::remove_dir_all(root)?;
+    assert_eq!(report.coverage_summary.parse_failures.len(), 1);
+    assert!(
+        !report.coverage_summary.parse_failures[0]
+            .path
+            .contains('\\')
+    );
+    assert!(report.coverage_manifest.iter().any(|cell| cell.mechanism
+        == crate::model::SignalMechanism::CognitiveLoad
+        && cell.entity_scope == crate::model::EntityScope::Function
+        && cell.status == crate::model::CoverageStatus::PartiallyObserved));
+    Ok(())
+}
+
 fn test_root(name: &str) -> std::path::PathBuf {
     let suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -52,6 +117,7 @@ fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
         min_data_clump_occurrences: 3,
         include_test_structure: false,
         config: None,
+        scoring_policy: None,
         ci: crate::cli::CiArgs {
             baseline: None,
             baseline_mode: crate::cli::BaselineMode::NewOrWorse,

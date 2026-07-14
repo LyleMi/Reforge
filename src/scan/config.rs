@@ -20,6 +20,7 @@ pub(crate) const CONFIG_FILE_NAME: &str = "reforge.toml";
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 struct ReforgeConfig {
+    scoring_policy: Option<PathBuf>,
     preset: Option<ThresholdPreset>,
     max_file_lines: Option<usize>,
     max_dir_files: Option<usize>,
@@ -59,11 +60,13 @@ pub(super) struct ConfigSuppression {
 pub(super) struct EffectiveScanConfig {
     pub args: ScanArgs,
     pub suppressions: Vec<ConfigSuppression>,
+    pub scoring_policy_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) struct EffectiveConfigOutput {
+    scoring_policy: Option<PathBuf>,
     preset: ThresholdPreset,
     max_file_lines: usize,
     max_dir_files: usize,
@@ -99,6 +102,7 @@ pub(crate) struct EffectiveConfigOutput {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ReforgeConfigTemplate {
+    scoring_policy: Option<PathBuf>,
     preset: ThresholdPreset,
     max_file_lines: usize,
     max_dir_files: usize,
@@ -161,7 +165,11 @@ impl From<&ReforgeConfig> for ConfigThresholdDefaults {
 
 pub(crate) fn effective_scan_config(args: &ScanArgs, root: &Path) -> Result<EffectiveScanConfig> {
     let mut effective = args.clone();
-    let config = load_config(args, root)?;
+    let config_path = resolve_config_path(args.config.as_deref(), root);
+    let config = match &config_path {
+        Some(path) => Some(parse_config_file(path)?),
+        None => None,
+    };
     let suppressions = config
         .as_ref()
         .map(|config| config.suppressions.clone())
@@ -195,7 +203,37 @@ pub(crate) fn effective_scan_config(args: &ScanArgs, root: &Path) -> Result<Effe
     Ok(EffectiveScanConfig {
         args: effective,
         suppressions,
+        scoring_policy_path: resolve_scoring_policy_path(
+            args,
+            config.as_ref(),
+            config_path.as_deref(),
+        )?,
     })
+}
+
+fn resolve_scoring_policy_path(
+    args: &ScanArgs,
+    config: Option<&ReforgeConfig>,
+    config_path: Option<&Path>,
+) -> Result<Option<PathBuf>> {
+    if let Some(path) = &args.scoring_policy {
+        return Ok(Some(if path.is_absolute() {
+            path.clone()
+        } else {
+            std::env::current_dir()?.join(path)
+        }));
+    }
+    let Some(path) = config.and_then(|value| value.scoring_policy.as_ref()) else {
+        return Ok(None);
+    };
+    Ok(Some(if path.is_absolute() {
+        path.clone()
+    } else {
+        config_path
+            .and_then(Path::parent)
+            .unwrap_or_else(|| Path::new("."))
+            .join(path)
+    }))
 }
 
 pub(crate) fn validate_config(config_path: Option<&Path>, root: &Path) -> Result<Option<PathBuf>> {
@@ -224,16 +262,6 @@ pub(crate) fn default_config_toml() -> Result<String> {
         output.push('\n');
     }
     Ok(output)
-}
-
-fn load_config(args: &ScanArgs, root: &Path) -> Result<Option<ReforgeConfig>> {
-    let config_path = resolve_config_path(args.config.as_deref(), root);
-
-    let Some(path) = config_path else {
-        return Ok(None);
-    };
-
-    Ok(Some(parse_config_file(&path)?))
 }
 
 fn resolve_config_path(config_path: Option<&Path>, root: &Path) -> Option<PathBuf> {
@@ -271,6 +299,9 @@ fn discover_config_path(root: &Path) -> Option<PathBuf> {
 fn apply_config_defaults(args: &mut ScanArgs, cli_args: &ScanArgs, config: Option<&ReforgeConfig>) {
     apply_threshold_defaults(args, cli_args, config.map(ConfigThresholdDefaults::from));
     if let Some(config) = config {
+        if args.scoring_policy.is_none() {
+            args.scoring_policy = config.scoring_policy.clone();
+        }
         apply_churn_config_defaults(args, config);
         apply_ignore_path_defaults(args, config);
     }
@@ -302,6 +333,7 @@ fn apply_ignore_path_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
 impl From<&ScanArgs> for EffectiveConfigOutput {
     fn from(args: &ScanArgs) -> Self {
         Self {
+            scoring_policy: args.scoring_policy.clone(),
             preset: args.preset.unwrap_or_default(),
             max_file_lines: args.max_file_lines,
             max_dir_files: args.max_dir_files,
@@ -345,6 +377,7 @@ impl From<&ScanArgs> for EffectiveConfigOutput {
 impl From<&ScanArgs> for ReforgeConfigTemplate {
     fn from(args: &ScanArgs) -> Self {
         Self {
+            scoring_policy: None,
             preset: args.preset.unwrap_or_default(),
             max_file_lines: args.max_file_lines,
             max_dir_files: args.max_dir_files,
@@ -609,6 +642,43 @@ mod tests {
             output.max_function_lines,
             ThresholdSettings::STRICT.structure.max_function_lines
         );
+        Ok(())
+    }
+
+    #[test]
+    fn scoring_policy_cli_path_takes_precedence_and_resolves_from_cwd() -> Result<()> {
+        let args = ScanArgs {
+            scoring_policy: Some(PathBuf::from("cli-policy.json")),
+            ..Default::default()
+        };
+        let config = ReforgeConfig {
+            scoring_policy: Some(PathBuf::from("config-policy.json")),
+            ..Default::default()
+        };
+        let resolved = resolve_scoring_policy_path(
+            &args,
+            Some(&config),
+            Some(Path::new("project/reforge.toml")),
+        )?
+        .unwrap();
+        assert_eq!(resolved, std::env::current_dir()?.join("cli-policy.json"));
+        Ok(())
+    }
+
+    #[test]
+    fn scoring_policy_config_path_resolves_from_config_directory() -> Result<()> {
+        let args = ScanArgs::default();
+        let config = ReforgeConfig {
+            scoring_policy: Some(PathBuf::from("policies/accepted.json")),
+            ..Default::default()
+        };
+        let resolved = resolve_scoring_policy_path(
+            &args,
+            Some(&config),
+            Some(Path::new("project/reforge.toml")),
+        )?
+        .unwrap();
+        assert_eq!(resolved, PathBuf::from("project/policies/accepted.json"));
         Ok(())
     }
 }

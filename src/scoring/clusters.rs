@@ -88,11 +88,11 @@ fn build_cluster(
     let path = primary.path.clone();
     let line = primary.line;
     let primary_finding_id = primary.id.clone();
-    let priority_factors = strongest_factors(findings, &members);
+    let priority_factors = primary.priority_factors.clone();
     let detection_reliability = priority_factors.detection_reliability;
     let interpretation_reliability = priority_factors.interpretation_reliability;
-    let priority = crate::scoring::priority_from_factors(&priority_factors);
-    let severity = crate::scoring::severity_for_priority(priority);
+    let priority = primary.priority;
+    let severity = primary.severity;
     let mut finding_ids = members
         .iter()
         .map(|index| findings[*index].id.clone())
@@ -129,27 +129,6 @@ fn build_cluster(
         detection_reliability,
         interpretation_reliability,
     }
-}
-
-fn strongest_factors(findings: &[Finding], members: &[usize]) -> crate::model::PriorityFactors {
-    let mut result = crate::model::PriorityFactors::default();
-    for factors in members
-        .iter()
-        .map(|index| &findings[*index].priority_factors)
-    {
-        result.impact = result.impact.max(factors.impact);
-        result.intensity = result.intensity.max(factors.intensity);
-        result.spread = result.spread.max(factors.spread);
-        result.change_pressure = result.change_pressure.max(factors.change_pressure);
-        result.actionability = result.actionability.max(factors.actionability);
-        result.detection_reliability = result
-            .detection_reliability
-            .max(factors.detection_reliability);
-        result.interpretation_reliability = result
-            .interpretation_reliability
-            .max(factors.interpretation_reliability);
-    }
-    result
 }
 
 fn issue_summary(family: &str, subject: &EvidenceSubject) -> String {
@@ -222,6 +201,21 @@ mod tests {
 
         assert_eq!(clusters.len(), 2);
         assert!(findings.iter().all(|finding| finding.issue_id.is_some()));
+    }
+
+    #[test]
+    fn issue_inherits_the_complete_primary_score_without_factor_splicing() {
+        let mut stronger = sample(FindingKind::LongFunction, 12, 80);
+        stronger.priority_factors.impact = 91.0;
+        stronger.priority_factors.intensity = 40.0;
+        let expected = stronger.priority_factors.clone();
+        let mut weaker = sample(FindingKind::ComplexFunction, 12, 30);
+        weaker.priority_factors.intensity = 99.0;
+        let mut findings = vec![weaker, stronger];
+        let issues = cluster_findings(&mut findings);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].priority, 80);
+        assert_eq!(issues[0].priority_factors, expected);
     }
 
     #[test]

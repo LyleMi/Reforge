@@ -10,6 +10,14 @@ The ontology is scoped to maintainability signals that Reforge can observe
 statically. It is not a claim that source analysis completely measures
 maintainability.
 
+## Normative coverage matrix
+
+Schema 19 declares coverage independently of detector registration. Its stable
+42 cells comprise 12 required and 30 intentionally out-of-scope combinations.
+Runtime status is `observed`, `partially_observed`, `unsupported`, `no_entities`,
+`planned`, or `intentionally_out_of_scope`. Finding-group populations come from
+group detector receipts and are not inferred from issue count.
+
 ## Quality Constructs
 
 Findings use one primary maintainability construct, aligned with ISO/IEC 25010:

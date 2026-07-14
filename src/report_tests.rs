@@ -49,6 +49,9 @@ fn report(findings: Vec<Finding>) -> ScanReport {
         suppression_summary: SuppressionSummary::default(),
         coverage_manifest: Vec::new(),
         coverage_summary: crate::model::CoverageSummary::default(),
+        detector_execution: Vec::new(),
+        raw_metric_coverage: Vec::new(),
+        scoring_policy: crate::model::EffectiveScoringPolicy::builtin(),
         issues,
         detector_manifest: Vec::new(),
         findings,
@@ -442,6 +445,9 @@ fn renders_json_report_schema_v16_with_measurement_contract_metadata() {
     assert!(value.get("issues").is_some());
     assert!(value.get("coverage_manifest").is_some());
     assert!(value.get("coverage_summary").is_some());
+    assert!(value.get("detector_execution").is_some());
+    assert!(value.get("raw_metric_coverage").is_some());
+    assert_eq!(value["scoring_policy"]["source"], "builtin");
     assert!(value.get("detector_manifest").is_some());
     assert!(
         value["findings"][0]["id"]

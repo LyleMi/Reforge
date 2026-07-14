@@ -1,6 +1,6 @@
 import type { ScanReport } from "./reportTypes";
 
-export type TabId = "overview" | "issues" | "map" | "metrics";
+export type TabId = "overview" | "issues" | "map" | "metrics" | "coverage";
 export type IssueSort = "priority" | "severity" | "path" | "kind";
 export type MetricScope = "files" | "functions" | "types" | "churn";
 export type MapLayer = "priority" | "severity" | "churn" | "findings";
@@ -21,7 +21,7 @@ export const defaultViewState: ViewState = {
   file: null, layer: "priority", scope: "files",
 };
 
-const tabs = new Set<TabId>(["overview", "issues", "map", "metrics"]);
+const tabs = new Set<TabId>(["overview", "issues", "map", "metrics", "coverage"]);
 const severities = new Set(["critical", "warning", "info"]);
 const sorts = new Set<IssueSort>(["priority", "severity", "path", "kind"]);
 const layers = new Set<MapLayer>(["priority", "severity", "churn", "findings"]);

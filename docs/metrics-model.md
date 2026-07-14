@@ -12,6 +12,18 @@ and findings from that model. The model reports maintainability and
 refactoring signals; it is not a quality score, health score, bug detector, or
 defect probability model.
 
+## Scoring policy and issue orthogonality
+
+Every report records its effective scoring policy. The five global weights
+affect finding and issue priority only; hotspot ranking keeps its existing
+model. Accepted calibration may override detector detection and interpretation
+reliability. Impact, actionability, and uncalibrated detectors retain manifest
+theory values.
+
+An issue copies the complete factors, reliability, priority, and severity of
+its highest-priority primary finding. Related findings add evidence IDs and
+kinds but cannot raise priority by contributing isolated stronger factors.
+
 ## Raw Metrics
 
 File metrics:

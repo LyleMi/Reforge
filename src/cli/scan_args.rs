@@ -94,6 +94,10 @@ pub struct ScanArgs {
     #[arg(long)]
     pub config: Option<PathBuf>,
 
+    /// Accepted scoring policy v1 to apply. CLI paths are resolved from the current directory.
+    #[arg(long, value_name = "PATH")]
+    pub scoring_policy: Option<PathBuf>,
+
     #[command(flatten)]
     pub ci: CiArgs,
 

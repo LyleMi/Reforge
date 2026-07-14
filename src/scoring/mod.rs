@@ -12,9 +12,11 @@ use crate::model::{
 
 mod clusters;
 mod hotspots;
+mod policy;
 
 pub(crate) use clusters::cluster_findings;
 pub(crate) use hotspots::{StaticRiskThresholds, rank_hotspots};
+pub(crate) use policy::load_scoring_policy;
 
 const PERCENTILE_MIN_SAMPLE: usize = 5;
 const MIN_SCORE: f64 = 0.0;
@@ -146,14 +148,33 @@ pub fn detection_reliability(kind: FindingKind) -> f64 {
     default_detection_reliability(kind)
 }
 
+#[cfg(test)]
 pub(crate) fn finalize_scoring(
     findings: &mut [Finding],
     raw_metrics: &RawMetrics,
     hotspots: &[Hotspot],
 ) {
+    finalize_scoring_with_policy(
+        findings,
+        raw_metrics,
+        hotspots,
+        &crate::model::EffectiveScoringPolicy::builtin(),
+    );
+}
+
+pub(crate) fn finalize_scoring_with_policy(
+    findings: &mut [Finding],
+    raw_metrics: &RawMetrics,
+    hotspots: &[Hotspot],
+    policy: &crate::model::EffectiveScoringPolicy,
+) {
     let percentile_values = percentile_metric_values(raw_metrics);
 
     for finding in findings {
+        if let Some(reliability) = policy.detector_reliability.get(&finding.kind) {
+            finding.detection_reliability = reliability.detection;
+            finding.interpretation_reliability = reliability.interpretation;
+        }
         for metric in &mut finding.metrics {
             let threshold_normalized = metric
                 .excess_ratio
@@ -164,11 +185,23 @@ pub(crate) fn finalize_scoring(
         }
 
         let change_pressure = change_pressure_score(finding, hotspots);
-        refresh_finding_priority(finding, change_pressure);
+        refresh_finding_priority_with_weights(finding, change_pressure, policy.global_weights);
     }
 }
 
 fn refresh_finding_priority(finding: &mut Finding, change_pressure: f64) {
+    refresh_finding_priority_with_weights(
+        finding,
+        change_pressure,
+        crate::model::ScoringWeights::default(),
+    );
+}
+
+fn refresh_finding_priority_with_weights(
+    finding: &mut Finding,
+    change_pressure: f64,
+    weights: crate::model::ScoringWeights,
+) {
     finding.priority_factors = priority_factors(PriorityFactorInput {
         kind: finding.kind,
         metrics: &finding.metrics,
@@ -177,7 +210,7 @@ fn refresh_finding_priority(finding: &mut Finding, change_pressure: f64) {
         related_locations: &finding.related_locations,
         change_pressure,
     });
-    finding.priority = priority_from_factors(&finding.priority_factors);
+    finding.priority = priority_from_factors_with_weights(&finding.priority_factors, weights);
     finding.severity = severity_for_priority(finding.priority);
     finding.rank_explanation = rank_explanation(
         finding.kind,
@@ -209,11 +242,18 @@ fn priority_factors(input: PriorityFactorInput<'_>) -> PriorityFactors {
 }
 
 pub(crate) fn priority_from_factors(factors: &PriorityFactors) -> u8 {
-    let weighted = (factors.impact * 0.30)
-        + (factors.intensity * 0.30)
-        + (factors.spread * 0.15)
-        + (factors.change_pressure * 0.15)
-        + (factors.actionability * 0.10);
+    priority_from_factors_with_weights(factors, crate::model::ScoringWeights::default())
+}
+
+fn priority_from_factors_with_weights(
+    factors: &PriorityFactors,
+    weights: crate::model::ScoringWeights,
+) -> u8 {
+    let weighted = (factors.impact * weights.impact)
+        + (factors.intensity * weights.intensity)
+        + (factors.spread * weights.spread)
+        + (factors.change_pressure * weights.change_pressure)
+        + (factors.actionability * weights.actionability);
     (weighted * factors.detection_reliability * factors.interpretation_reliability)
         .round()
         .clamp(MIN_SCORE, MAX_SCORE) as u8
@@ -222,6 +262,12 @@ pub(crate) fn priority_from_factors(factors: &PriorityFactors) -> u8 {
 fn intensity_score(metrics: &[FindingMetric]) -> f64 {
     let strongest = metrics
         .iter()
+        .filter(|metric| {
+            !matches!(
+                metric.name,
+                MetricId::FileIsTest | MetricId::FunctionIsTest | MetricId::TypeIsTest
+            )
+        })
         .filter_map(|metric| metric.normalized)
         .max_by(f64::total_cmp)
         .unwrap_or(0.20);

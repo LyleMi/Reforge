@@ -10,6 +10,21 @@ should not be treated as a default-threshold mandate.
 Source identities and local collection paths are intentionally omitted. Raw
 reports were generated outside the committed documentation set.
 
+## Artifact v2
+
+Calibration artifact v2 is intentionally incompatible with v1. Each anonymous
+sample contains observations and separate detection, action, and ranking gold
+files. Detection labels describe evidence truth, action labels describe advice
+suitability, and ranking labels describe only pair preference; the three label
+families never update one another.
+
+Reliability uses a Beta estimate centered on the manifest prior with equivalent
+sample size two, retaining theory below five confirmed labels per detector.
+Ranking needs 12 confirmed pairs and uses the non-negative simplex
+Bradley–Terry fit. Leave-one-repository-out evaluation must avoid regression in
+both Brier scores and overall ranking accuracy, with no repository ranking
+regression beyond five percentage points, before an accepted policy is written.
+
 This pass used reproducible static settings for threshold and scoring
 sanity-checks:
 `--churn off --hotspot-model static --output json --progress never`.

@@ -643,7 +643,23 @@ function ReportLead({ report, issues }: { report: ScanReport; issues: Finding[] 
   </>;
 }
 
-const tabs = [{id:"overview",label:"Overview"},{id:"issues",label:"Issues"},{id:"map",label:"Code map"},{id:"metrics",label:"Metrics"}] as const;
+const tabs = [{id:"overview",label:"Overview"},{id:"issues",label:"Issues"},{id:"map",label:"Code map"},{id:"metrics",label:"Metrics"},{id:"coverage",label:"Coverage"}] as const;
+
+const coverageMechanisms = ["cognitive_load","dependency_propagation","responsibility_dispersion","duplication_divergence","change_pressure","verification_difficulty","knowledge_drift"];
+const coverageScopes = ["repository","directory","file","function","type","finding_group"];
+
+function CoveragePage({report}:{report:ScanReport}) {
+  const cells=report.coverage_manifest??[];
+  const [selected,setSelected]=useState(cells.find(cell=>cell.expectation==="required")??cells[0]);
+  const [filter,setFilter]=useState("all");
+  const receipts=(selected?.detectors??[]).map(kind=>report.detector_execution?.find(receipt=>receipt.kind===kind)).filter(Boolean);
+  const selectedMetricIds=new Set((selected?.detectors??[]).flatMap(kind=>report.detector_manifest?.find(detector=>detector.kind===kind)?.input_metrics??[]));
+  const metrics=(report.raw_metric_coverage??[]).filter(metric=>selectedMetricIds.has(metric.metric));
+  return <div className="page-stack"><div className="page-heading"><div><span className="eyebrow">Measurement audit</span><h2>Coverage</h2><p>Inspect what Reforge was expected to observe, what ran, and where evidence was unavailable.</p></div><label className="coverage-filter">Status<select value={filter} onChange={event=>setFilter(event.target.value)}><option value="all">All statuses</option>{[...new Set(cells.map(cell=>cell.status))].map(status=><option key={status} value={status}>{formatKind(status)}</option>)}</select></label></div>
+    <Section title="Mechanism × entity scope" meta="42 declared cells"><div className="coverage-scroll"><div className="coverage-matrix" role="grid" aria-label="Coverage audit matrix"><div className="coverage-corner"/><>{coverageScopes.map(scope=><div role="columnheader" className="coverage-scope" key={scope}>{formatKind(scope)}</div>)}</>{coverageMechanisms.flatMap(mechanism=>[<div role="rowheader" className="coverage-mechanism" key={`${mechanism}-label`}>{formatKind(mechanism)}</div>,...coverageScopes.map(scope=>{const cell=cells.find(item=>item.mechanism===mechanism&&item.entity_scope===scope);const hidden=filter!=="all"&&cell?.status!==filter;return <button type={BUTTON_TYPE} role="gridcell" aria-label={`${formatKind(mechanism)}, ${formatKind(scope)}: ${formatKind(cell?.status??"missing")}`} aria-selected={selected===cell} className={`coverage-cell status-${cell?.status??"missing"} ${hidden?"filtered":""}`} key={`${mechanism}-${scope}`} onClick={()=>cell&&setSelected(cell)}><span>{formatKind(cell?.status??"missing")}</span><small>{cell?.entity_count??0}</small></button>})])}</div></div></Section>
+    {selected?<Section title={`${formatKind(selected.mechanism)} · ${formatKind(selected.entity_scope)}`} meta={formatKind(selected.status)}><div className="coverage-detail"><dl><div><dt>Expectation</dt><dd>{formatKind(selected.expectation)}</dd></div><div><dt>Entities</dt><dd>{formatNumber(selected.entity_count??0)}</dd></div><div><dt>Reason</dt><dd>{selected.reason}</dd></div></dl><div><h3>Detector receipts</h3>{receipts.length?receipts.map(receipt=><p key={receipt!.kind}><strong>{formatKind(receipt!.kind)}</strong> · {formatKind(receipt!.status)} · {formatNumber(receipt!.analyzed_entities??0)} entities{receipt!.candidate_groups?` · ${receipt!.candidate_groups} candidate groups`:""}</p>):<p className="empty">No detector is assigned to this cell.</p>}<h3>Unobservable evidence</h3>{selected.unobservable_reasons?.length?selected.unobservable_reasons.map(reason=><p key={reason}>{reason}</p>):<p className="empty">No unobservable entities were reported.</p>}{metrics.length?<><h3>Raw metrics</h3>{metrics.map(metric=><p key={metric.metric}><strong>{formatKind(metric.metric)}</strong> · {formatKind(metric.status)}</p>)}</>:null}</div></div></Section>:null}
+  </div>;
+}
 
 function MetricsPage({ report, view, update }: { report: ScanReport; view: ViewState; update: (patch: Partial<ViewState>) => void }) {
   const values = report.metrics_summary?.[view.scope] ?? {};
@@ -664,7 +680,7 @@ function ReportApp({ report }: { report: ScanReport }) {
   useEffect(()=>{const hash=serializeViewState(view);if(window.location.hash!==hash) history.replaceState(null,"",hash);},[view]);
   const selectedFile = repositoryFiles.find(file=>file.path===view.file);
   const selectFile=(file:string)=>update({file});
-  const counts={overview:null,issues:issues.length,map:repositoryFiles.length,metrics:Object.values(displayReport.metrics_summary??{}).reduce((n,group)=>n+Object.keys(group??{}).length,0)};
+  const counts={overview:null,issues:issues.length,map:repositoryFiles.length,metrics:Object.values(displayReport.metrics_summary??{}).reduce((n,group)=>n+Object.keys(group??{}).length,0),coverage:displayReport.coverage_manifest?.length??0};
 
   return (
     <main className="report-shell">
@@ -674,6 +690,7 @@ function ReportApp({ report }: { report: ScanReport }) {
       {view.tab==="issues"&&<div className="page-stack"><div className="page-heading"><div><span className="eyebrow">Review queue</span><h2>Issues</h2><p>Filter actionable signals without losing your place.</p></div></div><Section title="Issues" meta={`${issues.length} issues · ${findings.length} raw signals`}><Findings findings={issues} onSelectPath={selectFile} view={view} onViewChange={update}/></Section><div className="dashboard-grid"><Section title="Watchlist" meta={`${hotspots.length} hotspots`}><Hotspots hotspots={hotspots} onSelectPath={selectFile}/></Section><Section title="Similar groups" meta={`${similarGroups.length} groups`}><SimilarGroups groups={similarGroups} onSelectPath={selectFile}/></Section></div></div>}
       {view.tab==="map"&&<div className="page-stack"><RepositoryMap files={repositoryFiles} selectedPath={view.file} onSelectPath={selectFile} layer={view.layer as MapLayer} onLayerChange={layer=>update({layer:layer as ViewMapLayer})}/><div className="dashboard-grid wide-left"><Section title="Dependency graph" meta={`${displayReport.dependency_graph?.nodes?.length??0} nodes`}><DependencyMap report={displayReport} selectedPath={view.file} onSelectPath={selectFile}/></Section><Section title="File overview" meta={`${files.length} files`}><FileOverviewList files={files} onSelectPath={selectFile}/></Section></div></div>}
       {view.tab==="metrics"&&<MetricsPage report={displayReport} view={view} update={update}/>} 
+      {view.tab==="coverage"&&<CoveragePage report={displayReport}/>}
       {selectedFile?<Inspector report={displayReport} file={selectedFile} onClose={()=>update({file:null})} onSelectPath={selectFile}/>:null}
     </main>
   );

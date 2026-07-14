@@ -7,11 +7,16 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::cli::{CalibrateArgs, CalibrateArtifactArgs, CalibrateCommand, CalibratePrepareArgs};
-use crate::model::{FindingKind, Issue, PriorityFactors};
+use crate::detectors::manifest::detector_manifest;
+use crate::model::{
+    DetectorReliabilityOverride, FindingKind, Issue, PriorityFactors, ScoringPolicy,
+    ScoringWeights, policy_fingerprint,
+};
 use crate::scan::{NoopProgress, scan_report};
 
 const REQUIRED_SAMPLE_COUNT: usize = 6;
-const ARTIFACT_VERSION: u8 = 1;
+const ARTIFACT_VERSION: u8 = 2;
+const MIN_CONFIRMED_RELIABILITY_LABELS: usize = 5;
 const MIN_CONFIRMED_PAIRS: usize = 12;
 const PRIOR: [f64; 5] = [0.30, 0.30, 0.15, 0.15, 0.10];
 const MAX_REPOSITORY_REGRESSION: f64 = 0.05;
@@ -20,9 +25,10 @@ const MAX_REPOSITORY_REGRESSION: f64 = 0.05;
 struct Sample {
     id: String,
     head: String,
-    issue_file: String,
-    proposal_file: String,
-    gold_file: String,
+    observations_file: String,
+    detection_gold_file: String,
+    action_gold_file: String,
+    ranking_gold_file: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -45,6 +51,61 @@ struct IssueDatum {
     priority: u8,
     factors: [f64; 5],
     detection_reliability: f64,
+    interpretation_reliability: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FindingObservation {
+    id: String,
+    kind: FindingKind,
+    detection_reliability: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Observations {
+    findings: Vec<FindingObservation>,
+    issues: Vec<IssueDatum>,
+    ranking_pairs: Vec<Pair>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DetectionGold {
+    id: String,
+    repository: String,
+    finding_id: String,
+    kind: FindingKind,
+    #[serde(default)]
+    confirmed: bool,
+    #[serde(default)]
+    label: Option<DetectionLabel>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum DetectionLabel {
+    TruePositive,
+    FalsePositive,
+    Unobservable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ActionGold {
+    id: String,
+    repository: String,
+    issue_id: String,
+    kind: FindingKind,
+    #[serde(default)]
+    confirmed: bool,
+    #[serde(default)]
+    label: Option<ActionLabel>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum ActionLabel {
+    Suitable,
+    Unsuitable,
+    Uncertain,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,36 +137,6 @@ enum Preference {
     Tie,
 }
 
-#[derive(Debug, Clone, Serialize)]
-struct Policy {
-    status: &'static str,
-    reason: String,
-    confirmed_pairs: usize,
-    weights: Weights,
-    detector_reliability: BTreeMap<FindingKind, f64>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-struct Weights {
-    impact: f64,
-    intensity: f64,
-    spread: f64,
-    change_pressure: f64,
-    actionability: f64,
-}
-
-impl Weights {
-    fn from_array(values: [f64; 5]) -> Self {
-        Self {
-            impact: values[0],
-            intensity: values[1],
-            spread: values[2],
-            change_pressure: values[3],
-            actionability: values[4],
-        }
-    }
-}
-
 pub(crate) fn run(args: CalibrateArgs) -> Result<()> {
     match args.command {
         CalibrateCommand::Prepare(args) => prepare(args),
@@ -122,20 +153,39 @@ fn prepare(args: CalibratePrepareArgs) -> Result<()> {
     let mut mappings = Vec::new();
     for (index, repository) in repositories.iter().enumerate() {
         let id = format!("sample-{:02}", index + 1);
-        let issues = scan_issues(repository, args.max_issues)?;
+        let (findings, issues) = scan_observations(repository, args.max_issues)?;
         let pairs = propose_pairs(&id, &issues);
-        let issue_file = format!("{id}-issues.json");
-        let proposal_file = format!("{id}-proposals.json");
-        let gold_file = format!("{id}-gold.json");
-        write_json(&args.output_dir.join(&issue_file), &issues)?;
-        write_json(&args.output_dir.join(&proposal_file), &pairs)?;
-        write_json(&args.output_dir.join(&gold_file), &gold_template(&pairs))?;
+        let observations_file = format!("{id}-observations.json");
+        let detection_gold_file = format!("{id}-detection-gold.json");
+        let action_gold_file = format!("{id}-action-gold.json");
+        let ranking_gold_file = format!("{id}-ranking-gold.json");
+        write_json(
+            &args.output_dir.join(&observations_file),
+            &Observations {
+                findings: findings.clone(),
+                issues: issues.clone(),
+                ranking_pairs: pairs.clone(),
+            },
+        )?;
+        write_json(
+            &args.output_dir.join(&detection_gold_file),
+            &detection_gold_template(&id, &findings),
+        )?;
+        write_json(
+            &args.output_dir.join(&action_gold_file),
+            &action_gold_template(&id, &issues),
+        )?;
+        write_json(
+            &args.output_dir.join(&ranking_gold_file),
+            &gold_template(&pairs),
+        )?;
         samples.push(Sample {
             id: id.clone(),
             head: git_head(repository)?,
-            issue_file,
-            proposal_file,
-            gold_file,
+            observations_file,
+            detection_gold_file,
+            action_gold_file,
+            ranking_gold_file,
         });
         mappings.push(LocalMapping {
             id,
@@ -177,19 +227,35 @@ fn repositories(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(result)
 }
 
-fn scan_issues(repository: &Path, limit: usize) -> Result<Vec<IssueDatum>> {
+fn scan_observations(
+    repository: &Path,
+    limit: usize,
+) -> Result<(Vec<FindingObservation>, Vec<IssueDatum>)> {
     let mut args = crate::cli::ScanArgs::defaults_for_path(repository.to_path_buf());
     args.churn = Some(crate::cli::ChurnMode::Off);
     args.hotspot_model = Some(crate::cli::HotspotModel::Static);
     let mut progress = NoopProgress;
-    let mut issues = scan_report(&args, &mut progress)?.issues;
+    let report = scan_report(&args, &mut progress)?;
+    let findings = report
+        .findings
+        .iter()
+        .map(|finding| FindingObservation {
+            id: finding.id.to_string(),
+            kind: finding.kind,
+            detection_reliability: finding.detection_reliability,
+        })
+        .collect();
+    let mut issues = report.issues;
     issues.sort_by(|left, right| {
         right
             .priority
             .cmp(&left.priority)
             .then_with(|| left.id.cmp(&right.id))
     });
-    Ok(issues.into_iter().take(limit).map(issue_datum).collect())
+    Ok((
+        findings,
+        issues.into_iter().take(limit).map(issue_datum).collect(),
+    ))
 }
 
 fn issue_datum(issue: Issue) -> IssueDatum {
@@ -199,6 +265,7 @@ fn issue_datum(issue: Issue) -> IssueDatum {
         priority: issue.priority,
         factors: factor_array(&issue.priority_factors),
         detection_reliability: issue.detection_reliability,
+        interpretation_reliability: issue.interpretation_reliability,
     }
 }
 
@@ -246,6 +313,37 @@ fn gold_template(pairs: &[Pair]) -> Vec<GoldPair> {
         .collect()
 }
 
+fn detection_gold_template(
+    repository: &str,
+    findings: &[FindingObservation],
+) -> Vec<DetectionGold> {
+    findings
+        .iter()
+        .map(|finding| DetectionGold {
+            id: format!("detection-{repository}-{}", finding.id),
+            repository: repository.into(),
+            finding_id: finding.id.clone(),
+            kind: finding.kind,
+            confirmed: false,
+            label: None,
+        })
+        .collect()
+}
+
+fn action_gold_template(repository: &str, issues: &[IssueDatum]) -> Vec<ActionGold> {
+    issues
+        .iter()
+        .map(|issue| ActionGold {
+            id: format!("action-{repository}-{}", issue.id),
+            repository: repository.into(),
+            issue_id: issue.id.clone(),
+            kind: issue.kind,
+            confirmed: false,
+            label: None,
+        })
+        .collect()
+}
+
 fn validate(args: &CalibrateArtifactArgs) -> Result<()> {
     let manifest = load_manifest(&args.calibration_dir)?;
     validate_manifest(&manifest)?;
@@ -288,7 +386,12 @@ fn validate_sample_identity(sample: &Sample, expected: &str) -> Result<()> {
 }
 
 fn validate_artifact_references(sample: &Sample) -> Result<()> {
-    for file in [&sample.issue_file, &sample.proposal_file, &sample.gold_file] {
+    for file in [
+        &sample.observations_file,
+        &sample.detection_gold_file,
+        &sample.action_gold_file,
+        &sample.ranking_gold_file,
+    ] {
         if Path::new(file).components().count() != 1 || !file.starts_with(&sample.id) {
             bail!(
                 "calibration sample {} has an unsafe artifact reference",
@@ -325,17 +428,76 @@ fn validate_recorded_heads(directory: &Path, manifest: &CalibrationManifest) -> 
 
 fn validate_artifacts(directory: &Path, manifest: &CalibrationManifest) -> Result<()> {
     for sample in &manifest.samples {
-        let issues: Vec<IssueDatum> =
-            read_json(&directory.join(&sample.issue_file), "issue dataset")?;
-        let proposals: Vec<Pair> =
-            read_json(&directory.join(&sample.proposal_file), "pair proposals")?;
-        let gold: Vec<GoldPair> = read_json(&directory.join(&sample.gold_file), "gold labels")?;
-        let issue_ids = issues
+        let observations: Observations =
+            read_json(&directory.join(&sample.observations_file), "observations")?;
+        let detection: Vec<DetectionGold> = read_json(
+            &directory.join(&sample.detection_gold_file),
+            "detection gold",
+        )?;
+        let actions: Vec<ActionGold> =
+            read_json(&directory.join(&sample.action_gold_file), "action gold")?;
+        let gold: Vec<GoldPair> =
+            read_json(&directory.join(&sample.ranking_gold_file), "ranking gold")?;
+        let issue_ids = observations
+            .issues
             .iter()
             .map(|issue| issue.id.as_str())
             .collect::<BTreeSet<_>>();
-        validate_pairs(&sample.id, &proposals, &issue_ids)?;
-        validate_gold(&sample.id, &gold, &proposals, &issue_ids)?;
+        let finding_ids = observations
+            .findings
+            .iter()
+            .map(|finding| finding.id.as_str())
+            .collect::<BTreeSet<_>>();
+        validate_pairs(&sample.id, &observations.ranking_pairs, &issue_ids)?;
+        validate_gold(&sample.id, &gold, &observations.ranking_pairs, &issue_ids)?;
+        validate_detection_gold(&sample.id, &detection, &finding_ids)?;
+        validate_action_gold(&sample.id, &actions, &issue_ids)?;
+    }
+    Ok(())
+}
+
+fn validate_detection_gold(
+    repository: &str,
+    labels: &[DetectionGold],
+    findings: &BTreeSet<&str>,
+) -> Result<()> {
+    let mut seen = BTreeSet::new();
+    for label in labels {
+        if label.repository != repository
+            || !findings.contains(label.finding_id.as_str())
+            || !seen.insert(&label.finding_id)
+        {
+            bail!("detection label {} has invalid references", label.id);
+        }
+        if label.confirmed != label.label.is_some() {
+            bail!(
+                "detection label {} must have a value exactly when confirmed",
+                label.id
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_action_gold(
+    repository: &str,
+    labels: &[ActionGold],
+    issues: &BTreeSet<&str>,
+) -> Result<()> {
+    let mut seen = BTreeSet::new();
+    for label in labels {
+        if label.repository != repository
+            || !issues.contains(label.issue_id.as_str())
+            || !seen.insert(&label.issue_id)
+        {
+            bail!("action label {} has invalid references", label.id);
+        }
+        if label.confirmed != label.label.is_some() {
+            bail!(
+                "action label {} must have a value exactly when confirmed",
+                label.id
+            );
+        }
     }
     Ok(())
 }
@@ -427,28 +589,33 @@ fn validate_no_leaks(directory: &Path) -> Result<()> {
 
 fn fit(args: &CalibrateArtifactArgs) -> Result<()> {
     validate(args)?;
-    let (issues, labels) = load_training_data(&args.calibration_dir)?;
-    let policy = fit_policy(&issues, &labels);
+    let data = load_training_data(&args.calibration_dir)?;
+    let policy = fit_policy(&data);
     write_json(&args.calibration_dir.join("fit.json"), &policy)
 }
 
-fn fit_policy(issues: &BTreeMap<String, IssueDatum>, labels: &[GoldPair]) -> Policy {
-    if labels.len() < MIN_CONFIRMED_PAIRS {
-        return Policy {
-            status: "theoretical_prior",
-            reason: format!("at least {MIN_CONFIRMED_PAIRS} confirmed gold pairs are required"),
-            confirmed_pairs: labels.len(),
-            weights: Weights::from_array(PRIOR),
-            detector_reliability: BTreeMap::new(),
-        };
-    }
-    let weights = fit_weights(issues, labels);
-    Policy {
-        status: "empirical_candidate",
-        reason: "regularized non-negative Bradley-Terry fit".into(),
-        confirmed_pairs: labels.len(),
-        weights: Weights::from_array(weights),
-        detector_reliability: detector_reliability(issues, labels),
+fn fit_policy(data: &TrainingData) -> ScoringPolicy {
+    let fitted = if data.ranking.len() < MIN_CONFIRMED_PAIRS {
+        PRIOR
+    } else {
+        fit_weights(&data.issues, &data.ranking)
+    };
+    let weights = ScoringWeights {
+        impact: fitted[0],
+        intensity: fitted[1],
+        spread: fitted[2],
+        change_pressure: fitted[3],
+        actionability: fitted[4],
+    };
+    let reliability = fit_detector_reliability(data, None);
+    let policy_id = "reforge-calibration-v2".to_string();
+    ScoringPolicy {
+        policy_id: policy_id.clone(),
+        version: 1,
+        status: "candidate".into(),
+        fingerprint: policy_fingerprint(&policy_id, 1, weights, &reliability),
+        global_weights: weights,
+        detector_reliability: reliability,
     }
 }
 
@@ -485,41 +652,178 @@ fn fit_weights(issues: &BTreeMap<String, IssueDatum>, labels: &[GoldPair]) -> [f
     weights
 }
 
-fn detector_reliability(
-    issues: &BTreeMap<String, IssueDatum>,
-    labels: &[GoldPair],
-) -> BTreeMap<FindingKind, f64> {
-    let mut counts: BTreeMap<FindingKind, (usize, usize)> = BTreeMap::new();
-    for pair in labels {
-        let Some(preference) = pair.preferred else {
+fn fit_detector_reliability(
+    data: &TrainingData,
+    exclude_repository: Option<&str>,
+) -> BTreeMap<FindingKind, DetectorReliabilityOverride> {
+    let defaults = detector_manifest()
+        .into_iter()
+        .map(|entry| {
+            (
+                entry.kind,
+                (
+                    entry.default_detection_reliability,
+                    entry.default_interpretation_reliability,
+                ),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut detection: BTreeMap<FindingKind, (usize, usize)> = BTreeMap::new();
+    for label in &data.detection {
+        if exclude_repository == Some(label.repository.as_str()) {
             continue;
+        }
+        let success = match label.label {
+            Some(DetectionLabel::TruePositive) => Some(true),
+            Some(DetectionLabel::FalsePositive) => Some(false),
+            _ => None,
         };
-        for (id, success) in [
-            (&pair.left, preference != Preference::Right),
-            (&pair.right, preference != Preference::Left),
-        ] {
-            let count = counts.entry(issues[id].kind).or_default();
-            count.1 += 1;
+        if let Some(success) = success {
+            let count = detection.entry(label.kind).or_default();
             count.0 += usize::from(success);
+            count.1 += 1;
         }
     }
-    counts
+    let mut action: BTreeMap<FindingKind, (usize, usize)> = BTreeMap::new();
+    for label in &data.actions {
+        if exclude_repository == Some(label.repository.as_str()) {
+            continue;
+        }
+        let success = match label.label {
+            Some(ActionLabel::Suitable) => Some(true),
+            Some(ActionLabel::Unsuitable) => Some(false),
+            _ => None,
+        };
+        if let Some(success) = success {
+            let count = action.entry(label.kind).or_default();
+            count.0 += usize::from(success);
+            count.1 += 1;
+        }
+    }
+    defaults
         .into_iter()
-        .map(|(kind, (successes, total))| (kind, (successes as f64 + 1.0) / (total as f64 + 2.0)))
+        .filter_map(|(kind, (d_prior, i_prior))| {
+            let d = detection.get(&kind).copied().unwrap_or_default();
+            let a = action.get(&kind).copied().unwrap_or_default();
+            if d.1 < MIN_CONFIRMED_RELIABILITY_LABELS && a.1 < MIN_CONFIRMED_RELIABILITY_LABELS {
+                return None;
+            }
+            let smooth = |count: (usize, usize), prior: f64| {
+                if count.1 < MIN_CONFIRMED_RELIABILITY_LABELS {
+                    prior
+                } else {
+                    (count.0 as f64 + prior * 2.0) / (count.1 as f64 + 2.0)
+                }
+            };
+            Some((
+                kind,
+                DetectorReliabilityOverride {
+                    detection: smooth(d, d_prior),
+                    interpretation: smooth(a, i_prior),
+                },
+            ))
+        })
         .collect()
 }
 
 fn evaluate(args: &CalibrateArtifactArgs) -> Result<()> {
     validate(args)?;
-    let (issues, labels) = load_training_data(&args.calibration_dir)?;
-    if labels.len() < MIN_CONFIRMED_PAIRS {
+    let data = load_training_data(&args.calibration_dir)?;
+    if data.ranking.len() < MIN_CONFIRMED_PAIRS {
         return write_json(
             &args.calibration_dir.join("evaluation.json"),
             &serde_json::json!({"accepted":false,"strategy":"theoretical_prior","reason":format!("at least {MIN_CONFIRMED_PAIRS} confirmed gold pairs are required"),"maximum_allowed_repository_regression":MAX_REPOSITORY_REGRESSION}),
         );
     }
-    let evaluation = loro_evaluation(&issues, &labels);
-    write_json(&args.calibration_dir.join("evaluation.json"), &evaluation)
+    let ranking = loro_evaluation(&data.issues, &data.ranking);
+    let detection = reliability_loro(&data, true);
+    let interpretation = reliability_loro(&data, false);
+    let accepted = ranking["accepted"].as_bool().unwrap_or(false)
+        && detection.0 <= detection.1
+        && interpretation.0 <= interpretation.1;
+    let evaluation = serde_json::json!({"accepted":accepted,"ranking":ranking,"detection":{"brier":detection.0,"theoretical_brier":detection.1},"interpretation":{"brier":interpretation.0,"theoretical_brier":interpretation.1},"maximum_allowed_repository_regression":MAX_REPOSITORY_REGRESSION});
+    write_json(&args.calibration_dir.join("evaluation.json"), &evaluation)?;
+    if accepted {
+        let mut policy = fit_policy(&data);
+        policy.status = "accepted".into();
+        write_json(&args.calibration_dir.join("accepted-policy.json"), &policy)?;
+    }
+    Ok(())
+}
+
+fn reliability_loro(data: &TrainingData, detection: bool) -> (f64, f64) {
+    let repositories = if detection {
+        data.detection
+            .iter()
+            .map(|label| label.repository.clone())
+            .collect::<BTreeSet<_>>()
+    } else {
+        data.actions
+            .iter()
+            .map(|label| label.repository.clone())
+            .collect::<BTreeSet<_>>()
+    };
+    let defaults = detector_manifest()
+        .into_iter()
+        .map(|entry| {
+            (
+                entry.kind,
+                (
+                    entry.default_detection_reliability,
+                    entry.default_interpretation_reliability,
+                ),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut candidate = 0.0;
+    let mut prior = 0.0;
+    let mut count = 0usize;
+    for repository in repositories {
+        let fitted = fit_detector_reliability(data, Some(&repository));
+        if detection {
+            for label in data
+                .detection
+                .iter()
+                .filter(|label| label.repository == repository)
+            {
+                let target = match label.label {
+                    Some(DetectionLabel::TruePositive) => 1.0,
+                    Some(DetectionLabel::FalsePositive) => 0.0,
+                    _ => continue,
+                };
+                let base = defaults[&label.kind].0;
+                let value = fitted.get(&label.kind).map(|v| v.detection).unwrap_or(base);
+                candidate += (value - target).powi(2);
+                prior += (base - target).powi(2);
+                count += 1;
+            }
+        } else {
+            for label in data
+                .actions
+                .iter()
+                .filter(|label| label.repository == repository)
+            {
+                let target = match label.label {
+                    Some(ActionLabel::Suitable) => 1.0,
+                    Some(ActionLabel::Unsuitable) => 0.0,
+                    _ => continue,
+                };
+                let base = defaults[&label.kind].1;
+                let value = fitted
+                    .get(&label.kind)
+                    .map(|v| v.interpretation)
+                    .unwrap_or(base);
+                candidate += (value - target).powi(2);
+                prior += (base - target).powi(2);
+                count += 1;
+            }
+        }
+    }
+    if count == 0 {
+        (0.0, 0.0)
+    } else {
+        (candidate / count as f64, prior / count as f64)
+    }
 }
 
 fn loro_evaluation(
@@ -627,23 +931,50 @@ fn score_pairs(
     result
 }
 
-fn load_training_data(directory: &Path) -> Result<(BTreeMap<String, IssueDatum>, Vec<GoldPair>)> {
+struct TrainingData {
+    issues: BTreeMap<String, IssueDatum>,
+    detection: Vec<DetectionGold>,
+    actions: Vec<ActionGold>,
+    ranking: Vec<GoldPair>,
+}
+
+fn load_training_data(directory: &Path) -> Result<TrainingData> {
     let manifest = load_manifest(directory)?;
     let mut issues = BTreeMap::new();
-    let mut labels = Vec::new();
+    let mut detection = Vec::new();
+    let mut actions = Vec::new();
+    let mut ranking = Vec::new();
     for sample in manifest.samples {
-        for issue in
-            read_json::<Vec<IssueDatum>>(&directory.join(sample.issue_file), "issue dataset")?
-        {
+        let observations: Observations =
+            read_json(&directory.join(sample.observations_file), "observations")?;
+        for issue in observations.issues {
             issues.insert(issue.id.clone(), issue);
         }
-        labels.extend(
-            read_json::<Vec<GoldPair>>(&directory.join(sample.gold_file), "gold labels")?
+        detection.extend(
+            read_json::<Vec<DetectionGold>>(
+                &directory.join(sample.detection_gold_file),
+                "detection gold",
+            )?
+            .into_iter()
+            .filter(|label| label.confirmed),
+        );
+        actions.extend(
+            read_json::<Vec<ActionGold>>(&directory.join(sample.action_gold_file), "action gold")?
+                .into_iter()
+                .filter(|label| label.confirmed),
+        );
+        ranking.extend(
+            read_json::<Vec<GoldPair>>(&directory.join(sample.ranking_gold_file), "ranking gold")?
                 .into_iter()
                 .filter(|pair| pair.confirmed),
         );
     }
-    Ok((issues, labels))
+    Ok(TrainingData {
+        issues,
+        detection,
+        actions,
+        ranking,
+    })
 }
 
 fn dot(left: [f64; 5], right: [f64; 5]) -> f64 {
@@ -706,30 +1037,28 @@ mod tests {
 
     #[test]
     fn beta_smoothing_never_returns_extremes() {
-        let issue = |id: &str, kind| IssueDatum {
-            id: id.into(),
-            kind,
-            priority: 1,
-            factors: [0.0; 5],
-            detection_reliability: 1.0,
+        let detection = (0..5)
+            .map(|index| DetectionGold {
+                id: format!("d{index}"),
+                repository: "sample-01".into(),
+                finding_id: format!("f{index}"),
+                kind: FindingKind::LargeFile,
+                confirmed: true,
+                label: Some(if index == 0 {
+                    DetectionLabel::FalsePositive
+                } else {
+                    DetectionLabel::TruePositive
+                }),
+            })
+            .collect();
+        let data = TrainingData {
+            issues: BTreeMap::new(),
+            detection,
+            actions: Vec::new(),
+            ranking: Vec::new(),
         };
-        let issues = BTreeMap::from([
-            ("a".into(), issue("a", FindingKind::LargeFile)),
-            ("b".into(), issue("b", FindingKind::LargeType)),
-        ]);
-        let labels = vec![GoldPair {
-            id: "p".into(),
-            repository: "sample-01".into(),
-            left: "a".into(),
-            right: "b".into(),
-            confirmed: true,
-            preferred: Some(Preference::Left),
-        }];
-        assert!(
-            detector_reliability(&issues, &labels)
-                .values()
-                .all(|value| *value > 0.0 && *value < 1.0)
-        );
+        let value = fit_detector_reliability(&data, None)[&FindingKind::LargeFile].detection;
+        assert!(value > 0.0 && value < 1.0);
     }
 
     #[test]
@@ -741,6 +1070,7 @@ mod tests {
                 priority: 50,
                 factors: [0.0; 5],
                 detection_reliability: 1.0,
+                interpretation_reliability: 1.0,
             })
             .collect::<Vec<_>>();
         assert_eq!(

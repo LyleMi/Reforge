@@ -221,34 +221,10 @@ pub struct ScanReport {
     pub suppression_summary: SuppressionSummary,
     pub coverage_manifest: Vec<CoverageManifestEntry>,
     pub coverage_summary: CoverageSummary,
+    pub detector_execution: Vec<DetectorExecutionReceipt>,
+    pub raw_metric_coverage: Vec<RawMetricCoverage>,
+    pub scoring_policy: EffectiveScoringPolicy,
     pub issues: Vec<Issue>,
     pub detector_manifest: Vec<DetectorManifestEntry>,
     pub findings: Vec<Finding>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CoverageStatus {
-    Observed,
-    Unsupported,
-    IntentionallyOutOfScope,
-    Planned,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CoverageManifestEntry {
-    pub mechanism: SignalMechanism,
-    pub entity_scope: EntityScope,
-    pub status: CoverageStatus,
-    pub reason: String,
-    pub detectors: Vec<FindingKind>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct CoverageSummary {
-    pub detected_languages: Vec<String>,
-    pub applicable_detectors: Vec<FindingKind>,
-    pub analyzed_entities: BTreeMap<EntityScope, usize>,
-    pub parse_failures: usize,
-    pub unobservable_reasons: Vec<String>,
 }

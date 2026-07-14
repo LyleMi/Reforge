@@ -102,6 +102,7 @@ fn render_human_report_view<'report>(
     context.render_result(&breakdown);
     context.render_baseline_diff();
     context.render_scan_details();
+    context.render_coverage();
 
     if report.findings.is_empty() {
         context.output.push('\n');
@@ -126,6 +127,37 @@ struct ReportRenderContext<'output, 'report, 'diff> {
 }
 
 impl ReportRenderContext<'_, '_, '_> {
+    fn render_coverage(&mut self) {
+        use crate::model::CoverageStatus;
+        let required = self
+            .report
+            .coverage_manifest
+            .iter()
+            .filter(|cell| cell.expectation == crate::model::CoverageExpectation::Required)
+            .collect::<Vec<_>>();
+        let observed = required
+            .iter()
+            .filter(|cell| cell.status == CoverageStatus::Observed)
+            .count();
+        self.output.push_str(&format!(
+            "\nCoverage  {observed}/{} required cells observed  policy {} ({:?})\n",
+            required.len(),
+            self.report.scoring_policy.policy_id,
+            self.report.scoring_policy.source
+        ));
+        for cell in required.into_iter().filter(|cell| {
+            matches!(
+                cell.status,
+                CoverageStatus::PartiallyObserved | CoverageStatus::Unsupported
+            )
+        }) {
+            self.output.push_str(&format!(
+                "  {:?}/{:?}: {:?} - {}\n",
+                cell.mechanism, cell.entity_scope, cell.status, cell.reason
+            ));
+        }
+    }
+
     fn render_header(&mut self) {
         self.output
             .push_str(&paint(self.color, "Reforge scan", AnsiStyle::Header));

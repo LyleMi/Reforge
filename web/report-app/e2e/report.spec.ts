@@ -12,13 +12,23 @@ async function openReport(page: Page, hash = "") {
   expect(errors).toEqual([]);
 }
 
-test("opens overview and navigates all four views", async ({ page }) => {
+test("opens overview and navigates all report views", async ({ page }) => {
   await openReport(page);
   await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-  for (const name of ["Issues", "Code map", "Metrics"]) {
+  for (const name of ["Issues", "Code map", "Metrics", "Coverage"]) {
     await page.getByRole("tab", { name: new RegExp(`^${name}`) }).click();
     await expect(page.getByRole("tab", { name: new RegExp(`^${name}`) })).toHaveAttribute("aria-selected", "true");
   }
+});
+
+test("coverage matrix exposes keyboard-selectable status cells", async ({ page }) => {
+  await openReport(page,"#coverage");
+  const matrix=page.getByRole("grid",{name:"Coverage audit matrix"});
+  await expect(matrix.getByRole("gridcell")).toHaveCount(42);
+  const cell=matrix.getByRole("gridcell").first();
+  await cell.focus();
+  await page.keyboard.press("Enter");
+  await expect(cell).toHaveAttribute("aria-selected","true");
 });
 
 test("restores issue filters from a deep link", async ({ page }) => {

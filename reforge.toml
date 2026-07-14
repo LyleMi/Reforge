@@ -220,3 +220,81 @@ kind = "large_file"
 path = "src/scan/mod.rs"
 line = 1
 reason = "scan orchestration keeps source collection, coverage accounting, and pipeline sequencing together"
+
+[[suppressions]]
+kind = "long_function"
+path = "src/scan/mod.rs"
+line = 100
+reason = "scan_report preserves the explicit ordered scan and report-finalization pipeline"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/scan/mod.rs"
+line = 219
+reason = "coverage projection audits all status transitions for the fixed ontology in one deterministic pass"
+
+[[suppressions]]
+kind = "long_function"
+path = "src/scan/mod.rs"
+line = 219
+reason = "coverage projection keeps the fixed target, receipts, and metric observations visibly coordinated"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/scan/mod.rs"
+line = 491
+reason = "raw metric availability exhaustively maps the canonical metric ontology"
+
+[[suppressions]]
+kind = "many_parameters"
+path = "src/scan/mod.rs"
+line = 491
+reason = "raw metric observation receives the complete immutable scan observation context"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/detectors/dependency_graph/resolution.rs"
+line = 8
+reason = "dependency construction keeps local resolution and unresolved-edge accounting adjacent"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/manifest.rs"
+line = 174
+reason = "issue family mapping is an exhaustive schema registry"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/manifest.rs"
+line = 238
+reason = "detector input mapping is an exhaustive typed metric registry"
+
+[[suppressions]]
+kind = "large_type"
+path = "src/scan/config.rs"
+line = 68
+reason = "effective config output intentionally mirrors the complete public scan configuration"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/calibration.rs"
+line = 1
+reason = "calibration artifact validation, fitting, and evaluation share one private versioned workflow"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/calibration.rs"
+line = 655
+reason = "reliability fitting keeps detection and action label isolation explicit and auditable"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/calibration.rs"
+line = 754
+reason = "leave-one-repository-out scoring keeps both reliability families in one symmetric evaluator"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/scoring/policy.rs"
+line = 30
+reason = "policy validation centralizes all accepted-only runtime contract checks"

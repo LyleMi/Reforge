@@ -101,6 +101,7 @@ min-data-clump-occurrences = 4
 
 churn = "auto"
 hotspot-model = "hybrid"
+scoring-policy = "policies/accepted-policy.json"
 churn-window-days = 180
 churn-max-commit-lines = 2000
 
@@ -145,6 +146,7 @@ reason = "legacy migration tracked separately"
 | `min-data-clump-occurrences` | `4` | `--min-data-clump-occurrences` |
 | `churn` | `auto` | `--churn` |
 | `hotspot-model` | `hybrid` | `--hotspot-model` |
+| `scoring-policy` | none | `--scoring-policy` |
 | `churn-window-days` | `180` | `--churn-window-days` |
 | `churn-max-commit-lines` | `2000` | `--churn-max-commit-lines` |
 | `ignore-paths` | `[]` | `--ignore-path` |
@@ -152,6 +154,13 @@ reason = "legacy migration tracked separately"
 
 `preset` accepts `strict`, `balanced`, or `relaxed`. `churn` accepts `auto`,
 `on`, or `off`. `hotspot-model` accepts `static`, `churn`, or `hybrid`.
+
+Only accepted policy v1 files can be loaded. A CLI path resolves from the
+current working directory and takes precedence over configuration. A relative
+`reforge.toml` path resolves from the configuration file directory. Unknown
+fields or detector kinds, invalid reliability ranges, weights that do not sum
+to one, version mismatch, non-accepted status, or fingerprint mismatch are
+fatal configuration errors.
 
 ## Ignored Paths
 
