@@ -576,12 +576,18 @@ fn detected_language(path: &Path) -> Option<String> {
         ("rs", "rust"),
         ("js", "javascript"),
         ("jsx", "javascript"),
+        ("mjs", "javascript"),
+        ("cjs", "javascript"),
         ("ts", "typescript"),
         ("tsx", "tsx"),
+        ("vue", "tsx"),
+        ("mts", "typescript"),
+        ("cts", "typescript"),
         ("py", "python"),
         ("go", "go"),
         ("java", "java"),
         ("cs", "csharp"),
+        ("csx", "csharp"),
         ("kt", "kotlin"),
         ("php", "php"),
         ("rb", "ruby"),
@@ -1069,10 +1075,13 @@ fn is_supported_source(path: &Path) -> bool {
             "c" | "cc"
                 | "cpp"
                 | "cs"
+                | "csx"
                 | "go"
                 | "java"
                 | "js"
                 | "jsx"
+                | "mjs"
+                | "cjs"
                 | "kt"
                 | "php"
                 | "py"
@@ -1080,6 +1089,9 @@ fn is_supported_source(path: &Path) -> bool {
                 | "rs"
                 | "ts"
                 | "tsx"
+                | "vue"
+                | "mts"
+                | "cts"
         )
     )
 }

@@ -136,3 +136,22 @@ def _unused_helper():
     assert!(findings[0].message.contains("`_unused_helper`"));
     Ok(())
 }
+
+#[test]
+fn reports_unused_csharp_local_functions() -> Result<()> {
+    let source = r#"
+class Worker {
+    void Run() {
+        int Used(int value) => value + 1;
+        int Stale(int value) => value + 2;
+        System.Console.WriteLine(Used(1));
+    }
+}
+"#;
+
+    let findings = scan_unused_functions(&[source_file("src/Worker.cs", source)], &options())?;
+
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert!(findings[0].message.contains("`Stale`"));
+    Ok(())
+}

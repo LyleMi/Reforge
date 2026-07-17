@@ -26,7 +26,9 @@ before detector-specific analysis runs.
 ## Similar Functions
 
 `similar_functions` uses Tree-sitter to extract named functions and methods in
-Rust, JavaScript, TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
+Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks, Python, Go, Java, C#,
+Kotlin, PHP, and Ruby. C# extraction includes methods, constructors, and local
+functions.
 Function bodies are normalized so identifiers become `ID`, strings become
 `STR`, and numbers become `NUM`.
 
@@ -75,11 +77,11 @@ one expands the module surface visible to another scope.
 ## Unused Functions
 
 `unused_function` builds a conservative project-wide identifier index for
-Rust, JavaScript, TypeScript/TSX, Python, and Go. It reports private named free
-functions that have no same-name references outside their own function body.
-Java, C#, Kotlin, PHP, and Ruby are parsed for structural and similarity
-signals, but skipped for unused-function candidates until their reference and
-visibility rules can be modeled more precisely.
+Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks, Python, Go, and C#
+local functions. It reports private named free functions or C# local functions
+that have no same-name references outside their own function body. Java, C#
+methods, Kotlin, PHP, and Ruby are skipped for unused-function candidates until
+their reference and visibility rules can be modeled more precisely.
 
 The detector skips public or exported functions, methods, common entry-point
 names such as `main` and `init`, and test helper definitions by default.
@@ -90,7 +92,7 @@ only by tests are not reported unless tests are excluded from the scan.
 
 `dependency_cycle` and `dependency_hub` use a conservative source-file import
 graph. The detector resolves only imports that point to another scanned source
-file under the scan root, such as relative JavaScript/TypeScript imports,
+file under the scan root, such as relative JavaScript/TypeScript/Vue imports,
 Rust `mod` declarations, Python relative imports, Ruby `require_relative`
 calls, and quoted C/C++ includes that resolve to scanned source files.
 

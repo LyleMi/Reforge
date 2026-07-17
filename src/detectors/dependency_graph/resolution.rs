@@ -17,7 +17,9 @@ pub(super) fn build_dependency_graph(
     for source in sources {
         graph.add_node(source.display_path.clone());
         let language = Language::for_path(&source.path);
-        for specifier in import_specifiers(&source.source, language) {
+        let vue_source = crate::language::vue_script_source(&source.path, &source.source);
+        let dependency_source = vue_source.as_deref().unwrap_or(&source.source);
+        for specifier in import_specifiers(dependency_source, language) {
             if let Some(target) =
                 resolve_import(source, specifier.as_str(), language, &root, &index)
             {
@@ -60,7 +62,9 @@ impl Language {
     fn for_path(path: &Path) -> Self {
         match path.extension().and_then(|extension| extension.to_str()) {
             Some("rs") => Self::Rust,
-            Some("js" | "jsx" | "ts" | "tsx") => Self::JavaScript,
+            Some("js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "mts" | "cts" | "vue") => {
+                Self::JavaScript
+            }
             Some("py") => Self::Python,
             Some("rb") => Self::Ruby,
             Some("c" | "cc" | "cpp") => Self::CLike,
@@ -301,7 +305,7 @@ fn resolve_file_candidate(
 fn language_extensions(language: Language) -> &'static [&'static str] {
     match language {
         Language::Rust => &["rs"],
-        Language::JavaScript => &["ts", "tsx", "js", "jsx"],
+        Language::JavaScript => &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "vue"],
         Language::Python => &["py"],
         Language::Ruby => &["rb"],
         Language::CLike => &["c", "cc", "cpp"],

@@ -720,7 +720,13 @@ fn method_function_parts<'tree>(
     node: Node<'tree>,
     traversal: StructureTraversal<'_>,
 ) -> Option<FunctionParts<'tree>> {
-    if node.kind() != METHOD_DECLARATION {
+    let is_supported = node.kind() == METHOD_DECLARATION
+        || (traversal.family == LanguageFamily::CSharp
+            && matches!(
+                node.kind(),
+                "constructor_declaration" | "local_function_statement"
+            ));
+    if !is_supported {
         return None;
     }
     named_function_parts(

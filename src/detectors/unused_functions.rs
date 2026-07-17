@@ -173,8 +173,10 @@ fn candidate_name_node<'tree>(
         LanguageFamily::Go if node.kind() == FUNCTION_DECLARATION => {
             node.child_by_field_name(NAME_FIELD)
         }
+        LanguageFamily::CSharp if node.kind() == "local_function_statement" => {
+            node.child_by_field_name(NAME_FIELD)
+        }
         LanguageFamily::Java
-        | LanguageFamily::CSharp
         | LanguageFamily::Kotlin
         | LanguageFamily::Php
         | LanguageFamily::Ruby => None,
@@ -206,8 +208,8 @@ fn is_public_or_exported_function(
             .chars()
             .next()
             .is_some_and(|character| character.is_uppercase()),
+        LanguageFamily::CSharp => false,
         LanguageFamily::Java
-        | LanguageFamily::CSharp
         | LanguageFamily::Kotlin
         | LanguageFamily::Php
         | LanguageFamily::Ruby => true,

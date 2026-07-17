@@ -496,7 +496,15 @@ fn supported_languages(kind: FindingKind) -> &'static [&'static str] {
         "php",
         "ruby",
     ];
-    const UNUSED: &[&str] = &["rust", "javascript", "typescript", "tsx", "python", "go"];
+    const UNUSED: &[&str] = &[
+        "rust",
+        "javascript",
+        "typescript",
+        "tsx",
+        "python",
+        "go",
+        "csharp",
+    ];
     const GRAPH: &[&str] = &[
         "rust",
         "javascript",

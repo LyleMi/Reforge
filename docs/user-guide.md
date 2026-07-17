@@ -119,10 +119,11 @@ directories in the output path are created automatically, so a path such as
 The scanner accepts either a directory or a single file as `[PATH]`. It scans
 source files with these extensions:
 
-- Broad source-file discovery: `c`, `cc`, `cpp`, `cs`, `go`, `java`, `js`,
-  `jsx`, `kt`, `php`, `py`, `rb`, `rs`, `ts`, and `tsx`.
-- Tree-sitter structural analysis: Rust, JavaScript, TypeScript/TSX, Python,
-  Go, Java, C#, Kotlin, PHP, and Ruby.
+- Broad source-file discovery: `c`, `cc`, `cjs`, `cpp`, `cs`, `csx`, `cts`,
+  `go`, `java`, `js`, `jsx`, `kt`, `mjs`, `mts`, `php`, `py`, `rb`, `rs`,
+  `ts`, `tsx`, and `vue`.
+- Tree-sitter structural analysis: Rust, JavaScript, TypeScript/TSX, Vue SFC
+  script blocks, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
 
 By default, hidden files are skipped and common generated or dependency
 directories are skipped, including `target`, `node_modules`, `dist`, `build`,

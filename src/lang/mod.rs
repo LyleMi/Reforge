@@ -55,15 +55,15 @@ pub(crate) fn adapter_for_path(path: &Path) -> Option<LanguageAdapter> {
             family: LanguageFamily::Rust,
             language: || tree_sitter_rust::LANGUAGE.into(),
         }),
-        "js" | "jsx" => Some(LanguageAdapter {
+        "js" | "jsx" | "mjs" | "cjs" => Some(LanguageAdapter {
             family: LanguageFamily::JavaScriptTypeScript,
             language: || tree_sitter_javascript::LANGUAGE.into(),
         }),
-        "ts" => Some(LanguageAdapter {
+        "ts" | "mts" | "cts" => Some(LanguageAdapter {
             family: LanguageFamily::JavaScriptTypeScript,
             language: || tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
         }),
-        "tsx" => Some(LanguageAdapter {
+        "tsx" | "vue" => Some(LanguageAdapter {
             family: LanguageFamily::JavaScriptTypeScript,
             language: || tree_sitter_typescript::LANGUAGE_TSX.into(),
         }),
@@ -79,7 +79,7 @@ pub(crate) fn adapter_for_path(path: &Path) -> Option<LanguageAdapter> {
             family: LanguageFamily::Java,
             language: || tree_sitter_java::LANGUAGE.into(),
         }),
-        "cs" => Some(LanguageAdapter {
+        "cs" | "csx" => Some(LanguageAdapter {
             family: LanguageFamily::CSharp,
             language: || tree_sitter_c_sharp::LANGUAGE.into(),
         }),
@@ -97,6 +97,61 @@ pub(crate) fn adapter_for_path(path: &Path) -> Option<LanguageAdapter> {
         }),
         _ => None,
     }
+}
+
+pub(crate) fn vue_script_source(path: &Path, source: &str) -> Option<String> {
+    (path.extension().and_then(|extension| extension.to_str()) == Some("vue"))
+        .then(|| extract_vue_scripts(source))
+}
+
+fn extract_vue_scripts(source: &str) -> String {
+    let bytes = source.as_bytes();
+    let mut extracted = bytes
+        .iter()
+        .map(|byte| {
+            if matches!(byte, b'\r' | b'\n') {
+                *byte
+            } else {
+                b' '
+            }
+        })
+        .collect::<Vec<_>>();
+    let mut search_start = 0;
+
+    while let Some(tag_start) = find_ascii_case_insensitive(bytes, b"<script", search_start) {
+        let Some(content_start) = find_tag_end(bytes, tag_start + b"<script".len()) else {
+            break;
+        };
+        let Some(content_end) = find_ascii_case_insensitive(bytes, b"</script", content_start)
+        else {
+            break;
+        };
+        extracted[content_start..content_end].copy_from_slice(&bytes[content_start..content_end]);
+        search_start = find_tag_end(bytes, content_end + b"</script".len()).unwrap_or(bytes.len());
+    }
+
+    String::from_utf8(extracted).expect("masking Vue source preserves UTF-8")
+}
+
+fn find_ascii_case_insensitive(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {
+    haystack
+        .get(start..)?
+        .windows(needle.len())
+        .position(|window| window.eq_ignore_ascii_case(needle))
+        .map(|offset| start + offset)
+}
+
+fn find_tag_end(source: &[u8], start: usize) -> Option<usize> {
+    let mut quote = None;
+    for (offset, byte) in source.get(start..)?.iter().copied().enumerate() {
+        match (quote, byte) {
+            (None, b'\'' | b'"') => quote = Some(byte),
+            (Some(opening), closing) if opening == closing => quote = None,
+            (None, b'>') => return Some(start + offset + 1),
+            _ => {}
+        }
+    }
+    None
 }
 
 pub(crate) fn is_binding_identifier_kind(kind: &str) -> bool {
@@ -173,4 +228,39 @@ fn is_rust_cfg_test_attribute(attribute: &str) -> bool {
         || inner.contains(",test,")
         || inner.ends_with(",test")
         || inner.ends_with(",test)")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognizes_modern_javascript_typescript_and_csharp_extensions() {
+        for path in ["app.mjs", "app.cjs", "app.mts", "app.cts"] {
+            assert_eq!(
+                adapter_for_path(Path::new(path)).map(|adapter| adapter.family),
+                Some(LanguageFamily::JavaScriptTypeScript),
+                "{path}"
+            );
+        }
+        assert_eq!(
+            adapter_for_path(Path::new("script.csx")).map(|adapter| adapter.family),
+            Some(LanguageFamily::CSharp)
+        );
+        assert_eq!(
+            adapter_for_path(Path::new("Component.vue")).map(|adapter| adapter.family),
+            Some(LanguageFamily::JavaScriptTypeScript)
+        );
+    }
+
+    #[test]
+    fn extracts_vue_scripts_while_preserving_offsets_and_lines() {
+        let source = "<template><div>ignored</div></template>\n<script setup lang=\"ts\">\nfunction helper() { return 1; }\n</script>\n<style>.x { color: red }</style>";
+        let extracted = vue_script_source(Path::new("Component.vue"), source).unwrap();
+
+        assert_eq!(extracted.len(), source.len());
+        assert_eq!(extracted.lines().count(), source.lines().count());
+        assert!(extracted.contains("function helper()"));
+        assert!(!extracted.contains("ignored"));
+    }
 }

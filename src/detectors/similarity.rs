@@ -173,6 +173,10 @@ pub(crate) fn parse_source_file(file: SourceFile) -> Result<Option<ParsedSourceF
     let Some(adapter) = adapter_for_path(&file.path) else {
         return Ok(None);
     };
+    let mut file = file;
+    if let Some(source) = crate::language::vue_script_source(&file.path, &file.source) {
+        file.source = Arc::from(source);
+    }
 
     let mut parser = Parser::new();
     parser
@@ -256,69 +260,82 @@ fn extract_function_parts<'tree>(
     node: Node<'tree>,
     extraction: CandidateExtraction<'_>,
 ) -> Option<(String, FunctionCategory, Node<'tree>)> {
-    let kind = node.kind();
-    let source = extraction.source;
-
     match extraction.family {
-        LanguageFamily::Rust if kind == FUNCTION_ITEM => {
-            let name = node
-                .child_by_field_name(NAME_FIELD)?
-                .utf8_text(source.as_bytes())
-                .ok()?;
-            let body = node.child_by_field_name(BODY_FIELD)?;
-            let category = if has_ancestor_kind(node, "impl_item") {
-                FunctionCategory::Method
-            } else {
-                FunctionCategory::Function
-            };
-            Some((name.to_string(), category, body))
-        }
-        LanguageFamily::JavaScriptTypeScript
-            if matches!(
-                kind,
-                FUNCTION_DECLARATION | GENERATOR_FUNCTION_DECLARATION | METHOD_DEFINITION
-            ) =>
-        {
-            let name = node
-                .child_by_field_name(NAME_FIELD)?
-                .utf8_text(source.as_bytes())
-                .ok()?;
-            let body = node.child_by_field_name(BODY_FIELD)?;
-            let category = if kind == METHOD_DEFINITION {
-                FunctionCategory::Method
-            } else {
-                FunctionCategory::Function
-            };
-            Some((name.to_string(), category, body))
-        }
-        LanguageFamily::Python if kind == FUNCTION_DEFINITION => {
-            let name = node
-                .child_by_field_name(NAME_FIELD)?
-                .utf8_text(source.as_bytes())
-                .ok()?;
-            let body = node.child_by_field_name(BODY_FIELD)?;
-            Some((name.to_string(), FunctionCategory::Function, body))
-        }
-        LanguageFamily::Go if matches!(kind, FUNCTION_DECLARATION | METHOD_DECLARATION) => {
-            let name = node
-                .child_by_field_name(NAME_FIELD)?
-                .utf8_text(source.as_bytes())
-                .ok()?;
-            let body = node.child_by_field_name(BODY_FIELD)?;
-            let category = if kind == METHOD_DECLARATION {
-                FunctionCategory::Method
-            } else {
-                FunctionCategory::Function
-            };
-            Some((name.to_string(), category, body))
-        }
-        LanguageFamily::Java
-        | LanguageFamily::CSharp
-        | LanguageFamily::Kotlin
-        | LanguageFamily::Php
-        | LanguageFamily::Ruby => extract_added_language_function_parts(node, extraction),
-        _ => None,
+        LanguageFamily::Rust => rust_function_parts(node, extraction.source),
+        LanguageFamily::JavaScriptTypeScript => javascript_function_parts(node, extraction.source),
+        LanguageFamily::Python => python_function_parts(node, extraction.source),
+        LanguageFamily::Go => go_function_parts(node, extraction.source),
+        _ => extract_added_language_function_parts(node, extraction),
     }
+}
+
+fn rust_function_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    if node.kind() != FUNCTION_ITEM {
+        return None;
+    }
+    let category = if has_ancestor_kind(node, "impl_item") {
+        FunctionCategory::Method
+    } else {
+        FunctionCategory::Function
+    };
+    named_parts(node, source, category)
+}
+
+fn javascript_function_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    if !matches!(
+        node.kind(),
+        FUNCTION_DECLARATION | GENERATOR_FUNCTION_DECLARATION | METHOD_DEFINITION
+    ) {
+        return None;
+    }
+    let category = if node.kind() == METHOD_DEFINITION {
+        FunctionCategory::Method
+    } else {
+        FunctionCategory::Function
+    };
+    named_parts(node, source, category)
+}
+
+fn python_function_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    (node.kind() == FUNCTION_DEFINITION)
+        .then(|| named_parts(node, source, FunctionCategory::Function))?
+}
+
+fn go_function_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    if !matches!(node.kind(), FUNCTION_DECLARATION | METHOD_DECLARATION) {
+        return None;
+    }
+    let category = if node.kind() == METHOD_DECLARATION {
+        FunctionCategory::Method
+    } else {
+        FunctionCategory::Function
+    };
+    named_parts(node, source, category)
+}
+
+fn named_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+    category: FunctionCategory,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    let name = node
+        .child_by_field_name(NAME_FIELD)?
+        .utf8_text(source.as_bytes())
+        .ok()?;
+    let body = node.child_by_field_name(BODY_FIELD)?;
+    Some((name.to_string(), category, body))
 }
 
 fn extract_added_language_function_parts<'tree>(
@@ -327,7 +344,7 @@ fn extract_added_language_function_parts<'tree>(
 ) -> Option<(String, FunctionCategory, Node<'tree>)> {
     match extraction.family {
         LanguageFamily::Java | LanguageFamily::CSharp => {
-            method_parts(node, extraction.source, METHOD_DECLARATION)
+            method_parts(node, extraction.source, extraction.family)
         }
         LanguageFamily::Kotlin => kotlin_function_parts(node, extraction.source),
         LanguageFamily::Php => php_function_parts(node, extraction.source),
@@ -339,9 +356,15 @@ fn extract_added_language_function_parts<'tree>(
 fn method_parts<'tree>(
     node: Node<'tree>,
     source: &str,
-    expected_kind: &str,
+    family: LanguageFamily,
 ) -> Option<(String, FunctionCategory, Node<'tree>)> {
-    if node.kind() != expected_kind {
+    let is_supported = node.kind() == METHOD_DECLARATION
+        || (family == LanguageFamily::CSharp
+            && matches!(
+                node.kind(),
+                "constructor_declaration" | "local_function_statement"
+            ));
+    if !is_supported {
         return None;
     }
 
@@ -450,18 +473,8 @@ fn normalize_node(
         return;
     }
 
-    if is_identifier_like_kind(kind) {
-        tokens.push(interner.intern("ID"));
-        return;
-    }
-
-    if is_string_kind(kind) {
-        tokens.push(interner.intern("STR"));
-        return;
-    }
-
-    if is_number_kind(kind) {
-        tokens.push(interner.intern("NUM"));
+    if let Some(token) = normalized_named_token(kind) {
+        tokens.push(interner.intern(token));
         return;
     }
 
@@ -479,6 +492,18 @@ fn normalize_node(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         normalize_node(child, source, interner, tokens);
+    }
+}
+
+fn normalized_named_token(kind: &str) -> Option<&'static str> {
+    if is_identifier_like_kind(kind) {
+        Some("ID")
+    } else if is_string_kind(kind) {
+        Some("STR")
+    } else if is_number_kind(kind) {
+        Some("NUM")
+    } else {
+        None
     }
 }
 

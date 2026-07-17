@@ -229,6 +229,39 @@ function gamma(rows: Item[]): number {
 }
 
 #[test]
+fn detects_similar_csharp_constructors() -> Result<()> {
+    let source = r#"
+class Alpha {
+    Alpha(Item[] items) {
+        foreach (var item in items) {
+            if (item.Score > 10) item.Save();
+        }
+    }
+}
+class Beta {
+    Beta(Item[] records) {
+        foreach (var record in records) {
+            if (record.Score > 20) record.Save();
+        }
+    }
+}
+class Gamma {
+    Gamma(Item[] rows) {
+        foreach (var row in rows) {
+            if (row.Score > 30) row.Save();
+        }
+    }
+}
+"#;
+
+    let findings = scan_similar_functions(&[source_file("src/Models.cs", source)], &options())?;
+
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert_eq!(metric_value(&findings[0], "group.size"), Some(3));
+    Ok(())
+}
+
+#[test]
 fn detects_similar_python_functions() -> Result<()> {
     let source = r#"
 def alpha(items):

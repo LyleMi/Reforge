@@ -23,8 +23,8 @@ score, health score, bug detector, or defect probability model.
 
 ## Highlights
 
-- Scans Rust, JavaScript, TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP,
-  and Ruby source files.
+- Scans Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks, Python, Go,
+  Java, C#, Kotlin, PHP, and Ruby source files.
 - Uses Tree-sitter for structural analysis and similar-function detection.
 - Reports human-readable, HTML, JSON, YAML, or SARIF output with raw metrics,
   percentile summaries, hotspots, and findings.

@@ -76,5 +76,6 @@ cargo run -- scan . --output-file reforge-report.html --progress never
 ## Supported Languages
 
 Tree-sitter structural and similar-function analysis covers Rust, JavaScript,
-TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby. Basic source-tree
-metrics also include supported C and C++ source extensions.
+TypeScript/TSX, Vue SFC script blocks, Python, Go, Java, C#, Kotlin, PHP, and
+Ruby. Basic source-tree metrics also include supported C and C++ source
+extensions.

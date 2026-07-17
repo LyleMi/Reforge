@@ -134,9 +134,9 @@ and raw metric definitions make this boundary machine-readable.
 | Evidence surface | Coverage state | Explicit non-coverage |
 | --- | --- | --- |
 | Source paths and physical LOC | Language-neutral for discovered source files | Excluded, hidden, generated, and dependency paths follow scan configuration. |
-| Parsed functions, types, structure, and similarity | Rust, JavaScript, TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, and Ruby as declared per detector | Parse failures and unsupported grammars are not observations. |
-| Unused-function analysis | Rust, JavaScript, TypeScript/TSX, Python, and Go | Dynamic and unresolved references can reduce recall. |
-| Dependency graph | Rust, JavaScript, TypeScript/TSX, Python, Ruby, C, and C++ | Unresolved external or framework-specific edges are omitted. |
+| Parsed functions, types, structure, and similarity | Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks, Python, Go, Java, C#, Kotlin, PHP, and Ruby as declared per detector | Parse failures and unsupported grammars are not observations. |
+| Unused-function analysis | Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks, Python, Go, and C# local functions | Dynamic and unresolved references can reduce recall. |
+| Dependency graph | Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks, Python, Ruby, C, and C++ | Unresolved external or framework-specific edges are omitted. |
 | Repository documentation contract | Reforge repository scope | This is not a universal documentation policy for arbitrary projects. |
 | Change history | Git history when churn is enabled and available | Disabled, unavailable, binary, out-of-root, and oversized commits are omitted. |
 

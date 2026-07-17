@@ -73,8 +73,8 @@ ranking or dashboards without relying only on findings.
 ## Parser Integration
 
 Tree-sitter support is routed through `LanguageAdapter`. Structural and
-similarity analysis currently supports Rust, JavaScript, TypeScript/TSX,
-Python, Go, Java, C#, Kotlin, PHP, and Ruby.
+similarity analysis currently supports Rust, JavaScript, TypeScript/TSX, Vue
+SFC script blocks, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
 
 Files with parse errors are skipped for Tree-sitter detectors but can still
 contribute basic file metrics and debt-marker findings. Broad source discovery

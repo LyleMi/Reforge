@@ -475,6 +475,20 @@ fn recognizes_common_test_source_names() {
 }
 
 #[test]
+fn recognizes_frontend_module_vue_and_csharp_script_sources() {
+    for path in [
+        "src/app.mjs",
+        "src/app.cjs",
+        "src/app.mts",
+        "src/app.cts",
+        "src/App.vue",
+        "scripts/setup.csx",
+    ] {
+        assert!(is_supported_source(Path::new(path)), "{path}");
+    }
+}
+
+#[test]
 fn writer_progress_outputs_messages() {
     let mut progress = WriterProgress::new(Vec::new());
 

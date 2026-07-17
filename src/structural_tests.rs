@@ -582,6 +582,60 @@ fn reports_new_language_function_metrics_and_long_functions() -> Result<()> {
 }
 
 #[test]
+fn collects_csharp_constructors_and_local_functions() -> Result<()> {
+    let source = r#"
+class Worker {
+    Worker(int seed) {
+        int Normalize(int value) {
+            return value + seed;
+        }
+        System.Console.WriteLine(Normalize(seed));
+    }
+}
+"#;
+    let file = source_file("src/Worker.cs", source);
+    let parsed = parse_source_files(std::slice::from_ref(&file))?;
+    let metrics = collect_raw_structure_metrics(&parsed);
+    let names = metrics[0]
+        .functions
+        .iter()
+        .map(|function| function.name.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(names.contains(&"Worker"), "{names:?}");
+    assert!(names.contains(&"Normalize"), "{names:?}");
+    Ok(())
+}
+
+#[test]
+fn analyzes_vue_script_setup_with_original_line_numbers() -> Result<()> {
+    let source = r#"<template>
+  <button>{{ label }}</button>
+</template>
+<script setup lang="ts">
+function buildLabel(value: string) {
+    if (value.length > 10) {
+        return value.trim();
+    }
+    return value;
+}
+</script>
+<style scoped>button { color: red; }</style>
+"#;
+    let file = source_file("src/Widget.vue", source);
+    let parsed = parse_source_files(std::slice::from_ref(&file))?;
+    let metrics = collect_raw_structure_metrics(&parsed);
+    let function = metrics[0]
+        .functions
+        .iter()
+        .find(|function| function.name == "buildLabel")
+        .expect("Vue script function should be analyzed");
+
+    assert_eq!(function.line, 5);
+    Ok(())
+}
+
+#[test]
 fn skips_test_files_for_structure_by_default_but_reports_test_duplication() -> Result<()> {
     let source = r#"
 test("one", () => {

@@ -57,6 +57,26 @@ fn detects_resolved_javascript_cycle() {
 }
 
 #[test]
+fn resolves_imports_from_vue_script_blocks() {
+    let sources = vec![
+        source(
+            "project/src/App.vue",
+            "<template><Widget /></template>\n<script setup lang=\"ts\">\nimport Widget from './Widget.vue';\n</script>\n",
+        ),
+        source(
+            "project/src/Widget.vue",
+            "<script setup lang=\"ts\">\nexport const label = 'widget';\n</script>\n",
+        ),
+    ];
+
+    let scan = scan_dependency_graph_report(&sources, Path::new("project"));
+
+    assert_eq!(scan.snapshot.edges.len(), 1, "{:#?}", scan.snapshot);
+    assert_eq!(scan.snapshot.edges[0].from, "project/src/App.vue");
+    assert_eq!(scan.snapshot.edges[0].to, "project/src/Widget.vue");
+}
+
+#[test]
 fn ignores_unresolved_external_imports() {
     let sources = vec![source(
         "project/src/a.ts",
