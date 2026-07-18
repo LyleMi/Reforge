@@ -75,6 +75,15 @@ pub enum ChurnMode {
     Off,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnityMode {
+    #[default]
+    Auto,
+    On,
+    Off,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HotspotModel {
@@ -90,6 +99,12 @@ impl ScanArgs {
             path,
             threshold_overrides: ThresholdOverrideFlags::default(),
             preset: None,
+            unity: UnityMode::Auto,
+            max_unity_assembly_dependencies: thresholds.unity.max_assembly_dependencies,
+            max_unity_scene_objects: thresholds.unity.max_scene_objects,
+            max_unity_prefab_objects: thresholds.unity.max_prefab_objects,
+            max_unity_serialized_fields: thresholds.unity.max_serialized_fields,
+            max_unity_lifecycle_methods: thresholds.unity.max_lifecycle_methods,
             max_file_lines: thresholds.file.max_file_lines,
             max_dir_files: thresholds.file.max_dir_files,
             filters: ScanFilterArgs::default(),
@@ -232,6 +247,7 @@ impl ThresholdPreset {
 impl ThresholdOverrideFlags {
     fn from_arg_matches(matches: &ArgMatches) -> Self {
         Self {
+            unity: was_command_line_value(matches, "unity"),
             max_file_lines: was_command_line_value(matches, "max_file_lines"),
             max_dir_files: was_command_line_value(matches, "max_dir_files"),
             min_similar_functions: was_command_line_value(matches, "min_similar_functions"),
@@ -258,6 +274,20 @@ impl ThresholdOverrideFlags {
             min_data_clump_occurrences: was_command_line_value(
                 matches,
                 "min_data_clump_occurrences",
+            ),
+            max_unity_assembly_dependencies: was_command_line_value(
+                matches,
+                "max_unity_assembly_dependencies",
+            ),
+            max_unity_scene_objects: was_command_line_value(matches, "max_unity_scene_objects"),
+            max_unity_prefab_objects: was_command_line_value(matches, "max_unity_prefab_objects"),
+            max_unity_serialized_fields: was_command_line_value(
+                matches,
+                "max_unity_serialized_fields",
+            ),
+            max_unity_lifecycle_methods: was_command_line_value(
+                matches,
+                "max_unity_lifecycle_methods",
             ),
         }
     }

@@ -217,6 +217,7 @@ pub struct ScanReport {
     pub raw_metrics: RawMetrics,
     pub raw_metric_manifest: Vec<RawMetricManifestEntry>,
     pub dependency_graph: DependencyGraphSnapshot,
+    pub unity_project: UnityProjectReport,
     pub hotspots: Vec<Hotspot>,
     pub suppression_summary: SuppressionSummary,
     pub coverage_manifest: Vec<CoverageManifestEntry>,

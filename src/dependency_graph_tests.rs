@@ -77,6 +77,61 @@ fn resolves_imports_from_vue_script_blocks() {
 }
 
 #[test]
+fn detects_resolved_csharp_namespace_cycle() {
+    let sources = vec![
+        source(
+            "project/Assets/Core/A.cs",
+            "using Project.Runtime;\nnamespace Project.Core { public class A { private B value; } }\n",
+        ),
+        source(
+            "project/Assets/Runtime/B.cs",
+            "using Project.Core;\nnamespace Project.Runtime;\npublic class B { private A value; }\n",
+        ),
+    ];
+
+    let scan = scan_dependency_graph_report(&sources, Path::new("project"));
+
+    assert_eq!(scan.snapshot.edges.len(), 2, "{:#?}", scan.snapshot);
+    assert!(
+        scan.findings
+            .iter()
+            .any(|finding| finding.kind == FindingKind::DependencyCycle)
+    );
+    assert_eq!(scan.unresolved_edges, 0);
+}
+
+#[test]
+fn ignores_external_csharp_namespaces() {
+    let sources = vec![source(
+        "project/Assets/App.cs",
+        "using System;\nusing UnityEngine;\nnamespace Project.App;\npublic class App {}\n",
+    )];
+
+    let scan = scan_dependency_graph_report(&sources, Path::new("project"));
+
+    assert!(scan.snapshot.edges.is_empty());
+    assert_eq!(scan.unresolved_edges, 0);
+}
+
+#[test]
+fn ignores_csharp_types_mentioned_only_in_comments_and_strings() {
+    let sources = vec![
+        source(
+            "project/Assets/Core/A.cs",
+            "namespace Project.Core;\npublic class A {}\n",
+        ),
+        source(
+            "project/Assets/App.cs",
+            "namespace Project.App;\n// using Project.Core; A fake;\npublic class App { string text = \"Project.Core.A\"; }\n",
+        ),
+    ];
+
+    let scan = scan_dependency_graph_report(&sources, Path::new("project"));
+
+    assert!(scan.snapshot.edges.is_empty(), "{:#?}", scan.snapshot);
+}
+
+#[test]
 fn ignores_unresolved_external_imports() {
     let sources = vec![source(
         "project/src/a.ts",

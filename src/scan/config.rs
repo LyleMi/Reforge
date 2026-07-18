@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::{
     ChurnMode, DEFAULT_CHURN_MAX_COMMIT_LINES, DEFAULT_CHURN_WINDOW_DAYS, HotspotModel, ScanArgs,
-    ThresholdPreset,
+    ThresholdPreset, UnityMode,
 };
 
 use super::thresholds::{
     ConfigFileThresholdDefaults, ConfigRepetitionThresholdDefaults,
     ConfigSimilarityThresholdDefaults, ConfigStructureThresholdDefaults, ConfigThresholdDefaults,
-    apply_threshold_defaults,
+    ConfigUnityThresholdDefaults, apply_threshold_defaults,
 };
 
 pub(crate) const CONFIG_FILE_NAME: &str = "reforge.toml";
@@ -46,6 +46,18 @@ struct ReforgeConfig {
     churn_max_commit_lines: Option<usize>,
     ignore_paths: Vec<String>,
     suppressions: Vec<ConfigSuppression>,
+    unity: UnityConfig,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+struct UnityConfig {
+    mode: Option<UnityMode>,
+    max_assembly_dependencies: Option<usize>,
+    max_scene_objects: Option<usize>,
+    max_prefab_objects: Option<usize>,
+    max_serialized_fields: Option<usize>,
+    max_lifecycle_methods: Option<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -97,6 +109,12 @@ pub(crate) struct EffectiveConfigOutput {
     hotspot_model: HotspotModel,
     churn_window_days: usize,
     churn_max_commit_lines: usize,
+    unity: UnityMode,
+    max_unity_assembly_dependencies: usize,
+    max_unity_scene_objects: usize,
+    max_unity_prefab_objects: usize,
+    max_unity_serialized_fields: usize,
+    max_unity_lifecycle_methods: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -127,6 +145,18 @@ struct ReforgeConfigTemplate {
     churn_window_days: usize,
     churn_max_commit_lines: usize,
     ignore_paths: Vec<String>,
+    unity: UnityConfigTemplate,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct UnityConfigTemplate {
+    mode: UnityMode,
+    max_assembly_dependencies: usize,
+    max_scene_objects: usize,
+    max_prefab_objects: usize,
+    max_serialized_fields: usize,
+    max_lifecycle_methods: usize,
 }
 
 impl From<&ReforgeConfig> for ConfigThresholdDefaults {
@@ -158,6 +188,13 @@ impl From<&ReforgeConfig> for ConfigThresholdDefaults {
             repetition: ConfigRepetitionThresholdDefaults {
                 min_repeated_literal_occurrences: config.min_repeated_literal_occurrences,
                 min_data_clump_occurrences: config.min_data_clump_occurrences,
+            },
+            unity: ConfigUnityThresholdDefaults {
+                max_assembly_dependencies: config.unity.max_assembly_dependencies,
+                max_scene_objects: config.unity.max_scene_objects,
+                max_prefab_objects: config.unity.max_prefab_objects,
+                max_serialized_fields: config.unity.max_serialized_fields,
+                max_lifecycle_methods: config.unity.max_lifecycle_methods,
             },
         }
     }
@@ -304,6 +341,9 @@ fn apply_config_defaults(args: &mut ScanArgs, cli_args: &ScanArgs, config: Optio
         }
         apply_churn_config_defaults(args, config);
         apply_ignore_path_defaults(args, config);
+        if !args.threshold_overrides.unity {
+            args.unity = config.unity.mode.unwrap_or(UnityMode::Auto);
+        }
     }
 }
 
@@ -370,6 +410,12 @@ impl From<&ScanArgs> for EffectiveConfigOutput {
             churn_max_commit_lines: args
                 .churn_max_commit_lines
                 .expect("effective args should set churn max commit lines"),
+            unity: args.unity,
+            max_unity_assembly_dependencies: args.max_unity_assembly_dependencies,
+            max_unity_scene_objects: args.max_unity_scene_objects,
+            max_unity_prefab_objects: args.max_unity_prefab_objects,
+            max_unity_serialized_fields: args.max_unity_serialized_fields,
+            max_unity_lifecycle_methods: args.max_unity_lifecycle_methods,
         }
     }
 }
@@ -402,6 +448,14 @@ impl From<&ScanArgs> for ReforgeConfigTemplate {
             churn_window_days: DEFAULT_CHURN_WINDOW_DAYS,
             churn_max_commit_lines: DEFAULT_CHURN_MAX_COMMIT_LINES,
             ignore_paths: args.filters.ignore_paths.clone(),
+            unity: UnityConfigTemplate {
+                mode: args.unity,
+                max_assembly_dependencies: args.max_unity_assembly_dependencies,
+                max_scene_objects: args.max_unity_scene_objects,
+                max_prefab_objects: args.max_unity_prefab_objects,
+                max_serialized_fields: args.max_unity_serialized_fields,
+                max_lifecycle_methods: args.max_unity_lifecycle_methods,
+            },
         }
     }
 }
@@ -541,6 +595,34 @@ mod tests {
             output.function_similarity,
             ThresholdSettings::STRICT.similarity.function_similarity
         );
+        Ok(())
+    }
+
+    #[test]
+    fn unity_config_and_cli_thresholds_follow_precedence() -> Result<()> {
+        let root = test_root("unity-precedence");
+        fs::create_dir_all(&root)?;
+        fs::write(
+            root.join(CONFIG_FILE_NAME),
+            "preset = \"strict\"\n[unity]\nmode = \"on\"\nmax-scene-objects = 700\n",
+        )?;
+        let cli = Cli::parse_from_with_explicit_overrides([
+            "reforge",
+            "scan",
+            root.to_str().unwrap(),
+            "--max-unity-scene-objects",
+            "900",
+        ]);
+        let Command::Scan(args) = cli.command else {
+            unreachable!()
+        };
+
+        let output = effective_config_output(&args, &root)?;
+
+        fs::remove_dir_all(root)?;
+        assert_eq!(output.unity, UnityMode::On);
+        assert_eq!(output.max_unity_scene_objects, 900);
+        assert_eq!(output.max_unity_prefab_objects, 100);
         Ok(())
     }
 

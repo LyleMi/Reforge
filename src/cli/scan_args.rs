@@ -13,6 +13,30 @@ pub struct ScanArgs {
     #[arg(long, value_enum)]
     pub preset: Option<ThresholdPreset>,
 
+    /// Unity project analysis mode. Auto enables it at Unity project roots.
+    #[arg(long, value_enum, default_value_t = UnityMode::Auto)]
+    pub unity: UnityMode,
+
+    /// Report Unity assemblies with more direct dependencies than this threshold.
+    #[arg(long, default_value_t = 8)]
+    pub max_unity_assembly_dependencies: usize,
+
+    /// Report Unity scenes with more serialized objects than this threshold.
+    #[arg(long, default_value_t = 1_000)]
+    pub max_unity_scene_objects: usize,
+
+    /// Report Unity prefabs with more serialized objects than this threshold.
+    #[arg(long, default_value_t = 250)]
+    pub max_unity_prefab_objects: usize,
+
+    /// Report Unity behaviours with more serializable fields than this threshold.
+    #[arg(long, default_value_t = 16)]
+    pub max_unity_serialized_fields: usize,
+
+    /// Report Unity behaviours with more lifecycle methods than this threshold.
+    #[arg(long, default_value_t = 7)]
+    pub max_unity_lifecycle_methods: usize,
+
     /// Report files whose total line count is above this threshold.
     #[arg(long, default_value_t = DEFAULT_MAX_FILE_LINES)]
     pub max_file_lines: usize,

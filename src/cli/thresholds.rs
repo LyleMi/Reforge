@@ -25,6 +25,16 @@ pub struct ThresholdSettings {
     pub similarity: SimilarityThresholdSettings,
     pub structure: StructureThresholdSettings,
     pub repetition: RepetitionThresholdSettings,
+    pub unity: UnityThresholdSettings,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnityThresholdSettings {
+    pub max_assembly_dependencies: usize,
+    pub max_scene_objects: usize,
+    pub max_prefab_objects: usize,
+    pub max_serialized_fields: usize,
+    pub max_lifecycle_methods: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +73,7 @@ pub struct RepetitionThresholdSettings {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ThresholdOverrideFlags {
+    pub unity: bool,
     pub max_file_lines: bool,
     pub max_dir_files: bool,
     pub min_similar_functions: bool,
@@ -81,6 +92,11 @@ pub(crate) struct ThresholdOverrideFlags {
     pub max_small_function_ratio: bool,
     pub min_repeated_literal_occurrences: bool,
     pub min_data_clump_occurrences: bool,
+    pub max_unity_assembly_dependencies: bool,
+    pub max_unity_scene_objects: bool,
+    pub max_unity_prefab_objects: bool,
+    pub max_unity_serialized_fields: bool,
+    pub max_unity_lifecycle_methods: bool,
 }
 
 impl ThresholdSettings {
@@ -111,6 +127,13 @@ impl ThresholdSettings {
             min_repeated_literal_occurrences: DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES,
             min_data_clump_occurrences: DEFAULT_MIN_DATA_CLUMP_OCCURRENCES,
         },
+        unity: UnityThresholdSettings {
+            max_assembly_dependencies: 8,
+            max_scene_objects: 1_000,
+            max_prefab_objects: 250,
+            max_serialized_fields: 16,
+            max_lifecycle_methods: 7,
+        },
     };
 
     pub const STRICT: Self = Self {
@@ -140,6 +163,13 @@ impl ThresholdSettings {
             min_repeated_literal_occurrences: 8,
             min_data_clump_occurrences: 3,
         },
+        unity: UnityThresholdSettings {
+            max_assembly_dependencies: 5,
+            max_scene_objects: 500,
+            max_prefab_objects: 100,
+            max_serialized_fields: 10,
+            max_lifecycle_methods: 5,
+        },
     };
 
     pub const RELAXED: Self = Self {
@@ -168,6 +198,13 @@ impl ThresholdSettings {
         repetition: RepetitionThresholdSettings {
             min_repeated_literal_occurrences: 20,
             min_data_clump_occurrences: 6,
+        },
+        unity: UnityThresholdSettings {
+            max_assembly_dependencies: 12,
+            max_scene_objects: 2_000,
+            max_prefab_objects: 500,
+            max_serialized_fields: 24,
+            max_lifecycle_methods: 10,
         },
     };
 }

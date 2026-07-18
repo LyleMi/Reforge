@@ -1,13 +1,16 @@
 # Report Schema
 
-Schema 19 separates atomic evidence (`findings`) from decision units (`issues`) and makes measurement coverage and scoring provenance auditable.
+Schema 20 retains the separation of atomic evidence (`findings`) from decision
+units (`issues`) and adds Unity project analysis while keeping measurement
+coverage and scoring provenance auditable.
 Each finding exposes `detection_reliability` and `interpretation_reliability`;
 the manifest declares `issue_family`, `evidence_role`, and
 `constituent_kinds`. `coverage_manifest` declares the supported mechanism and
 entity-scope matrix, while `coverage_summary` records observed languages,
 analyzed entities, parse failures, and unobservable reasons for this run.
 
-JSON and YAML reports use schema version `19`. Older reports and baselines, including v18, are rejected and must be regenerated. The same Rust data model is
+JSON and YAML reports use schema version `20`. Older reports and baselines,
+including v19, are rejected and must be regenerated. The same Rust data model is
 serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 that carries the same finding IDs in result fingerprints.
 
@@ -15,13 +18,14 @@ that carries the same finding IDs in result fingerprints.
 
 ```json
 {
-  "schema_version": 19,
+  "schema_version": 20,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
   "raw_metrics": {},
   "raw_metric_manifest": [],
   "dependency_graph": {},
+  "unity_project": {},
   "hotspots": [],
   "suppression_summary": {},
   "coverage_manifest": [],
@@ -37,7 +41,7 @@ that carries the same finding IDs in result fingerprints.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `19`.
+- `schema_version`: report schema version. Current value is `20`.
 - `coverage_manifest`: normative 7 mechanisms × 6 entity scopes matrix with expectation, runtime status, detectors, entity count, and unobservable reasons.
 - `detector_execution`: one execution receipt per detector, including completed zero-finding runs.
 - `raw_metric_coverage`: observation state for all 18 canonical raw metrics. Disabled churn is `unavailable`, never observed zero pressure.
@@ -49,6 +53,7 @@ Top-level fields:
 - `raw_metric_manifest`: scale, unit, scope, direction, and meaning of every
   raw metric family.
 - `dependency_graph`: resolved source-file dependency graph snapshot.
+- `unity_project`: Unity detection status, Editor/serialization metadata, asset statistics, asmdef graph, problem references, and Unity-specific coverage.
 - `hotspots`: ranked file, function, and type locations.
 - `suppression_summary`: aggregate counts for findings removed by
   suppressions.
@@ -179,6 +184,13 @@ imports are not included.
 
 - `from`: importing or including source file.
 - `to`: resolved imported or included source file.
+
+## `unity_project`
+
+- `status` is `not_detected`, `disabled`, `observed`, or `partially_observed`.
+- `assemblies` and `assembly_edges` form an independent Unity assembly graph; they do not replace the source-file `dependency_graph`.
+- `problem_references` contains only broken or missing-script references, keeping normal asset graphs out of large reports.
+- `coverage` and `degraded_reasons` explain unavailable PackageCache identity data or binary serialization.
 
 ## `hotspots`
 
@@ -374,11 +386,18 @@ Current `kind` values:
 - `stale_schema_documentation`
 - `dependency_cycle`
 - `dependency_hub`
+- `unity_assembly_cycle`, `unity_assembly_hub`, `unity_unresolved_assembly_reference`, `unity_runtime_editor_dependency`
+- `unity_duplicate_guid`, `unity_missing_meta`, `unity_orphan_meta`, `unity_broken_asset_reference`, `unity_missing_script`
+- `unity_non_text_serialization`, `unity_scene_build_drift`, `unity_large_scene`, `unity_large_prefab`
+- `unity_serialized_field_bloat`, `unity_lifecycle_overload`, `unity_expensive_frame_call`, `unity_editor_api_in_runtime`, `unity_unbalanced_event_subscription`
 
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `19` retains `rf3-` EvidenceIds and `ri3-` IssueKeys over canonical
+version `20` adds `unity_project`, Unity detector records, and Unity asset paths
+without changing the source dependency graph. Baselines from older schemas are
+rejected and should be regenerated. Schema version `19` retains `rf3-`
+EvidenceIds and `ri3-` IssueKeys over canonical
 subjects. Issue identity is independent of alternative evidence membership and
 input ordering. Schema
 version `16` gives every finding metric a canonical dotted ID, adds directory

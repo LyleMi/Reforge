@@ -108,6 +108,14 @@ calls, and quoted C/C++ includes that resolve to scanned source files.
   density remain evidence of `dependency_cycle` instead of being counted again
   as depth.
 
+## Unity projects
+
+At a Unity project root, Reforge statically analyzes text serialization, meta GUIDs,
+asmdef dependencies, Build Settings, and C# Unity component semantics without
+starting the Editor. `Library/PackageCache` is identity-only external context and
+never produces maintenance findings. Missing PackageCache data or binary assets
+produce `partially_observed` coverage instead of speculative broken-reference findings.
+
 External packages, unresolved aliases, generated paths skipped by scan filters,
 and ambiguous language-specific module systems are ignored rather than guessed.
 

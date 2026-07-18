@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cli::HotspotModel;
 use crate::detectors::manifest::{
-    actionability, classification, default_detection_reliability, impact, input_metrics,
+    actionability, classification, default_detection_reliability,
+    default_interpretation_reliability, impact, input_metrics,
 };
 use crate::model::{
     FileRawMetric, Finding, FindingKind, FindingMetric, Hotspot, HotspotLevel, MetricId,
@@ -86,7 +87,9 @@ fn build_finding(input: FindingInput) -> Finding {
     let detection_reliability = input
         .detection_reliability
         .unwrap_or_else(|| detection_reliability(input.kind));
-    let interpretation_reliability = input.interpretation_reliability.unwrap_or(0.90);
+    let interpretation_reliability = input
+        .interpretation_reliability
+        .unwrap_or_else(|| default_interpretation_reliability(input.kind));
     let (construct, mechanism) = classification(input.kind);
     let mut finding = Finding {
         id: Default::default(),

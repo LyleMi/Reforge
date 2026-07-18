@@ -280,6 +280,7 @@ mod tests {
             raw_metrics: crate::model::RawMetrics::default(),
             raw_metric_manifest: Vec::new(),
             dependency_graph: crate::model::DependencyGraphSnapshot::default(),
+            unity_project: crate::model::UnityProjectReport::default(),
             hotspots: Vec::new(),
             suppression_summary: crate::model::SuppressionSummary::default(),
             coverage_manifest: Vec::new(),

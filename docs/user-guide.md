@@ -284,7 +284,7 @@ Without `--baseline`, all current findings are selected:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-With `--baseline <PATH>`, Reforge reads a prior schema 19 JSON or YAML report
+With `--baseline <PATH>`, Reforge reads a prior schema 20 JSON or YAML report
 and matches findings by stable `id`. Older reports without IDs are rejected;
 regenerate the baseline with the current Reforge.
 
@@ -334,6 +334,12 @@ git churn.
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `--preset` | `balanced` | Use `strict`, `balanced`, or `relaxed` threshold defaults before per-threshold overrides. |
+| `--unity` | `auto` | Auto-detect Unity roots, require Unity with `on`, or skip Unity with `off`. |
+| `--max-unity-assembly-dependencies` | `8` | Assembly dependency threshold. |
+| `--max-unity-scene-objects` | `1000` | Serialized scene object threshold. |
+| `--max-unity-prefab-objects` | `250` | Serialized prefab object threshold. |
+| `--max-unity-serialized-fields` | `16` | Serializable field threshold for Unity types. |
+| `--max-unity-lifecycle-methods` | `7` | Unity lifecycle method threshold. |
 | `--max-file-lines` | `800` | Report files above this total line count. |
 | `--max-dir-files` | `40` | Report directories above this direct source-file count. |
 | `--include-hidden` | `false` | Include hidden files and directories. |
@@ -364,7 +370,7 @@ git churn.
 | `--min-data-clump-occurrences` | `4` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a specific configuration file. |
-| `--baseline` | none | Read a prior schema 19 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 20 JSON/YAML report for gate comparison. |
 | `--scoring-policy` | none | Load an explicitly accepted scoring policy v1. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |

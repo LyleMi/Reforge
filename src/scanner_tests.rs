@@ -68,6 +68,37 @@ fn syntax_failures_make_parse_dependent_coverage_partial() -> anyhow::Result<()>
     Ok(())
 }
 
+#[test]
+fn unsupported_language_specific_detectors_make_coverage_partial() -> anyhow::Result<()> {
+    let root = test_root("coverage-partial-language-support");
+    std::fs::create_dir_all(&root)?;
+    std::fs::write(root.join("App.java"), "public class App {}\n")?;
+    let args = scan_args(root.clone(), false);
+    let mut progress = NoopProgress;
+    let report = scan_report(&args, &mut progress)?;
+    std::fs::remove_dir_all(root)?;
+
+    let dependency_files = report
+        .coverage_manifest
+        .iter()
+        .find(|cell| {
+            cell.mechanism == crate::model::SignalMechanism::DependencyPropagation
+                && cell.entity_scope == crate::model::EntityScope::File
+        })
+        .expect("dependency file coverage should be present");
+    assert_eq!(
+        dependency_files.status,
+        crate::model::CoverageStatus::PartiallyObserved
+    );
+    assert!(
+        dependency_files
+            .unobservable_reasons
+            .iter()
+            .any(|reason| reason.contains("dependency_hub"))
+    );
+    Ok(())
+}
+
 fn test_root(name: &str) -> std::path::PathBuf {
     let suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -81,6 +112,12 @@ fn scan_args(path: std::path::PathBuf, include_generated: bool) -> ScanArgs {
         path,
         threshold_overrides: crate::cli::ThresholdOverrideFlags::default(),
         preset: None,
+        unity: crate::cli::UnityMode::Auto,
+        max_unity_assembly_dependencies: 8,
+        max_unity_scene_objects: 1_000,
+        max_unity_prefab_objects: 250,
+        max_unity_serialized_fields: 16,
+        max_unity_lifecycle_methods: 7,
         max_file_lines: 800,
         max_dir_files: 40,
         filters: crate::cli::ScanFilterArgs {
@@ -157,6 +194,25 @@ fn skips_generated_directories_by_default() -> Result<()> {
 
     assert_eq!(findings.len(), 1);
     assert!(findings[0].path.ends_with("src/main.rs"));
+    Ok(())
+}
+
+#[test]
+fn skips_unity_generated_directories_by_default() -> Result<()> {
+    let root = test_root("skip-unity-generated");
+    for directory in ["Library", "Temp", "Logs", "UserSettings", "obj"] {
+        let generated = root.join(directory);
+        fs::create_dir_all(&generated)?;
+        fs::write(generated.join("Generated.cs"), "// TODO: ignored\n")?;
+    }
+    fs::create_dir_all(root.join("Assets"))?;
+    fs::write(root.join("Assets/Game.cs"), "// TODO: reported\n")?;
+
+    let findings = scan_path(&scan_args(root.clone(), false))?;
+    fs::remove_dir_all(root)?;
+
+    assert_eq!(findings.len(), 1);
+    assert!(findings[0].path.ends_with("Assets/Game.cs"));
     Ok(())
 }
 

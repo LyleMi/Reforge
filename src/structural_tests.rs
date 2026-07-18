@@ -592,6 +592,7 @@ class Worker {
         System.Console.WriteLine(Normalize(seed));
     }
 }
+
 "#;
     let file = source_file("src/Worker.cs", source);
     let parsed = parse_source_files(std::slice::from_ref(&file))?;
@@ -604,6 +605,26 @@ class Worker {
 
     assert!(names.contains(&"Worker"), "{names:?}");
     assert!(names.contains(&"Normalize"), "{names:?}");
+    Ok(())
+}
+
+#[test]
+fn counts_public_csharp_types_inside_block_and_file_scoped_namespaces() -> Result<()> {
+    let files = vec![
+        source_file(
+            "src/Cards.cs",
+            "namespace Poker.Core { public enum Suit { Clubs } internal class Hidden {} }\n",
+        ),
+        source_file(
+            "src/Runtime.cs",
+            "namespace Poker.Runtime;\npublic class Controller {}\ninternal class Helper {}\n",
+        ),
+    ];
+    let parsed = parse_source_files(&files)?;
+    let metrics = collect_raw_structure_metrics(&parsed);
+
+    assert_eq!(metrics[0].public_items, 1);
+    assert_eq!(metrics[1].public_items, 1);
     Ok(())
 }
 

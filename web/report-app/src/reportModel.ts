@@ -1,6 +1,6 @@
 import type { Finding, FileRawMetric, ScanReport, Severity } from "./reportTypes";
 
-export const REPORT_SCHEMA_VERSION = 19;
+export const REPORT_SCHEMA_VERSION = 20;
 
 export type FileOverview = {
   path: string;

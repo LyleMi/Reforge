@@ -16,6 +16,12 @@ fn scan_args(path: std::path::PathBuf) -> ScanArgs {
         path,
         threshold_overrides: crate::cli::ThresholdOverrideFlags::default(),
         preset: None,
+        unity: crate::cli::UnityMode::Auto,
+        max_unity_assembly_dependencies: 8,
+        max_unity_scene_objects: 1_000,
+        max_unity_prefab_objects: 250,
+        max_unity_serialized_fields: 16,
+        max_unity_lifecycle_methods: 7,
         max_file_lines: 800,
         max_dir_files: 40,
         filters: crate::cli::ScanFilterArgs {
@@ -94,7 +100,7 @@ fn write_project_marker(root: &Path) -> Result<()> {
 }
 
 fn cli_flags_doc() -> &'static str {
-    "--preset --max-file-lines --max-dir-files --include-hidden --include-generated \
+    "--preset --unity --max-unity-assembly-dependencies --max-unity-scene-objects --max-unity-prefab-objects --max-unity-serialized-fields --max-unity-lifecycle-methods --max-file-lines --max-dir-files --include-hidden --include-generated \
 --no-gitignore --exclude-tests --ignore-path --min-similar-functions --min-function-tokens --function-similarity \
 --only --exclude-detector --min-priority --severity \
 --include-test-similarity --max-function-lines --max-function-complexity \
@@ -108,7 +114,7 @@ fn cli_flags_doc() -> &'static str {
 }
 
 fn schema_fields_doc() -> &'static str {
-    "schema_version summary stats metrics_summary raw_metrics raw_metric_manifest dependency_graph hotspots suppression_summary coverage_manifest coverage_summary detector_execution raw_metric_coverage scoring_policy issues detector_manifest findings \
+    "schema_version summary stats metrics_summary raw_metrics raw_metric_manifest dependency_graph unity_project hotspots suppression_summary coverage_manifest coverage_summary detector_execution raw_metric_coverage scoring_policy issues detector_manifest findings \
  id kind severity path line metrics priority detection_reliability interpretation_reliability priority_factors construct mechanism action entity_scope issue_family evidence_role constituent_kinds issue_count \
  rank_explanation recommendation related_locations"
 }

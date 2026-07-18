@@ -11,12 +11,21 @@ pub(super) fn build_dependency_graph(
 ) -> (DependencyGraph, usize) {
     let root = normalize_path(root);
     let index = source_index(sources);
+    let csharp_types = csharp_type_index(sources);
     let mut graph = DependencyGraph::default();
     let mut unresolved_edges = 0;
 
     for source in sources {
         graph.add_node(source.display_path.clone());
         let language = Language::for_path(&source.path);
+        if language == Language::CSharp {
+            for target in resolve_csharp_dependencies(source, &csharp_types) {
+                if target != source.display_path {
+                    graph.add_edge(source.display_path.clone(), target);
+                }
+            }
+            continue;
+        }
         let vue_source = crate::language::vue_script_source(&source.path, &source.source);
         let dependency_source = vue_source.as_deref().unwrap_or(&source.source);
         for specifier in import_specifiers(dependency_source, language) {
@@ -37,7 +46,7 @@ fn is_local_specifier(specifier: &str, language: Language) -> bool {
     match language {
         Language::JavaScript => specifier.starts_with('.'),
         Language::Python | Language::Ruby | Language::Rust | Language::CLike => true,
-        Language::Other => false,
+        Language::CSharp | Language::Other => false,
     }
 }
 
@@ -55,6 +64,7 @@ enum Language {
     Python,
     Ruby,
     CLike,
+    CSharp,
     Other,
 }
 
@@ -68,6 +78,7 @@ impl Language {
             Some("py") => Self::Python,
             Some("rb") => Self::Ruby,
             Some("c" | "cc" | "cpp") => Self::CLike,
+            Some("cs" | "csx") => Self::CSharp,
             _ => Self::Other,
         }
     }
@@ -97,6 +108,7 @@ fn import_specifier_from_line(line: &str, language: Language) -> Option<String> 
         Language::Python => python_import_specifier(trimmed),
         Language::Ruby => ruby_import_specifier(trimmed),
         Language::CLike => c_like_import_specifier(trimmed),
+        Language::CSharp => csharp_import_specifier(trimmed),
         Language::Other => None,
     }
 }
@@ -160,6 +172,231 @@ fn c_like_import_specifier(line: &str) -> Option<String> {
     quoted_after(rest)
 }
 
+fn csharp_import_specifier(line: &str) -> Option<String> {
+    let rest = line
+        .strip_prefix("global using ")
+        .or_else(|| line.strip_prefix("using "))?;
+    let rest = rest.strip_prefix("static ").unwrap_or(rest);
+    let imported = rest.split_once('=').map_or(rest, |(_, target)| target);
+    let imported = imported
+        .split_once("//")
+        .map_or(imported, |(target, _)| target)
+        .trim()
+        .trim_end_matches(';')
+        .trim();
+    namespace_like(imported).then(|| imported.to_string())
+}
+
+fn namespace_like(value: &str) -> bool {
+    !value.is_empty()
+        && value.split('.').all(identifier_like)
+        && !value.starts_with('.')
+        && !value.ends_with('.')
+}
+
+#[derive(Default)]
+struct CSharpTypeIndex {
+    by_namespace: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+    by_qualified_name: BTreeMap<String, Vec<String>>,
+}
+
+fn csharp_type_index(sources: &[SourceFile]) -> CSharpTypeIndex {
+    let mut index = CSharpTypeIndex::default();
+    for source in sources
+        .iter()
+        .filter(|source| Language::for_path(&source.path) == Language::CSharp)
+    {
+        let code = csharp_code_only(&source.source);
+        let namespaces = csharp_declared_namespaces(&code);
+        let namespace = namespaces.first().cloned().unwrap_or_default();
+        for type_name in csharp_declared_types(&code) {
+            let paths = index
+                .by_namespace
+                .entry(namespace.clone())
+                .or_default()
+                .entry(type_name.clone())
+                .or_default();
+            if !paths.contains(&source.display_path) {
+                paths.push(source.display_path.clone());
+            }
+            let qualified = if namespace.is_empty() {
+                type_name
+            } else {
+                format!("{namespace}.{type_name}")
+            };
+            let paths = index.by_qualified_name.entry(qualified).or_default();
+            if !paths.contains(&source.display_path) {
+                paths.push(source.display_path.clone());
+            }
+        }
+    }
+    index
+}
+
+fn csharp_declared_types(source: &str) -> Vec<String> {
+    let tokens = csharp_identifiers(source);
+    tokens
+        .windows(2)
+        .filter(|window| {
+            matches!(
+                window[0].as_str(),
+                "class" | "struct" | "interface" | "enum" | "record"
+            )
+        })
+        .map(|window| window[1].clone())
+        .collect()
+}
+
+fn csharp_identifiers(source: &str) -> Vec<String> {
+    source
+        .split(|character: char| !(character == '_' || character.is_ascii_alphanumeric()))
+        .filter(|value| {
+            !value.is_empty()
+                && value
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c == '_' || c.is_ascii_alphabetic())
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+fn resolve_csharp_dependencies(source: &SourceFile, index: &CSharpTypeIndex) -> Vec<String> {
+    let code = csharp_code_only(&source.source);
+    let declared_namespaces = csharp_declared_namespaces(&code);
+    let identifiers = csharp_identifiers(&code)
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut imported_namespaces = Vec::new();
+    let mut aliases = Vec::new();
+    for line in code.lines() {
+        let trimmed = line.trim();
+        let Some(specifier) = csharp_import_specifier(trimmed) else {
+            continue;
+        };
+        if let Some((left, _)) = trimmed
+            .strip_prefix("using ")
+            .and_then(|value| value.split_once('='))
+        {
+            aliases.push((left.trim().to_string(), specifier));
+        } else {
+            imported_namespaces.push(specifier);
+        }
+    }
+    let mut targets = std::collections::BTreeSet::new();
+    for namespace in declared_namespaces.iter().chain(imported_namespaces.iter()) {
+        if let Some(types) = index.by_namespace.get(namespace) {
+            for (type_name, paths) in types {
+                if identifiers.contains(type_name) {
+                    targets.extend(paths.iter().cloned());
+                }
+            }
+        }
+    }
+    for (alias, qualified) in aliases {
+        if identifiers.contains(&alias)
+            && let Some(paths) = index.by_qualified_name.get(&qualified)
+        {
+            targets.extend(paths.iter().cloned());
+        }
+    }
+    for (qualified, paths) in &index.by_qualified_name {
+        if code.contains(qualified) {
+            targets.extend(paths.iter().cloned());
+        }
+    }
+    targets.into_iter().collect()
+}
+
+fn csharp_code_only(source: &str) -> String {
+    #[derive(Clone, Copy)]
+    enum State {
+        Code,
+        LineComment,
+        BlockComment,
+        String,
+        Character,
+    }
+
+    let mut output = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    let mut state = State::Code;
+    while let Some(character) = chars.next() {
+        match state {
+            State::Code if character == '/' && chars.peek() == Some(&'/') => {
+                output.push(' ');
+                output.push(' ');
+                chars.next();
+                state = State::LineComment;
+            }
+            State::Code if character == '/' && chars.peek() == Some(&'*') => {
+                output.push(' ');
+                output.push(' ');
+                chars.next();
+                state = State::BlockComment;
+            }
+            State::Code if character == '"' => {
+                output.push(' ');
+                state = State::String;
+            }
+            State::Code if character == '\'' => {
+                output.push(' ');
+                state = State::Character;
+            }
+            State::Code => output.push(character),
+            State::LineComment if character == '\n' => {
+                output.push('\n');
+                state = State::Code;
+            }
+            State::LineComment => output.push(' '),
+            State::BlockComment if character == '*' && chars.peek() == Some(&'/') => {
+                output.push(' ');
+                output.push(' ');
+                chars.next();
+                state = State::Code;
+            }
+            State::BlockComment if character == '\n' => output.push('\n'),
+            State::BlockComment => output.push(' '),
+            State::String | State::Character if character == '\\' => {
+                output.push(' ');
+                if let Some(escaped) = chars.next() {
+                    output.push(if escaped == '\n' { '\n' } else { ' ' });
+                }
+            }
+            State::String if character == '"' => {
+                output.push(' ');
+                state = State::Code;
+            }
+            State::Character if character == '\'' => {
+                output.push(' ');
+                state = State::Code;
+            }
+            State::String | State::Character if character == '\n' => {
+                output.push('\n');
+                state = State::Code;
+            }
+            State::String | State::Character => output.push(' '),
+        }
+    }
+    output
+}
+
+fn csharp_declared_namespaces(source: &str) -> Vec<String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim().strip_prefix("namespace ")?;
+            let namespace = rest
+                .chars()
+                .take_while(|character| {
+                    *character == '.' || *character == '_' || character.is_ascii_alphanumeric()
+                })
+                .collect::<String>();
+            namespace_like(&namespace).then_some(namespace)
+        })
+        .collect()
+}
+
 fn quoted_after(value: &str) -> Option<String> {
     let start = value.find(['"', '\''])?;
     let quote = value.as_bytes()[start] as char;
@@ -188,6 +425,7 @@ fn resolve_import(
             resolve_relative_import(source.path.parent()?, specifier, language, index)
         }
         Language::Python => resolve_python_import(source.path.parent()?, specifier, index),
+        Language::CSharp => None,
         Language::Other => None,
     }
 }
@@ -309,6 +547,7 @@ fn language_extensions(language: Language) -> &'static [&'static str] {
         Language::Python => &["py"],
         Language::Ruby => &["rb"],
         Language::CLike => &["c", "cc", "cpp"],
+        Language::CSharp => &["cs", "csx"],
         Language::Other => &[],
     }
 }

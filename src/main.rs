@@ -41,6 +41,7 @@ mod structural {
 mod unused_functions {
     pub(crate) use crate::detectors::unused_functions::*;
 }
+mod unity;
 
 use anyhow::{Context, Result, bail};
 use std::fs::{File, OpenOptions};

@@ -168,6 +168,29 @@ export type DependencyGraph = {
   edges?: DependencyGraphEdge[];
 };
 
+export type UnityProject = {
+  status: "not_detected" | "disabled" | "observed" | "partially_observed" | string;
+  editor_version?: string | null;
+  serialization_mode?: string | null;
+  analysis_roots?: string[];
+  stats?: UnityProjectStats;
+  assemblies?: UnityAssembly[];
+  assembly_edges?: UnityAssemblyEdge[];
+  problem_references?: UnityReferenceProblem[];
+  raw_metrics?: UnityRawMetric[];
+  metric_manifest?: UnityMetricManifestEntry[];
+  coverage?: UnityCoverage[];
+  degraded_reasons?: string[];
+};
+
+type UnityProjectStats = { assemblies?: number; scenes?: number; prefabs?: number; assets?: number; meta_files?: number; guids?: number; tests?: number; yaml_assets?: number; binary_assets?: number; asset_references?: number };
+type UnityAssembly = { name: string; path: string; editor_only: boolean; test_assembly: boolean; predefined: boolean };
+type UnityAssemblyEdge = { from: string; to: string; reference: string; resolved: boolean };
+type UnityReferenceProblem = { source_path: string; line: number; guid: string; file_id?: string | null; category: string; resolved_target?: string | null };
+type UnityCoverage = { area: string; status: string; reason?: string | null };
+type UnityRawMetric = { name: string; path: string; value: number; unit: string };
+type UnityMetricManifestEntry = { name: string; entity: string; unit: string; description: string };
+
 export type CoverageCell = {
   mechanism: string;
   entity_scope: string;
@@ -200,6 +223,7 @@ export type ScanReport = {
   raw_metrics?: RawMetrics;
   raw_metric_manifest?: RawMetricManifestEntry[];
   dependency_graph?: DependencyGraph;
+  unity_project?: UnityProject;
   hotspots?: Hotspot[];
   suppression_summary?: SuppressionSummary;
   coverage_manifest?: CoverageCell[];

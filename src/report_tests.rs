@@ -45,6 +45,7 @@ fn report(findings: Vec<Finding>) -> ScanReport {
         raw_metrics: RawMetrics::default(),
         raw_metric_manifest: Vec::new(),
         dependency_graph: DependencyGraphSnapshot::default(),
+        unity_project: crate::model::UnityProjectReport::default(),
         hotspots: Vec::new(),
         suppression_summary: SuppressionSummary::default(),
         coverage_manifest: Vec::new(),

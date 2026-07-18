@@ -126,6 +126,12 @@ reason = "legacy migration tracked separately"
 | Key | Default | Equivalent CLI option |
 | --- | --- | --- |
 | `preset` | `balanced` | `--preset` |
+| `[unity].mode` | `auto` | `--unity` |
+| `[unity].max-assembly-dependencies` | `8` | `--max-unity-assembly-dependencies` |
+| `[unity].max-scene-objects` | `1000` | `--max-unity-scene-objects` |
+| `[unity].max-prefab-objects` | `250` | `--max-unity-prefab-objects` |
+| `[unity].max-serialized-fields` | `16` | `--max-unity-serialized-fields` |
+| `[unity].max-lifecycle-methods` | `7` | `--max-unity-lifecycle-methods` |
 | `max-file-lines` | `800` | `--max-file-lines` |
 | `max-dir-files` | `40` | `--max-dir-files` |
 | `min-similar-functions` | `3` | `--min-similar-functions` |

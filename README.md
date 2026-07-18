@@ -314,7 +314,7 @@ Fail CI on current warning or critical findings:
 cargo run -- scan . --output json --progress never --fail-on warning
 ```
 
-Compare against a prior schema 18 baseline and fail only on new or worse
+Compare against a prior schema 20 baseline and fail only on new or worse
 warning/critical findings:
 
 ```powershell
@@ -365,8 +365,8 @@ scan with the React + TypeScript report app, packaged as a single offline
 `.html` artifact with the scan data, HTML shell, styles, and inline app bundle.
 The visual report includes summary cards, risk distribution, File Overview,
 dependency map, hotspots, similar-function groups, and prioritized findings.
-JSON and YAML use schema version 18 and include `summary`,
-`metrics_summary`, `raw_metrics`, `raw_metric_manifest`, `dependency_graph`, `hotspots`,
+JSON and YAML use schema version 20 and include `summary`,
+`metrics_summary`, `raw_metrics`, `raw_metric_manifest`, `dependency_graph`, `unity_project`, `hotspots`,
 `suppression_summary`, `issues`, `detector_manifest`, and audit `findings`.
 SARIF output targets SARIF 2.1.0 with one result per Issue, rules keyed by
 Issue family, and results fingerprinted by stable `ri3-*` Issue IDs. Issues
@@ -385,7 +385,7 @@ and YAML expose the same audit context in `suppression_summary`.
 
 `--fail-on info|warning|critical` turns selected findings into a CI gate.
 Without a baseline, the gate evaluates all current findings after writing the
-requested report. With `--baseline <PATH>`, Reforge reads a prior schema 18
+requested report. With `--baseline <PATH>`, Reforge reads a prior schema 20
 JSON or YAML report and matches findings by stable `id`. The gate does not
 fail on hotspots alone; keep hotspot output as a watchlist for follow-up
 review, dashboards, or backlog planning.
@@ -494,6 +494,12 @@ findings, not as proof that no maintainability signals were observed.
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `--preset` | `balanced` | Use `strict`, `balanced`, or `relaxed` threshold defaults before per-threshold overrides. |
+| `--unity` | `auto` | Enable Unity analysis automatically, require it with `on`, or disable it with `off`. |
+| `--max-unity-assembly-dependencies` | `8` | Report Unity assembly dependency hubs. |
+| `--max-unity-scene-objects` | `1000` | Report large serialized scenes. |
+| `--max-unity-prefab-objects` | `250` | Report large serialized prefabs. |
+| `--max-unity-serialized-fields` | `16` | Report Unity behaviours with broad serialized state. |
+| `--max-unity-lifecycle-methods` | `7` | Report Unity behaviours with many lifecycle hooks. |
 | `--max-file-lines` | `800` | Report files above this line count. |
 | `--max-dir-files` | `40` | Report directories above this direct source-file count. |
 | `--include-hidden` | `false` | Include hidden files and directories. |
@@ -528,7 +534,7 @@ findings, not as proof that no maintainability signals were observed.
 | `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
-| `--baseline` | none | Read a prior schema 18 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 20 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
 | `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |
@@ -538,7 +544,8 @@ findings, not as proof that no maintainability signals were observed.
 | `--color` | `auto` | Use `auto`, `always`, or `never`. |
 
 By default, scans skip common generated and dependency directories such as
-`target`, `node_modules`, `dist`, `build`, and `out`, and they also apply git
+`target`, `node_modules`, `dist`, `build`, `out`, and Unity-generated directories
+such as `Library`, `Temp`, `Logs`, `UserSettings`, and `obj`. Scans also apply git
 ignore rules. Test files are scanned by default, though some test-heavy
 analysis is opt-in. Use `--exclude-tests` to remove test files and directories
 from the scan, and use `--no-gitignore` to scan paths ignored by git.

@@ -46,6 +46,24 @@ const ALL_FINDING_KINDS: &[FindingKind] = &[
     FindingKind::StaleSchemaDocumentation,
     FindingKind::DependencyCycle,
     FindingKind::DependencyHub,
+    FindingKind::UnityAssemblyCycle,
+    FindingKind::UnityAssemblyHub,
+    FindingKind::UnityUnresolvedAssemblyReference,
+    FindingKind::UnityRuntimeEditorDependency,
+    FindingKind::UnityDuplicateGuid,
+    FindingKind::UnityMissingMeta,
+    FindingKind::UnityOrphanMeta,
+    FindingKind::UnityBrokenAssetReference,
+    FindingKind::UnityMissingScript,
+    FindingKind::UnityNonTextSerialization,
+    FindingKind::UnitySceneBuildDrift,
+    FindingKind::UnityLargeScene,
+    FindingKind::UnityLargePrefab,
+    FindingKind::UnitySerializedFieldBloat,
+    FindingKind::UnityLifecycleOverload,
+    FindingKind::UnityExpensiveFrameCall,
+    FindingKind::UnityEditorApiInRuntime,
+    FindingKind::UnityUnbalancedEventSubscription,
 ];
 
 pub(crate) fn classification(kind: FindingKind) -> (QualityConstruct, SignalMechanism) {
@@ -54,9 +72,28 @@ pub(crate) fn classification(kind: FindingKind) -> (QualityConstruct, SignalMech
     use SignalMechanism as M;
 
     match kind {
-        K::DependencyCycle | K::DependencyHub | K::ImportHeavyFile | K::LargePublicSurface => {
-            (C::Modularity, M::DependencyPropagation)
-        }
+        K::DependencyCycle
+        | K::DependencyHub
+        | K::ImportHeavyFile
+        | K::LargePublicSurface
+        | K::UnityAssemblyCycle
+        | K::UnityAssemblyHub
+        | K::UnityUnresolvedAssemblyReference
+        | K::UnityRuntimeEditorDependency
+        | K::UnityBrokenAssetReference
+        | K::UnityMissingScript
+        | K::UnityExpensiveFrameCall
+        | K::UnityEditorApiInRuntime => (C::Modularity, M::DependencyPropagation),
+        K::UnityDuplicateGuid
+        | K::UnityMissingMeta
+        | K::UnityOrphanMeta
+        | K::UnityNonTextSerialization
+        | K::UnitySceneBuildDrift => (C::Analysability, M::KnowledgeDrift),
+        K::UnityLargeScene
+        | K::UnityLargePrefab
+        | K::UnitySerializedFieldBloat
+        | K::UnityLifecycleOverload => (C::Modifiability, M::ResponsibilityDispersion),
+        K::UnityUnbalancedEventSubscription => (C::Testability, M::VerificationDifficulty),
         K::AdapterBoundaryBypass => (C::Modularity, M::DependencyPropagation),
         K::SimilarFunctions
         | K::RepeatedLiteral
@@ -115,7 +152,7 @@ pub(crate) fn detector_manifest() -> Vec<DetectorManifestEntry> {
                 evidence_role: evidence_role(kind),
                 constituent_kinds: constituent_kinds(kind).to_vec(),
                 default_detection_reliability: default_detection_reliability(kind),
-                default_interpretation_reliability: 0.90,
+                default_interpretation_reliability: default_interpretation_reliability(kind),
                 impact: impact(kind),
                 actionability: actionability(kind),
             }
@@ -283,6 +320,24 @@ pub(crate) fn input_metrics(kind: FindingKind) -> &'static [MetricId] {
             M::DependencyTransitiveFanOut,
             M::DependencyTransitiveFanIn,
         ],
+        K::UnityAssemblyCycle
+        | K::UnityAssemblyHub
+        | K::UnityUnresolvedAssemblyReference
+        | K::UnityRuntimeEditorDependency
+        | K::UnityDuplicateGuid
+        | K::UnityMissingMeta
+        | K::UnityOrphanMeta
+        | K::UnityBrokenAssetReference
+        | K::UnityMissingScript
+        | K::UnityNonTextSerialization
+        | K::UnitySceneBuildDrift
+        | K::UnityLargeScene
+        | K::UnityLargePrefab
+        | K::UnitySerializedFieldBloat
+        | K::UnityLifecycleOverload
+        | K::UnityExpensiveFrameCall
+        | K::UnityEditorApiInRuntime
+        | K::UnityUnbalancedEventSubscription => &[M::GroupSize],
         K::SimilarFunctions
         | K::RepeatedLiteral
         | K::RepeatedErrorPattern
@@ -317,6 +372,24 @@ pub(crate) fn action(kind: FindingKind) -> RefactorAction {
         | K::ImportHeavyFile
         | K::LargePublicSurface
         | K::AdapterBoundaryBypass => A::ReduceDependencyCoupling,
+        K::UnityAssemblyCycle
+        | K::UnityAssemblyHub
+        | K::UnityUnresolvedAssemblyReference
+        | K::UnityRuntimeEditorDependency
+        | K::UnityBrokenAssetReference
+        | K::UnityMissingScript
+        | K::UnityExpensiveFrameCall
+        | K::UnityEditorApiInRuntime => A::ReduceDependencyCoupling,
+        K::UnityLargeScene
+        | K::UnityLargePrefab
+        | K::UnitySerializedFieldBloat
+        | K::UnityLifecycleOverload => A::DecomposeResponsibility,
+        K::UnityDuplicateGuid
+        | K::UnityMissingMeta
+        | K::UnityOrphanMeta
+        | K::UnityNonTextSerialization
+        | K::UnitySceneBuildDrift => A::StandardizeNaming,
+        K::UnityUnbalancedEventSubscription => A::StrengthenTestCoverage,
         K::LargeFile
         | K::LargeDirectory
         | K::LargeType
@@ -389,6 +462,24 @@ pub(crate) fn entity_scope(kind: FindingKind) -> EntityScope {
         | K::AdapterBoundaryBypass
         | K::StaleCompatibilityPath
         | K::DependencyCycle => E::FindingGroup,
+        K::UnityAssemblyCycle => E::FindingGroup,
+        K::UnitySerializedFieldBloat
+        | K::UnityLifecycleOverload
+        | K::UnityUnbalancedEventSubscription => E::Type,
+        K::UnityAssemblyHub
+        | K::UnityUnresolvedAssemblyReference
+        | K::UnityRuntimeEditorDependency
+        | K::UnityDuplicateGuid
+        | K::UnityMissingMeta
+        | K::UnityOrphanMeta
+        | K::UnityBrokenAssetReference
+        | K::UnityMissingScript
+        | K::UnityNonTextSerialization
+        | K::UnitySceneBuildDrift
+        | K::UnityLargeScene
+        | K::UnityLargePrefab
+        | K::UnityExpensiveFrameCall
+        | K::UnityEditorApiInRuntime => E::File,
     }
 }
 
@@ -408,7 +499,26 @@ fn approach(kind: FindingKind) -> DetectionApproach {
         | K::LargePublicSurface
         | K::ImportHeavyFile
         | K::FunctionProliferation => A::Threshold,
-        K::DependencyCycle | K::DependencyHub => A::GraphAnalysis,
+        K::DependencyCycle
+        | K::DependencyHub
+        | K::UnityAssemblyCycle
+        | K::UnityAssemblyHub
+        | K::UnityUnresolvedAssemblyReference
+        | K::UnityRuntimeEditorDependency
+        | K::UnityBrokenAssetReference
+        | K::UnityMissingScript => A::GraphAnalysis,
+        K::UnityLargeScene
+        | K::UnityLargePrefab
+        | K::UnitySerializedFieldBloat
+        | K::UnityLifecycleOverload => A::Threshold,
+        K::UnityDuplicateGuid
+        | K::UnityMissingMeta
+        | K::UnityOrphanMeta
+        | K::UnityNonTextSerialization
+        | K::UnitySceneBuildDrift => A::RepositoryAudit,
+        K::UnityExpensiveFrameCall
+        | K::UnityEditorApiInRuntime
+        | K::UnityUnbalancedEventSubscription => A::Heuristic,
         K::MissingDocumentationSet
         | K::MissingUserGuide
         | K::MissingReportSchemaDocs
@@ -453,6 +563,18 @@ fn precision_risk(kind: FindingKind) -> PrecisionRisk {
             | K::LargePublicSurface
             | K::ImportHeavyFile
             | K::DependencyCycle
+            | K::UnityAssemblyCycle
+            | K::UnityRuntimeEditorDependency
+            | K::UnityDuplicateGuid
+            | K::UnityMissingMeta
+            | K::UnityOrphanMeta
+            | K::UnityBrokenAssetReference
+            | K::UnityMissingScript
+            | K::UnityNonTextSerialization
+            | K::UnityLargeScene
+            | K::UnityLargePrefab
+            | K::UnitySerializedFieldBloat
+            | K::UnityLifecycleOverload
     ) {
         R::Low
     } else if matches!(
@@ -514,6 +636,7 @@ fn supported_languages(kind: FindingKind) -> &'static [&'static str] {
         "ruby",
         "c",
         "cpp",
+        "csharp",
     ];
     const REPOSITORY: &[&str] = &["repository"];
     const PATHS: &[&str] = &["language_neutral_paths"];
@@ -529,6 +652,24 @@ fn supported_languages(kind: FindingKind) -> &'static [&'static str] {
         K::LargeFile | K::LargeDirectory | K::DebtMarker | K::FileNamingDrift => PATHS,
         K::UnusedFunction => UNUSED,
         K::DependencyCycle | K::DependencyHub => GRAPH,
+        K::UnityAssemblyCycle
+        | K::UnityAssemblyHub
+        | K::UnityUnresolvedAssemblyReference
+        | K::UnityRuntimeEditorDependency
+        | K::UnityDuplicateGuid
+        | K::UnityMissingMeta
+        | K::UnityOrphanMeta
+        | K::UnityBrokenAssetReference
+        | K::UnityMissingScript
+        | K::UnityNonTextSerialization
+        | K::UnitySceneBuildDrift
+        | K::UnityLargeScene
+        | K::UnityLargePrefab
+        | K::UnitySerializedFieldBloat
+        | K::UnityLifecycleOverload
+        | K::UnityExpensiveFrameCall
+        | K::UnityEditorApiInRuntime
+        | K::UnityUnbalancedEventSubscription => &["unity"],
         _ => ALL_PARSED,
     }
 }
@@ -562,7 +703,27 @@ pub(crate) fn default_detection_reliability(kind: FindingKind) -> f64 {
         | K::MissingArchitectureDocs
         | K::StaleCliDocumentation
         | K::StaleSchemaDocumentation => 0.95,
-        K::DependencyCycle | K::DependencyHub | K::ReadabilityRisk => 0.90,
+        K::DependencyCycle
+        | K::DependencyHub
+        | K::ReadabilityRisk
+        | K::UnityAssemblyCycle
+        | K::UnityRuntimeEditorDependency
+        | K::UnityDuplicateGuid
+        | K::UnityMissingMeta
+        | K::UnityOrphanMeta
+        | K::UnityBrokenAssetReference
+        | K::UnityMissingScript
+        | K::UnityNonTextSerialization
+        | K::UnityLargeScene
+        | K::UnityLargePrefab
+        | K::UnitySerializedFieldBloat
+        | K::UnityLifecycleOverload
+        | K::UnityEditorApiInRuntime => 0.90,
+        K::UnityAssemblyHub
+        | K::UnityUnresolvedAssemblyReference
+        | K::UnitySceneBuildDrift
+        | K::UnityExpensiveFrameCall
+        | K::UnityUnbalancedEventSubscription => 0.65,
         K::DebtMarker
         | K::LargeFile
         | K::LargeDirectory
@@ -573,6 +734,16 @@ pub(crate) fn default_detection_reliability(kind: FindingKind) -> f64 {
         | K::LargeType
         | K::LargePublicSurface
         | K::ImportHeavyFile => 1.0,
+    }
+}
+
+pub(crate) fn default_interpretation_reliability(kind: FindingKind) -> f64 {
+    match kind {
+        FindingKind::UnityUnbalancedEventSubscription => 0.55,
+        FindingKind::UnityExpensiveFrameCall => 0.70,
+        FindingKind::UnityAssemblyHub | FindingKind::UnitySceneBuildDrift => 0.80,
+        FindingKind::UnityUnresolvedAssemblyReference => 0.85,
+        _ => 0.90,
     }
 }
 
@@ -609,7 +780,24 @@ pub(crate) fn impact(kind: FindingKind) -> f64 {
         | K::LargeType => 70.0,
         K::ReadabilityRisk | K::StaleCliDocumentation | K::DependencyHub => 75.0,
         K::SimilarFunctions => 80.0,
-        K::DependencyCycle => 85.0,
+        K::DependencyCycle
+        | K::UnityAssemblyCycle
+        | K::UnityRuntimeEditorDependency
+        | K::UnityDuplicateGuid
+        | K::UnityMissingScript => 85.0,
+        K::UnityAssemblyHub
+        | K::UnityUnresolvedAssemblyReference
+        | K::UnityMissingMeta
+        | K::UnityOrphanMeta
+        | K::UnityBrokenAssetReference
+        | K::UnityNonTextSerialization
+        | K::UnityLargeScene
+        | K::UnityLargePrefab
+        | K::UnitySerializedFieldBloat
+        | K::UnityLifecycleOverload
+        | K::UnityExpensiveFrameCall
+        | K::UnityEditorApiInRuntime => 65.0,
+        K::UnitySceneBuildDrift | K::UnityUnbalancedEventSubscription => 35.0,
         K::ComplexFunction | K::MissingReportSchemaDocs | K::StaleSchemaDocumentation => 90.0,
     }
 }
@@ -647,7 +835,25 @@ pub(crate) fn actionability(kind: FindingKind) -> f64 {
         | K::ManyParameters
         | K::LargeType
         | K::SimilarFunctions
-        | K::DuplicateTypeShape => 85.0,
+        | K::DuplicateTypeShape
+        | K::UnityAssemblyCycle
+        | K::UnityAssemblyHub
+        | K::UnityUnresolvedAssemblyReference
+        | K::UnityRuntimeEditorDependency
+        | K::UnityDuplicateGuid
+        | K::UnityMissingMeta
+        | K::UnityOrphanMeta
+        | K::UnityBrokenAssetReference
+        | K::UnityMissingScript
+        | K::UnityNonTextSerialization
+        | K::UnitySceneBuildDrift
+        | K::UnityLargeScene
+        | K::UnityLargePrefab
+        | K::UnitySerializedFieldBloat
+        | K::UnityLifecycleOverload
+        | K::UnityExpensiveFrameCall
+        | K::UnityEditorApiInRuntime
+        | K::UnityUnbalancedEventSubscription => 85.0,
     }
 }
 

@@ -21,8 +21,10 @@ scores findings, and renders reports.
   implementations.
 - `src/scoring/mod.rs`: metric summaries, priority scoring, severity mapping,
   and hotspot ranking.
-- `src/baseline.rs`: schema 19 baseline loading, finding ID comparison, diff
+- `src/baseline.rs`: schema 20 baseline loading, finding ID comparison, diff
   classification, and `--fail-on` gate selection.
+- `src/unity.rs`: Unity project planning, text asset/GUID indexing, asmdef graph
+  analysis, and Unity-aware C# signals.
 - `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF output entry points.
 
 `src/main.rs` re-exports internal modules under compatibility names such as
@@ -60,7 +62,7 @@ into clearer directories.
 ## Data Flow
 
 `ScanArgs` is the input configuration. `scan_report` produces a `ScanReport`
-with schema version `19`. Detectors emit `Finding` values with metrics and
+with schema version `20`. Detectors emit `Finding` values with metrics and
 related locations. The dependency-graph detector also emits a resolved
 source-file graph snapshot. Scoring later enriches findings with constructs and mechanisms,
 normalized values, percentiles, `priority_factors`, `priority`, `severity`,
@@ -101,7 +103,7 @@ TypeScript report app.
 
 The data and packaging flow is:
 
-1. The Rust scanner builds a schema 19 `ScanReport`.
+1. The Rust scanner builds a schema 20 `ScanReport`, including an independent Unity project graph when applicable.
 2. The HTML output path serializes that report as JSON.
 3. Reforge writes an HTML shell containing the serialized report data.
 4. The shell inlines the compiled React bundle and CSS.

@@ -192,6 +192,78 @@ const KIND_RECOMMENDATIONS: &[(FindingKind, &str)] = &[
         FindingKind::DependencyHub,
         "Review the hub for mixed responsibilities and split fan-in/fan-out behind narrower interfaces.",
     ),
+    (
+        FindingKind::UnityAssemblyCycle,
+        "Break the asmdef cycle by moving shared contracts into a lower-level runtime assembly.",
+    ),
+    (
+        FindingKind::UnityAssemblyHub,
+        "Split the assembly by responsibility or narrow its asmdef references.",
+    ),
+    (
+        FindingKind::UnityUnresolvedAssemblyReference,
+        "Correct the asmdef name or GUID reference and restore the referenced package or local assembly.",
+    ),
+    (
+        FindingKind::UnityRuntimeEditorDependency,
+        "Move Editor-only code behind an Editor asmdef and remove the runtime-to-Editor edge.",
+    ),
+    (
+        FindingKind::UnityDuplicateGuid,
+        "Regenerate one duplicated meta GUID and let Unity rewrite its references.",
+    ),
+    (
+        FindingKind::UnityMissingMeta,
+        "Restore the asset's meta file from version control or let Unity generate it, then commit it.",
+    ),
+    (
+        FindingKind::UnityOrphanMeta,
+        "Restore the matching asset or remove the orphan meta file.",
+    ),
+    (
+        FindingKind::UnityBrokenAssetReference,
+        "Restore or reassign the referenced asset and commit the repaired text serialization.",
+    ),
+    (
+        FindingKind::UnityMissingScript,
+        "Restore the MonoScript or remove and replace the missing component in the scene or prefab.",
+    ),
+    (
+        FindingKind::UnityNonTextSerialization,
+        "Set Asset Serialization Mode to Force Text so references can be reviewed and merged safely.",
+    ),
+    (
+        FindingKind::UnitySceneBuildDrift,
+        "Add the scene to Build Settings if it ships, or move it to a clearly non-shipping location.",
+    ),
+    (
+        FindingKind::UnityLargeScene,
+        "Split the scene into additive scenes or streamed content with explicit ownership.",
+    ),
+    (
+        FindingKind::UnityLargePrefab,
+        "Decompose the prefab into focused nested prefabs.",
+    ),
+    (
+        FindingKind::UnitySerializedFieldBloat,
+        "Group related configuration into serializable value objects or narrower components.",
+    ),
+    (
+        FindingKind::UnityLifecycleOverload,
+        "Move lifecycle responsibilities into collaborators and keep the component as orchestration.",
+    ),
+    (
+        FindingKind::UnityExpensiveFrameCall,
+        "Cache the resolved component, object, or resource outside the frame-loop path.",
+    ),
+    (
+        FindingKind::UnityEditorApiInRuntime,
+        "Move the API use into an Editor assembly or guard it with UNITY_EDITOR.",
+    ),
+    (
+        FindingKind::UnityUnbalancedEventSubscription,
+        "Pair subscriptions with deterministic unsubscription in the matching lifecycle path.",
+    ),
 ];
 
 pub fn stable_finding_id(finding: &Finding) -> EvidenceId {

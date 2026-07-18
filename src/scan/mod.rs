@@ -18,7 +18,7 @@ use crate::model::{
     EvidenceRole, FileRawMetric, Finding, FindingKind, FindingMetric, FunctionRawMetric, MetricId,
     ParseFailure, ParseFailureReason, RawMetricCoverage, RawMetricCoverageStatus, RawMetrics,
     SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary, SuppressionSummary,
-    TypeRawMetric,
+    TypeRawMetric, serialized_finding_kind,
 };
 #[cfg(test)]
 use crate::scoring::finalize_scoring;
@@ -66,6 +66,11 @@ const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     ".nuxt",
     ".svelte-kit",
     ".vite",
+    "Library",
+    "Temp",
+    "Logs",
+    "UserSettings",
+    "obj",
 ];
 #[derive(Debug, Default)]
 struct SourceScan {
@@ -119,6 +124,8 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         &mut scan,
     )?;
     run_scan_signals(&root, &effective_args, progress, &mut scan)?;
+    let unity_scan = crate::unity::scan_unity(&root, &effective_args)?;
+    scan.findings.extend(unity_scan.findings);
     scan.findings.extend(scan_documentation(&root)?);
     merge_structure_raw_metrics(&mut scan.raw_metrics, &scan.parsed_sources);
     let churn_summary = collect_churn_metrics(&root, &effective_args, &mut scan.raw_metrics)?;
@@ -158,6 +165,11 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
             parse_failures: &scan.parse_failures,
             unresolved_dependency_edges: scan.unresolved_dependency_edges,
             churn: &churn_summary,
+            unity_observed: matches!(
+                unity_scan.report.status,
+                crate::model::UnityProjectStatus::Observed
+                    | crate::model::UnityProjectStatus::PartiallyObserved
+            ),
         });
 
     let summary = ScanSummary {
@@ -183,6 +195,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         raw_metrics: scan.raw_metrics,
         raw_metric_manifest: raw_metric_manifest(),
         dependency_graph: scan.dependency_graph,
+        unity_project: unity_scan.report,
         hotspots,
         suppression_summary: post_score_controls.suppression_summary,
         coverage_manifest,
@@ -214,6 +227,7 @@ struct CoverageProjectionInput<'a> {
     parse_failures: &'a [ParseFailure],
     unresolved_dependency_edges: usize,
     churn: &'a crate::model::ChurnSummary,
+    unity_observed: bool,
 }
 
 fn coverage(
@@ -234,11 +248,15 @@ fn coverage(
         parse_failures,
         unresolved_dependency_edges,
         churn,
+        unity_observed,
     } = input;
-    let detected_languages = source_files
+    let mut detected_languages = source_files
         .iter()
         .filter_map(|source| detected_language(&source.path))
         .collect::<BTreeSet<_>>();
+    if unity_observed {
+        detected_languages.insert("unity".to_string());
+    }
     let entity_counts = BTreeMap::from([
         (crate::model::EntityScope::Repository, 1),
         (
@@ -318,9 +336,10 @@ fn coverage(
             let entries = manifest.iter().filter(|entry| entry.mechanism == mechanism && entry.entity_scope == entity_scope).collect::<Vec<_>>();
             let applicable = entries.iter().filter(|entry| detector_is_applicable(entry, &detected_languages)).collect::<Vec<_>>();
             let completed_detectors = applicable.iter().map(|entry| entry.kind).collect::<Vec<_>>();
+            let unsupported_detectors = entries.iter().filter(|entry| !detector_is_applicable(entry, &detected_languages)).map(|entry| entry.kind).collect::<Vec<_>>();
             let entity_count = entity_counts.get(&entity_scope).copied().unwrap_or_else(|| applicable.iter().map(|entry| findings.iter().filter(|finding| finding.kind == entry.kind).count()).sum());
             let graph_cell = applicable.iter().any(|entry| entry.approach == crate::model::DetectionApproach::GraphAnalysis);
-            let partial = (!parse_failures.is_empty() && applicable.iter().any(|entry| detector_requires_parse(entry))) || (graph_cell && unresolved_dependency_edges > 0);
+            let partial = !unsupported_detectors.is_empty() || (!parse_failures.is_empty() && applicable.iter().any(|entry| detector_requires_parse(entry))) || (graph_cell && unresolved_dependency_edges > 0);
             let status = match expectation {
                 CoverageExpectation::Planned => CoverageStatus::Planned,
                 CoverageExpectation::IntentionallyOutOfScope => CoverageStatus::IntentionallyOutOfScope,
@@ -338,7 +357,7 @@ fn coverage(
                 detectors: entries.into_iter().map(|entry| entry.kind).collect(),
                 completed_detectors,
                 entity_count,
-                unobservable_reasons: if partial { [(!parse_failures.is_empty()).then(|| format!("{} source files failed syntax parsing", parse_failures.len())), (graph_cell && unresolved_dependency_edges > 0).then(|| format!("{unresolved_dependency_edges} dependency edges could not be resolved"))].into_iter().flatten().collect() } else { Vec::new() },
+                unobservable_reasons: if partial { [(!unsupported_detectors.is_empty()).then(|| format!("{} detectors do not support the detected languages: {}", unsupported_detectors.len(), unsupported_detectors.iter().map(|kind| serialized_finding_kind(*kind)).collect::<Vec<_>>().join(", "))), (!parse_failures.is_empty()).then(|| format!("{} source files failed syntax parsing", parse_failures.len())), (graph_cell && unresolved_dependency_edges > 0).then(|| format!("{unresolved_dependency_edges} dependency edges could not be resolved"))].into_iter().flatten().collect() } else { Vec::new() },
             }
         }).collect();
     let coverage_summary = CoverageSummary {
@@ -453,7 +472,7 @@ fn coverage_reason(status: CoverageStatus) -> &'static str {
     match status {
         CoverageStatus::Observed => "all applicable detectors completed",
         CoverageStatus::PartiallyObserved => {
-            "applicable detectors completed with unobservable entities"
+            "coverage is incomplete for the detected languages or available entities"
         }
         CoverageStatus::Unsupported => "no detector supports the detected languages",
         CoverageStatus::NoEntities => "no entities were available for analysis",
@@ -954,7 +973,9 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
     let source: Arc<str> = Arc::from(source);
     let line_count = source.lines().count();
     let display_path = display_path(path);
-    let is_test = is_test_source(path);
+    let is_test = is_test_source(path)
+        || (path.extension().and_then(|value| value.to_str()) == Some("cs")
+            && (source.contains("[Test]") || source.contains("[UnityTest]")));
 
     scan.raw_metrics.files.push(FileRawMetric {
         path: display_path.clone(),
@@ -1143,7 +1164,7 @@ fn is_ignored_path(path: &Path, root: &Path, args: &ScanArgs) -> bool {
 }
 
 fn is_excluded_test_path(path: &Path, args: &ScanArgs) -> bool {
-    args.filters.exclude_tests && is_test_source(path)
+    args.filters.exclude_tests && (is_test_source(path) || csharp_source_declares_tests(path))
 }
 
 fn should_scan_source_file(path: &Path, args: &ScanArgs) -> bool {
@@ -1175,11 +1196,45 @@ pub(crate) fn is_test_source(path: &Path) -> bool {
     }
 
     path.components().any(|component| {
-        component
-            .as_os_str()
-            .to_str()
-            .is_some_and(|name| matches!(name, "test" | "tests" | "__tests__" | "spec" | "specs"))
-    })
+        component.as_os_str().to_str().is_some_and(|name| {
+            matches!(
+                name.to_ascii_lowercase().as_str(),
+                "test" | "tests" | "__tests__" | "spec" | "specs" | "editmode" | "playmode"
+            )
+        })
+    }) || nearest_asmdef_is_test_assembly(path)
+}
+
+fn csharp_source_declares_tests(path: &Path) -> bool {
+    path.extension().and_then(|value| value.to_str()) == Some("cs")
+        && fs::read_to_string(path)
+            .is_ok_and(|source| source.contains("[Test]") || source.contains("[UnityTest]"))
+}
+
+fn nearest_asmdef_is_test_assembly(path: &Path) -> bool {
+    if path.extension().and_then(|value| value.to_str()) != Some("cs") {
+        return false;
+    }
+    let mut current = path.parent();
+    for _ in 0..12 {
+        let Some(directory) = current else { break };
+        if let Ok(entries) = fs::read_dir(directory) {
+            for asmdef in entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|candidate| {
+                    candidate.extension().and_then(|value| value.to_str()) == Some("asmdef")
+                })
+            {
+                if fs::read_to_string(asmdef).is_ok_and(|source| source.contains("TestAssemblies"))
+                {
+                    return true;
+                }
+            }
+        }
+        current = directory.parent();
+    }
+    false
 }
 
 fn display_path(path: &Path) -> String {

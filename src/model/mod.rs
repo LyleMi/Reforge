@@ -7,9 +7,11 @@ mod evidence;
 mod ids;
 mod report;
 mod subject;
+mod unity;
 
 pub use coverage::*;
 pub use evidence::*;
 pub use ids::*;
 pub use report::*;
 pub use subject::*;
+pub use unity::*;

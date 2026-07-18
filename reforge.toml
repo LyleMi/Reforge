@@ -50,7 +50,7 @@ reason = "duplicate type-shape grouping keeps scoring and related locations toge
 [[suppressions]]
 kind = "complex_function"
 path = "src/detectors/structure/analysis.rs"
-line = 679
+line = 620
 reason = "test-case heuristic intentionally groups language-specific evidence checks"
 
 [[suppressions]]
@@ -73,8 +73,8 @@ reason = "token normalization intentionally centralizes syntax variants for stab
 
 [[suppressions]]
 kind = "complex_function"
-path = "src/detectors/structure/analysis.rs"
-line = 188
+path = "src/detectors/structure/analysis/public_items.rs"
+line = 10
 reason = "public item counting dispatches across supported Tree-sitter grammars"
 
 [[suppressions]]
@@ -194,20 +194,8 @@ reason = "structure analysis exposes parser helpers used by nested aggregation m
 [[suppressions]]
 kind = "long_function"
 path = "src/scan/mod.rs"
-line = 94
+line = 105
 reason = "scan_report keeps the scan pipeline phases in one ordered orchestration path"
-
-[[suppressions]]
-kind = "complex_function"
-path = "src/detectors/manifest.rs"
-line = 126
-reason = "issue-family classification is intentionally exhaustive so every detector has one stable family"
-
-[[suppressions]]
-kind = "complex_function"
-path = "src/detectors/manifest.rs"
-line = 190
-reason = "typed detector input registry is intentionally exhaustive so metric contracts remain centrally auditable"
 
 [[suppressions]]
 kind = "large_type"
@@ -222,58 +210,10 @@ line = 1
 reason = "scan orchestration keeps source collection, coverage accounting, and pipeline sequencing together"
 
 [[suppressions]]
-kind = "long_function"
-path = "src/scan/mod.rs"
-line = 100
-reason = "scan_report preserves the explicit ordered scan and report-finalization pipeline"
-
-[[suppressions]]
-kind = "complex_function"
-path = "src/scan/mod.rs"
-line = 219
-reason = "coverage projection audits all status transitions for the fixed ontology in one deterministic pass"
-
-[[suppressions]]
-kind = "long_function"
-path = "src/scan/mod.rs"
-line = 219
-reason = "coverage projection keeps the fixed target, receipts, and metric observations visibly coordinated"
-
-[[suppressions]]
-kind = "complex_function"
-path = "src/scan/mod.rs"
-line = 491
-reason = "raw metric availability exhaustively maps the canonical metric ontology"
-
-[[suppressions]]
-kind = "many_parameters"
-path = "src/scan/mod.rs"
-line = 491
-reason = "raw metric observation receives the complete immutable scan observation context"
-
-[[suppressions]]
 kind = "deep_nesting"
 path = "src/detectors/dependency_graph/resolution.rs"
 line = 8
 reason = "dependency construction keeps local resolution and unresolved-edge accounting adjacent"
-
-[[suppressions]]
-kind = "complex_function"
-path = "src/detectors/manifest.rs"
-line = 174
-reason = "issue family mapping is an exhaustive schema registry"
-
-[[suppressions]]
-kind = "complex_function"
-path = "src/detectors/manifest.rs"
-line = 238
-reason = "detector input mapping is an exhaustive typed metric registry"
-
-[[suppressions]]
-kind = "large_type"
-path = "src/scan/config.rs"
-line = 68
-reason = "effective config output intentionally mirrors the complete public scan configuration"
 
 [[suppressions]]
 kind = "large_file"
@@ -298,3 +238,243 @@ kind = "complex_function"
 path = "src/scoring/policy.rs"
 line = 30
 reason = "policy validation centralizes all accepted-only runtime contract checks"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/detectors/manifest.rs"
+line = 1
+reason = "detector manifest keeps the exhaustive schema registry in one auditable module"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/dependency_graph/resolution.rs"
+line = 264
+reason = "C# resolution keeps aliases, qualified names, imports, and same-namespace type evidence together"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/detectors/dependency_graph/resolution.rs"
+line = 264
+reason = "C# type-aware resolution nests only bounded index and identifier checks"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/dependency_graph/resolution.rs"
+line = 311
+reason = "the C# lexical masker keeps its finite-state transitions explicit and locally auditable"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/detectors/dependency_graph/resolution.rs"
+line = 311
+reason = "the C# lexical masker uses one bounded state-machine match inside its character loop"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/manifest.rs"
+line = 211
+reason = "issue-family mapping is an exhaustive schema registry"
+
+[[suppressions]]
+kind = "long_function"
+path = "src/detectors/manifest.rs"
+line = 275
+reason = "typed detector input mapping remains exhaustive and centrally auditable"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/manifest.rs"
+line = 275
+reason = "typed detector input mapping remains exhaustive and centrally auditable"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/manifest.rs"
+line = 360
+reason = "detector actions are exhaustively mapped in one schema registry"
+
+[[suppressions]]
+kind = "similar_functions"
+path = "src/detectors/manifest.rs"
+line = 360
+reason = "exhaustive action, scope, and approach registries deliberately share enum grouping structure"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/detectors/manifest.rs"
+line = 750
+reason = "detector impact policy is exhaustively mapped in one registry"
+
+[[suppressions]]
+kind = "large_type"
+path = "src/scan/config.rs"
+line = 80
+reason = "effective config output mirrors the complete public CLI and Unity configuration contract"
+
+[[suppressions]]
+kind = "long_function"
+path = "src/scan/mod.rs"
+line = 233
+reason = "coverage projection keeps the fixed ontology and receipts in one deterministic pass"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/scan/mod.rs"
+line = 233
+reason = "coverage projection keeps the fixed ontology and receipts in one deterministic pass"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/scan/mod.rs"
+line = 510
+reason = "raw metric availability exhaustively maps the canonical metric ontology"
+
+[[suppressions]]
+kind = "many_parameters"
+path = "src/scan/mod.rs"
+line = 510
+reason = "raw metric observation receives the complete immutable scan observation context"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/scan/mod.rs"
+line = 964
+reason = "source scanning coordinates metrics, findings, parsing, and Unity-aware test classification"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/scan/mod.rs"
+line = 1214
+reason = "nearest asmdef test classification performs a bounded twelve-directory search"
+
+[[suppressions]]
+kind = "long_function"
+path = "src/scan/thresholds.rs"
+line = 289
+reason = "threshold config mapping is exhaustive so CLI, config, and preset precedence stays explicit"
+
+[[suppressions]]
+kind = "large_file"
+path = "src/unity.rs"
+line = 1
+reason = "Unity v1 keeps its static project model, identity index, and conservative detectors in one private feature boundary"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/unity.rs"
+line = 193
+reason = "Unity analysis-root discovery keeps local, embedded-package, and file-package resolution together"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/unity.rs"
+line = 193
+reason = "Unity package manifest traversal is bounded to dependency entries and local file targets"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/unity.rs"
+line = 250
+reason = "meta integrity auditing coordinates duplicate, orphan, and missing identity checks in one pass"
+
+[[suppressions]]
+kind = "long_function"
+path = "src/unity.rs"
+line = 322
+reason = "Unity YAML asset scanning keeps object counts and GUID evidence in one streaming pass"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/unity.rs"
+line = 322
+reason = "Unity YAML asset scanning explicitly separates text, scene, prefab, and reference cases"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/unity.rs"
+line = 322
+reason = "Unity YAML reference traversal is bounded to files, lines, and GUID tokens"
+
+[[suppressions]]
+kind = "long_function"
+path = "src/unity.rs"
+line = 426
+reason = "asmdef scanning keeps node indexing, edge resolution, and local findings coordinated"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/unity.rs"
+line = 426
+reason = "asmdef graph construction explicitly handles names, GUIDs, predefined assemblies, and package context"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/unity.rs"
+line = 594
+reason = "assembly cycle reporting traverses bounded strongly connected components and their related edges"
+
+[[suppressions]]
+kind = "long_function"
+path = "src/unity.rs"
+line = 659
+reason = "Unity C# scanning keeps per-file metrics and semantic checks in one non-duplicating pass"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/unity.rs"
+line = 659
+reason = "Unity C# scanning coordinates inheritance, file-level checks, metrics, and thresholds"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/unity.rs"
+line = 751
+reason = "Build Settings parsing uses a bounded line pass before comparing project scenes"
+
+[[suppressions]]
+kind = "many_parameters"
+path = "src/unity.rs"
+line = 826
+reason = "the private finding helper mirrors the typed finding evidence inputs"
+
+[[suppressions]]
+kind = "many_parameters"
+path = "src/unity.rs"
+line = 858
+reason = "the private Unity finding input constructor initializes one complete evidence record"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/unity.rs"
+line = 1055
+reason = "serialized field counting keeps C# attribute and declaration exclusions explicit"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/unity.rs"
+line = 1094
+reason = "frame-call analysis computes a bounded local call closure before inspecting reachable bodies"
+
+[[suppressions]]
+kind = "deep_nesting"
+path = "src/unity.rs"
+line = 1094
+reason = "frame-call traversal is bounded to local methods and their reachable bodies"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/unity.rs"
+line = 1143
+reason = "the lightweight C# method extractor keeps brace tracking and declaration filtering local"
+
+[[suppressions]]
+kind = "complex_function"
+path = "src/unity.rs"
+line = 1195
+reason = "Editor API scanning keeps nested preprocessor branch state explicit"
+
+[[suppressions]]
+kind = "dependency_hub"
+path = "src/model/mod.rs"
+line = 1
+reason = "the report model root intentionally re-exports independent schema-owned model modules"

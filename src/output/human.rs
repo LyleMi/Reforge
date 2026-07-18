@@ -102,6 +102,7 @@ fn render_human_report_view<'report>(
     context.render_result(&breakdown);
     context.render_baseline_diff();
     context.render_scan_details();
+    context.render_unity();
     context.render_coverage();
 
     if report.findings.is_empty() {
@@ -127,6 +128,35 @@ struct ReportRenderContext<'output, 'report, 'diff> {
 }
 
 impl ReportRenderContext<'_, '_, '_> {
+    fn render_unity(&mut self) {
+        use crate::model::UnityProjectStatus;
+        let unity = &self.report.unity_project;
+        if matches!(
+            unity.status,
+            UnityProjectStatus::NotDetected | UnityProjectStatus::Disabled
+        ) {
+            return;
+        }
+        self.output.push_str(&format!(
+            "\nUnity  {:?}  Editor {}  serialization {}\n",
+            unity.status,
+            unity.editor_version.as_deref().unwrap_or("unknown"),
+            unity.serialization_mode.as_deref().unwrap_or("unknown")
+        ));
+        self.output.push_str(&format!(
+            "  {} assemblies, {} scenes, {} prefabs, {} assets, {} GUIDs, {} tests\n",
+            unity.stats.assemblies,
+            unity.stats.scenes,
+            unity.stats.prefabs,
+            unity.stats.assets,
+            unity.stats.guids,
+            unity.stats.tests
+        ));
+        for reason in &unity.degraded_reasons {
+            self.output.push_str(&format!("  coverage: {reason}\n"));
+        }
+    }
+
     fn render_coverage(&mut self) {
         use crate::model::CoverageStatus;
         let required = self

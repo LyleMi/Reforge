@@ -928,3 +928,8 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible { outline: 
   .percentile-table { overflow-x: auto; }
   .percentile-row { min-width: 620px; }
 }
+.unity-overview { display: grid; gap: 1rem; }
+.unity-degraded { border-left: 3px solid var(--warning, #d69e2e); padding-left: 1rem; }
+.unity-degraded p { margin: .35rem 0 0; }
+.unity-assemblies { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .55rem; }
+.unity-assemblies span { border: 1px solid var(--line, #d8d8d8); border-radius: .5rem; padding: .65rem .75rem; }

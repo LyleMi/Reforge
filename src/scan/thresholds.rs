@@ -7,6 +7,16 @@ pub(super) struct ConfigThresholdDefaults {
     pub similarity: ConfigSimilarityThresholdDefaults,
     pub structure: ConfigStructureThresholdDefaults,
     pub repetition: ConfigRepetitionThresholdDefaults,
+    pub unity: ConfigUnityThresholdDefaults,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct ConfigUnityThresholdDefaults {
+    pub max_assembly_dependencies: Option<usize>,
+    pub max_scene_objects: Option<usize>,
+    pub max_prefab_objects: Option<usize>,
+    pub max_serialized_fields: Option<usize>,
+    pub max_lifecycle_methods: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -86,6 +96,11 @@ fn apply_threshold_settings(args: &mut ScanArgs, settings: ThresholdSettings) {
         settings.structure.max_small_function_ratio;
     args.min_repeated_literal_occurrences = settings.repetition.min_repeated_literal_occurrences;
     args.min_data_clump_occurrences = settings.repetition.min_data_clump_occurrences;
+    args.max_unity_assembly_dependencies = settings.unity.max_assembly_dependencies;
+    args.max_unity_scene_objects = settings.unity.max_scene_objects;
+    args.max_unity_prefab_objects = settings.unity.max_prefab_objects;
+    args.max_unity_serialized_fields = settings.unity.max_serialized_fields;
+    args.max_unity_lifecycle_methods = settings.unity.max_lifecycle_methods;
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -108,6 +123,11 @@ struct ThresholdOverrides {
     max_small_function_ratio: Option<usize>,
     min_repeated_literal_occurrences: Option<usize>,
     min_data_clump_occurrences: Option<usize>,
+    max_unity_assembly_dependencies: Option<usize>,
+    max_unity_scene_objects: Option<usize>,
+    max_unity_prefab_objects: Option<usize>,
+    max_unity_serialized_fields: Option<usize>,
+    max_unity_lifecycle_methods: Option<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -129,7 +149,36 @@ impl ThresholdOverrides {
         overrides.set_cli_similarity_thresholds(context);
         overrides.set_cli_structure_thresholds(context);
         overrides.set_cli_repetition_thresholds(context);
+        overrides.set_cli_unity_thresholds(context);
         overrides
+    }
+
+    fn set_cli_unity_thresholds(&mut self, context: CliThresholdContext<'_>) {
+        self.max_unity_assembly_dependencies = cli_usize(
+            context.args.max_unity_assembly_dependencies,
+            context.defaults.unity.max_assembly_dependencies,
+            context.explicit.max_unity_assembly_dependencies,
+        );
+        self.max_unity_scene_objects = cli_usize(
+            context.args.max_unity_scene_objects,
+            context.defaults.unity.max_scene_objects,
+            context.explicit.max_unity_scene_objects,
+        );
+        self.max_unity_prefab_objects = cli_usize(
+            context.args.max_unity_prefab_objects,
+            context.defaults.unity.max_prefab_objects,
+            context.explicit.max_unity_prefab_objects,
+        );
+        self.max_unity_serialized_fields = cli_usize(
+            context.args.max_unity_serialized_fields,
+            context.defaults.unity.max_serialized_fields,
+            context.explicit.max_unity_serialized_fields,
+        );
+        self.max_unity_lifecycle_methods = cli_usize(
+            context.args.max_unity_lifecycle_methods,
+            context.defaults.unity.max_lifecycle_methods,
+            context.explicit.max_unity_lifecycle_methods,
+        );
     }
 
     fn set_cli_file_thresholds(&mut self, context: CliThresholdContext<'_>) {
@@ -309,6 +358,26 @@ impl ThresholdOverrides {
                 config.repetition.min_data_clump_occurrences,
                 defaults.repetition.min_data_clump_occurrences,
             ),
+            max_unity_assembly_dependencies: configured_usize(
+                config.unity.max_assembly_dependencies,
+                defaults.unity.max_assembly_dependencies,
+            ),
+            max_unity_scene_objects: configured_usize(
+                config.unity.max_scene_objects,
+                defaults.unity.max_scene_objects,
+            ),
+            max_unity_prefab_objects: configured_usize(
+                config.unity.max_prefab_objects,
+                defaults.unity.max_prefab_objects,
+            ),
+            max_unity_serialized_fields: configured_usize(
+                config.unity.max_serialized_fields,
+                defaults.unity.max_serialized_fields,
+            ),
+            max_unity_lifecycle_methods: configured_usize(
+                config.unity.max_lifecycle_methods,
+                defaults.unity.max_lifecycle_methods,
+            ),
         }
     }
 
@@ -351,6 +420,26 @@ impl ThresholdOverrides {
         apply_optional(
             &mut args.min_data_clump_occurrences,
             self.min_data_clump_occurrences,
+        );
+        apply_optional(
+            &mut args.max_unity_assembly_dependencies,
+            self.max_unity_assembly_dependencies,
+        );
+        apply_optional(
+            &mut args.max_unity_scene_objects,
+            self.max_unity_scene_objects,
+        );
+        apply_optional(
+            &mut args.max_unity_prefab_objects,
+            self.max_unity_prefab_objects,
+        );
+        apply_optional(
+            &mut args.max_unity_serialized_fields,
+            self.max_unity_serialized_fields,
+        );
+        apply_optional(
+            &mut args.max_unity_lifecycle_methods,
+            self.max_unity_lifecycle_methods,
         );
     }
 
@@ -408,6 +497,21 @@ impl ThresholdOverrides {
             min_data_clump_occurrences: self
                 .min_data_clump_occurrences
                 .filter(|_| blocked.min_data_clump_occurrences.is_none()),
+            max_unity_assembly_dependencies: self
+                .max_unity_assembly_dependencies
+                .filter(|_| blocked.max_unity_assembly_dependencies.is_none()),
+            max_unity_scene_objects: self
+                .max_unity_scene_objects
+                .filter(|_| blocked.max_unity_scene_objects.is_none()),
+            max_unity_prefab_objects: self
+                .max_unity_prefab_objects
+                .filter(|_| blocked.max_unity_prefab_objects.is_none()),
+            max_unity_serialized_fields: self
+                .max_unity_serialized_fields
+                .filter(|_| blocked.max_unity_serialized_fields.is_none()),
+            max_unity_lifecycle_methods: self
+                .max_unity_lifecycle_methods
+                .filter(|_| blocked.max_unity_lifecycle_methods.is_none()),
         }
         .apply(args);
     }
