@@ -23,7 +23,7 @@ cargo run --manifest-path <reforge-repo>/Cargo.toml -- scan <target-repo> --outp
 ```
 
 4. If no installed binary or source checkout is available, ask the user to install the CLI or provide a Reforge checkout path before scanning.
-5. Read the report and group findings by user impact, blast radius, and confidence. Treat high-severity threshold findings and large repeated groups as stronger signals than one-off info findings.
+5. Read the report and group issues and findings by user impact, blast radius, detection reliability, and interpretation reliability. Treat high-severity threshold findings and large repeated groups as stronger signals than one-off info findings.
 6. Recommend scoped refactors. Prefer local, behavior-preserving cleanup unless the report shows cross-module duplication or drift.
 7. If making code changes, run the relevant project tests after edits. Reforge findings are maintainability and refactoring signals, not proof that a refactor is safe, that code is low quality, or that a bug exists.
 
@@ -89,6 +89,16 @@ For deterministic static-only output, disable git churn and use the static hotsp
 reforge scan . --churn off --hotspot-model static --output json --progress never
 ```
 
+For a Unity project, keep automatic root detection for normal audits:
+
+```bash
+reforge scan <unity-project-root> --unity auto --output json --progress never
+```
+
+Use `--unity on` when the supplied path must be a Unity project and failure to
+recognize it should stop the scan. Use `--unity off` when Unity assets are
+intentionally outside the audit.
+
 To fail CI on current warning or critical findings:
 
 ```bash
@@ -105,6 +115,8 @@ reforge scan . --baseline baseline.json --baseline-mode new-or-worse --fail-on w
 
 - Keep `--churn auto` and `--hotspot-model hybrid` for normal repository audits; use `--churn on` only when missing git history should fail the scan.
 - Use `--churn off --hotspot-model static` for reproducible CI snapshots or when comparing output across machines.
+- Keep `--unity auto` for normal scans. Use `--unity on` to require a recognizable Unity root and `--unity off` to exclude Unity project analysis deliberately.
+- Treat `--max-unity-assembly-dependencies`, `--max-unity-scene-objects`, `--max-unity-prefab-objects`, `--max-unity-serialized-fields`, and `--max-unity-lifecycle-methods` as project-calibrated review budgets. The built-in values are operational heuristics, not public Unity benchmark limits.
 - Use `--config <path>` when the repository has a `reforge.toml`, or rely on default discovery from the scan root upward.
 - Use `reforge init`, `reforge config validate`, and `reforge config show` when the task is to create, check, or inspect configuration without scanning source files.
 - Use `--preset strict`, `--preset balanced`, or `--preset relaxed` to start from built-in threshold sets. Threshold precedence is CLI per-threshold flags, CLI `--preset`, `reforge.toml` per-threshold values, `reforge.toml` `preset`, then built-in `balanced`.
@@ -118,6 +130,31 @@ reforge scan . --baseline baseline.json --baseline-mode new-or-worse --fail-on w
 - Lower `--max-file-lines`, `--max-function-lines`, or `--max-function-complexity` for mature codebases with strict maintainability budgets.
 - Raise similarity strictness with `--function-similarity 0.9` when noisy duplication reports would slow the user down.
 - Tune `--min-repeated-literal-occurrences` and `--min-data-clump-occurrences` when repeated literals, repeated error handling, data clumps, or test setup duplication are too noisy or too sparse.
+
+## Choosing Parameters
+
+Start with `balanced` unless the repository already has an agreed maintenance
+budget. Use `strict` when maintainers accept more review prompts to surface
+smaller or earlier signals. Use `relaxed` for an initial rollout or when
+framework-heavy and orchestration code creates known benign outliers.
+
+Do not tune a threshold merely to make a report reach zero findings. Review a
+sample of the affected findings, record whether the evidence is correct and
+the recommendation is useful, change parameters only for a repeated pattern,
+and validate the change on another representative repository.
+
+Interpret parameter families by the tradeoff they control:
+
+- File, directory, function, type, complexity, nesting, import, and public-item limits are absolute review budgets. Lower values increase recall and review volume; higher values reserve findings for stronger outliers.
+- Similarity depends jointly on minimum body tokens, minimum group size, and similarity percentage. Lower token or group minima increase sensitivity; a higher similarity percentage requires closer matches and reduces noise. Evaluate the three together.
+- Repetition minima control evidence strength. Lower occurrence counts find local repetition but are more vulnerable to fixtures, protocol constants, and framework conventions.
+- Churn window and maximum commit size are operational filters. Short windows emphasize current activity; long windows help low-activity repositories. The commit limit filters bulk mechanical changes that could dominate percentiles.
+- Unity thresholds represent assembly fan-out, serialized asset size, component state breadth, and lifecycle responsibility. Calibrate them on representative project assets before making them CI-blocking.
+
+ISO/IEC 25010 informs Reforge's maintainability classification, not its numeric
+thresholds. Treat built-in thresholds and ranking weights as documented policy
+priors unless an accepted scoring policy and representative calibration data
+show otherwise.
 
 ## Self-Debugging Reforge
 
@@ -138,9 +175,30 @@ cargo run -- scan . --output json --output-file reforge-self-report.json --progr
 
 ## Interpreting Findings
 
-Reports contain `raw_metrics`, `metrics_summary`, `hotspots`, `suppression_summary`, and `findings`. Human output sorts findings by descending `priority`; JSON and YAML expose `priority`, `confidence`, `priority_factors`, and `rank_explanation` for downstream ranking. `priority` is refactoring priority, not defect probability, a quality grade, or a health score.
+Current schema 20 reports separate measurement, coverage, atomic evidence, and
+decision units. Read them in this order:
 
-Prioritize findings in this order:
+1. Check `summary`, `coverage_summary`, `detector_execution`, and
+   `suppression_summary` so missing observation or suppressed evidence is not
+   mistaken for a clean scan.
+2. Use `issues` as the primary decision list. Each issue selects a primary
+   finding and retains related evidence without adding correlated signals more
+   than once.
+3. Inspect `findings` for atomic evidence, metrics, related locations, stable
+   IDs, reliability, and recommendations.
+4. Use `hotspots` as a separate watchlist and `raw_metrics` plus
+   `metrics_summary` for measurement context.
+5. For Unity scans, inspect `unity_project.coverage` and `degraded_reasons`
+   before interpreting absent asset or reference findings. A
+   `partially_observed` project is incomplete evidence, not evidence of absence.
+
+JSON and YAML also expose `coverage_manifest`, `raw_metric_coverage`,
+`scoring_policy`, and `detector_manifest` for auditing what could be observed
+and how ranking was produced. Human output sorts issues and findings by
+descending `priority`. `priority` is refactoring priority, not defect
+probability, a quality grade, or a health score.
+
+Within the issue and finding lists, prioritize evidence in this order:
 
 1. Critical findings that exceed thresholds by a wide margin.
 2. Repeated drift patterns that cross files or modules, especially shadowed abstractions, duplicate data shapes, adapter boundary bypasses, and parallel implementations.
@@ -151,8 +209,17 @@ Prioritize findings in this order:
 
 Use hotspots after findings as watchlist context, especially when static risk and churn risk point to the same file, function, or type. Do not report hotspots as CI failures unless a separate project policy explicitly says so.
 
-`findings=0` means no unsuppressed findings remain after scoring, filtering, and suppressions. It does not prove code quality or rule out bugs. If suppressions are used, include suppression summary context so reviewers can see that the result means zero unsuppressed findings.
+`findings=0` means no unsuppressed atomic findings remain after scoring,
+filtering, and suppressions. It does not prove code quality, complete coverage,
+or absence of bugs. If suppressions are used, include suppression summary
+context so reviewers can see that the result means zero unsuppressed findings.
 
-Use `priority`, `confidence`, `priority_factors`, `rank_explanation`, and related locations when explaining why a finding matters. Avoid claiming Reforge found bugs; describe findings as maintainability or refactoring signals.
+Use `priority`, `detection_reliability`, `interpretation_reliability`,
+`priority_factors`, `rank_explanation`, and related locations when explaining
+why a finding matters. Avoid claiming Reforge found bugs; describe findings as
+maintainability or refactoring signals.
 
-When reporting results, include the command used, output file path if any, churn status, hotspot model, suppression summary when nonzero, top findings, and suggested next actions.
+When reporting results, include the command used, output file path if any,
+churn status, hotspot model, coverage or degraded-reason context, suppression
+summary when nonzero, top issues and supporting findings, and suggested next
+actions.

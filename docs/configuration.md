@@ -161,6 +161,98 @@ reason = "legacy migration tracked separately"
 `preset` accepts `strict`, `balanced`, or `relaxed`. `churn` accepts `auto`,
 `on`, or `off`. `hotspot-model` accepts `static`, `churn`, or `hybrid`.
 
+## Choosing Parameters
+
+Reforge thresholds are review-policy defaults, not universal definitions of
+maintainable code. ISO/IEC 25010 informs the maintainability constructs used to
+classify findings, but it does not prescribe limits such as 800 lines per file
+or complexity 15. The defaults combine conservative engineering heuristics
+with cross-project calibration samples. Treat them as a starting point and
+validate them against the kinds of repositories your team actually maintains.
+
+The presets change detector sensitivity as a group:
+
+| Parameter | Strict | Balanced | Relaxed |
+| --- | ---: | ---: | ---: |
+| Maximum file lines | 600 | 800 | 1200 |
+| Maximum direct files per directory | 30 | 40 | 60 |
+| Minimum similar functions per group | 2 | 3 | 4 |
+| Minimum function tokens for similarity | 60 | 80 | 120 |
+| Function similarity | 0.88 | 0.85 | 0.90 |
+| Maximum function lines | 60 | 80 | 120 |
+| Maximum function complexity | 12 | 15 | 20 |
+| Maximum nesting depth | 3 | 4 | 5 |
+| Maximum function parameters | 4 | 5 | 6 |
+| Maximum type lines | 200 | 250 | 400 |
+| Maximum type members | 25 | 30 | 45 |
+| Maximum imports | 25 | 35 | 50 |
+| Maximum public items | 20 | 30 | 45 |
+| Maximum functions per file | 35 | 40 | 60 |
+| Maximum functions per 100 lines | 10 | 12 | 18 |
+| Maximum small-function ratio | 65 | 70 | 80 |
+| Minimum repeated-literal occurrences | 8 | 12 | 20 |
+| Minimum data-clump occurrences | 3 | 4 | 6 |
+| Maximum Unity assembly dependencies | 5 | 8 | 12 |
+| Maximum Unity scene objects | 500 | 1000 | 2000 |
+| Maximum Unity prefab objects | 100 | 250 | 500 |
+| Maximum Unity serialized fields | 10 | 16 | 24 |
+| Maximum Unity lifecycle methods | 5 | 7 | 10 |
+
+`strict` is intended for mature codebases that accept more review prompts in
+exchange for earlier signals. `balanced` favors useful coverage without making
+ordinary variation immediately actionable. `relaxed` is appropriate for an
+initial rollout, framework-heavy code, or repositories where generated-style
+or orchestration code is common. Presets do not change finding semantics or
+prove that a repository meets a quality standard.
+
+Similarity sensitivity is determined by three parameters together. A lower
+token minimum admits shorter functions, a lower group minimum admits smaller
+duplication clusters, and a lower similarity value admits more structural
+variation. The strict preset uses a slightly higher similarity value than the
+balanced preset to offset the extra noise introduced by admitting shorter
+functions and two-member groups. The relaxed preset raises all three admission
+requirements. Tune the three controls together rather than interpreting the
+similarity percentage in isolation.
+
+Structural limits such as file size, function size, complexity, nesting, and
+type size are absolute review budgets. The balanced file and function limits
+are broadly consistent with upper-decile or upper-tail observations in the
+maintainer samples, but other limits have less direct empirical support. See
+[Calibration Samples](calibration-samples.md) for the available evidence and
+its limitations. Lower a limit when maintainers repeatedly agree that findings
+below the current boundary are actionable; raise it when the same project
+pattern is repeatedly reviewed and rejected.
+
+Repetition thresholds trade recall for evidence strength. Low values find
+smaller repeated-literal and data-clump patterns but are more sensitive to
+fixtures, protocol constants, and framework conventions. High values require a
+broader repeated pattern before recommending consolidation. Review occurrences
+and related locations before changing these thresholds globally.
+
+Unity thresholds are initial operational heuristics, not values derived from a
+public Unity benchmark. They represent review points for assembly fan-out,
+serialized asset size, component state breadth, and lifecycle responsibility.
+Start with `--unity auto`; use `on` when CI must reject a path that is not a
+recognizable Unity root, and `off` when Unity assets are intentionally outside
+the audit. Calibrate the five Unity thresholds against representative scenes,
+prefabs, assemblies, and behaviours before using them as blocking policy.
+
+The churn defaults use a 180-day window to emphasize recent maintenance
+pressure while retaining enough history for lower-activity repositories.
+Commits above 2000 added-plus-deleted lines are skipped to reduce domination by
+bulk formatting, vendoring, or generated updates. These are operational
+defaults rather than statistically universal cutoffs. Shorten the window for
+fast-moving products, lengthen it for stable libraries, and adjust the commit
+limit when legitimate repository changes are routinely larger or smaller.
+
+For a new policy, begin with `balanced`, keep `--churn auto` and
+`--hotspot-model hybrid` for exploratory audits, and use
+`--churn off --hotspot-model static` when comparing deterministic reports.
+Review findings with maintainers across several representative repositories,
+then validate proposed changes on a holdout repository. Prefer a baseline with
+`new-or-worse` for CI so adopting a policy does not turn unchanged legacy
+signals into an immediate blocking backlog.
+
 Only accepted policy v1 files can be loaded. A CLI path resolves from the
 current working directory and takes precedence over configuration. A relative
 `reforge.toml` path resolves from the configuration file directory. Unknown

@@ -113,6 +113,29 @@ Severity bands:
 The bands are workflow labels for triage and CI policy. They do not claim that
 a file is defective or that a change is safe.
 
+### Why these weights
+
+The default coefficients are an explicit triage policy, not coefficients
+derived from ISO/IEC 25010 or a claim of defect probability. Impact and
+intensity receive 60% of utility so a broadly important signal that clearly
+exceeds its boundary dominates ranking. Spread and change pressure receive 30%
+so cross-file reach and recent maintenance activity can move a finding upward
+without creating a finding by themselves. Actionability receives the remaining
+10% as a tie-breaking preference for evidence with a clearer next step.
+
+Detection and interpretation reliability are multiplied after utility because
+uncertain evidence or uncertain advice should reduce the entire ranking, not
+merely one additive factor. This also prevents a high-impact but speculative
+heuristic from outranking well-observed evidence solely because of its nominal
+impact.
+
+The default weights, the `35` and `70` severity boundaries, and uncalibrated
+detector reliability values are theory-backed policy priors. They have not been
+established as universal empirical constants. Calibration can replace global
+weights and detector reliabilities only after the documented labeling and
+holdout checks succeed; every report records the effective policy so consumers
+can distinguish defaults from an accepted calibrated policy.
+
 ## Constructs, Mechanisms, and Issue Clusters
 
 Each finding declares one ISO/IEC 25010-aligned maintainability `construct`
@@ -174,6 +197,15 @@ Hotspot models:
 - `static`: `priority = static_risk`
 - `churn`: `priority = churn_risk`
 - `hybrid`: `priority = static_risk * 0.65 + churn_risk * 0.35`
+
+The hybrid model gives structural risk the majority weight because source
+structure remains observable when git history is sparse, shallow, or shaped by
+repository migration. Churn contributes enough weight to distinguish equally
+strong structural candidates that differ in current change pressure. The
+65/35 split is an operational prior rather than a universal empirical optimum;
+teams that need different ranking behavior should validate it through an
+accepted scoring policy rather than treating hotspot priority as a defect
+probability.
 
 Hotspots are a review watchlist. They help identify places where static
 maintenance pressure and churn overlap, but they are not findings and should

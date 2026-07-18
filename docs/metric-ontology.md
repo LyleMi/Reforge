@@ -12,7 +12,7 @@ maintainability.
 
 ## Normative coverage matrix
 
-Schema 19 declares coverage independently of detector registration. Its stable
+Schema 20 declares coverage independently of detector registration. Its stable
 42 cells comprise 12 required and 30 intentionally out-of-scope combinations.
 Runtime status is `observed`, `partially_observed`, `unsupported`, `no_entities`,
 `planned`, or `intentionally_out_of_scope`. Finding-group populations come from

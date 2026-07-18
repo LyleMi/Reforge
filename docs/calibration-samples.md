@@ -131,6 +131,10 @@ watchlist behavior without exposing sample-specific paths.
   estimate false-positive rates by detector kind.
 - Calibrate the documented `strict`, `balanced`, and `relaxed` presets against
   smaller libraries and service applications before changing their thresholds.
+- Add representative Unity repositories before treating assembly, scene,
+  prefab, serialized-field, or lifecycle thresholds as calibrated defaults.
+  The current Unity limits are operational heuristics and were not selected
+  from the samples in this document.
 - For large repositories, consider a calibration mode or docs recipe that uses
   `--exclude-tests` and higher `--min-function-tokens` when the goal is
   structural threshold calibration rather than duplication analysis.
