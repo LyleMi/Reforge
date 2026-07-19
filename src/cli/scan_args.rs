@@ -51,6 +51,55 @@ pub struct ScanArgs {
     #[command(flatten)]
     pub finding_controls: FindingControlArgs,
 
+    #[command(flatten)]
+    pub analysis_thresholds: AnalysisThresholdArgs,
+
+    /// Optional configuration file. When omitted, reforge.toml is discovered from the scan root.
+    #[arg(long)]
+    pub config: Option<PathBuf>,
+
+    /// Accepted scoring policy v1 to apply. CLI paths are resolved from the current directory.
+    #[arg(long, value_name = "PATH")]
+    pub scoring_policy: Option<PathBuf>,
+
+    #[command(flatten)]
+    pub ci: CiArgs,
+
+    /// Git churn collection mode.
+    #[arg(long, value_enum)]
+    pub churn: Option<ChurnMode>,
+
+    /// Hotspot ranking model.
+    #[arg(long, value_enum)]
+    pub hotspot_model: Option<HotspotModel>,
+
+    /// Number of days of git history to include in churn metrics.
+    #[arg(long)]
+    pub churn_window_days: Option<usize>,
+
+    /// Skip commits whose numstat added+deleted line count exceeds this value.
+    #[arg(long)]
+    pub churn_max_commit_lines: Option<usize>,
+
+    /// Output format.
+    #[arg(long, value_enum)]
+    pub output: Option<OutputFormat>,
+
+    /// Write the report to this file instead of stdout.
+    #[arg(long)]
+    pub output_file: Option<PathBuf>,
+
+    /// Progress reporting mode. Auto writes to stderr only when stderr is a TTY.
+    #[arg(long, value_enum, default_value_t = ProgressMode::Auto)]
+    pub progress: ProgressMode,
+
+    /// Colorize human output. Auto writes colors only when stdout is a TTY.
+    #[arg(long, value_enum, default_value_t = ColorMode::Auto)]
+    pub color: ColorMode,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct AnalysisThresholdArgs {
     /// Report groups with at least this many structurally similar functions.
     #[arg(long, default_value_t = DEFAULT_MIN_SIMILAR_FUNCTIONS)]
     pub min_similar_functions: usize,
@@ -113,49 +162,20 @@ pub struct ScanArgs {
     /// Include test files in general structural analysis.
     #[arg(long)]
     pub include_test_structure: bool,
+}
 
-    /// Optional configuration file. When omitted, reforge.toml is discovered from the scan root.
-    #[arg(long)]
-    pub config: Option<PathBuf>,
+impl std::ops::Deref for ScanArgs {
+    type Target = AnalysisThresholdArgs;
 
-    /// Accepted scoring policy v1 to apply. CLI paths are resolved from the current directory.
-    #[arg(long, value_name = "PATH")]
-    pub scoring_policy: Option<PathBuf>,
+    fn deref(&self) -> &Self::Target {
+        &self.analysis_thresholds
+    }
+}
 
-    #[command(flatten)]
-    pub ci: CiArgs,
-
-    /// Git churn collection mode.
-    #[arg(long, value_enum)]
-    pub churn: Option<ChurnMode>,
-
-    /// Hotspot ranking model.
-    #[arg(long, value_enum)]
-    pub hotspot_model: Option<HotspotModel>,
-
-    /// Number of days of git history to include in churn metrics.
-    #[arg(long)]
-    pub churn_window_days: Option<usize>,
-
-    /// Skip commits whose numstat added+deleted line count exceeds this value.
-    #[arg(long)]
-    pub churn_max_commit_lines: Option<usize>,
-
-    /// Output format.
-    #[arg(long, value_enum)]
-    pub output: Option<OutputFormat>,
-
-    /// Write the report to this file instead of stdout.
-    #[arg(long)]
-    pub output_file: Option<PathBuf>,
-
-    /// Progress reporting mode. Auto writes to stderr only when stderr is a TTY.
-    #[arg(long, value_enum, default_value_t = ProgressMode::Auto)]
-    pub progress: ProgressMode,
-
-    /// Colorize human output. Auto writes colors only when stdout is a TTY.
-    #[arg(long, value_enum, default_value_t = ColorMode::Auto)]
-    pub color: ColorMode,
+impl std::ops::DerefMut for ScanArgs {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.analysis_thresholds
+    }
 }
 
 #[derive(Debug, Clone, Args)]

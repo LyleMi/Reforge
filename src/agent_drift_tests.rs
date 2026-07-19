@@ -356,6 +356,29 @@ fn detects_adapter_boundary_bypasses_when_boundary_exists() {
 }
 
 #[test]
+fn test_only_boundary_does_not_enable_production_bypass_detection() {
+    let files = vec![
+        source_file(
+            "src/structural_tests/file_signals.rs",
+            "fn file_adapter() {}",
+        ),
+        source_file("src/a.rs", "fn a() { std::fs::read(\"a\"); }"),
+        source_file("src/b.rs", "fn b() { std::fs::read(\"b\"); }"),
+        source_file("src/c.rs", "fn c() { std::fs::read(\"c\"); }"),
+        source_file("src/d.rs", "fn d() { std::fs::read(\"d\"); }"),
+    ];
+
+    let findings = scan_agent_drift(&files, &options());
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::AdapterBoundaryBypass),
+        "{findings:#?}"
+    );
+}
+
+#[test]
 fn skips_adapter_boundary_bypasses_in_support_scripts() {
     let files = vec![
         source_file(

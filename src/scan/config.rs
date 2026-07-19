@@ -87,6 +87,23 @@ pub(crate) struct EffectiveConfigOutput {
     no_gitignore: bool,
     exclude_tests: bool,
     ignore_paths: Vec<String>,
+    #[serde(flatten)]
+    analysis: EffectiveAnalysisConfigOutput,
+    churn: ChurnMode,
+    hotspot_model: HotspotModel,
+    churn_window_days: usize,
+    churn_max_commit_lines: usize,
+    unity: UnityMode,
+    max_unity_assembly_dependencies: usize,
+    max_unity_scene_objects: usize,
+    max_unity_prefab_objects: usize,
+    max_unity_serialized_fields: usize,
+    max_unity_lifecycle_methods: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) struct EffectiveAnalysisConfigOutput {
     min_similar_functions: usize,
     min_function_tokens: usize,
     function_similarity: f64,
@@ -105,16 +122,14 @@ pub(crate) struct EffectiveConfigOutput {
     min_repeated_literal_occurrences: usize,
     min_data_clump_occurrences: usize,
     include_test_structure: bool,
-    churn: ChurnMode,
-    hotspot_model: HotspotModel,
-    churn_window_days: usize,
-    churn_max_commit_lines: usize,
-    unity: UnityMode,
-    max_unity_assembly_dependencies: usize,
-    max_unity_scene_objects: usize,
-    max_unity_prefab_objects: usize,
-    max_unity_serialized_fields: usize,
-    max_unity_lifecycle_methods: usize,
+}
+
+impl std::ops::Deref for EffectiveConfigOutput {
+    type Target = EffectiveAnalysisConfigOutput;
+
+    fn deref(&self) -> &Self::Target {
+        &self.analysis
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -382,24 +397,28 @@ impl From<&ScanArgs> for EffectiveConfigOutput {
             no_gitignore: args.filters.no_gitignore,
             exclude_tests: args.filters.exclude_tests,
             ignore_paths: args.filters.ignore_paths.clone(),
-            min_similar_functions: args.min_similar_functions,
-            min_function_tokens: args.min_function_tokens,
-            function_similarity: args.function_similarity,
-            include_test_similarity: args.include_test_similarity,
-            max_function_lines: args.max_function_lines,
-            max_function_complexity: args.max_function_complexity,
-            max_nesting_depth: args.max_nesting_depth,
-            max_function_parameters: args.max_function_parameters,
-            max_type_lines: args.max_type_lines,
-            max_type_members: args.max_type_members,
-            max_imports: args.max_imports,
-            max_public_items: args.max_public_items,
-            max_functions_per_file: args.function_proliferation.max_functions_per_file,
-            max_functions_per_100_lines: args.function_proliferation.max_functions_per_100_lines,
-            max_small_function_ratio: args.function_proliferation.max_small_function_ratio,
-            min_repeated_literal_occurrences: args.min_repeated_literal_occurrences,
-            min_data_clump_occurrences: args.min_data_clump_occurrences,
-            include_test_structure: args.include_test_structure,
+            analysis: EffectiveAnalysisConfigOutput {
+                min_similar_functions: args.min_similar_functions,
+                min_function_tokens: args.min_function_tokens,
+                function_similarity: args.function_similarity,
+                include_test_similarity: args.include_test_similarity,
+                max_function_lines: args.max_function_lines,
+                max_function_complexity: args.max_function_complexity,
+                max_nesting_depth: args.max_nesting_depth,
+                max_function_parameters: args.max_function_parameters,
+                max_type_lines: args.max_type_lines,
+                max_type_members: args.max_type_members,
+                max_imports: args.max_imports,
+                max_public_items: args.max_public_items,
+                max_functions_per_file: args.function_proliferation.max_functions_per_file,
+                max_functions_per_100_lines: args
+                    .function_proliferation
+                    .max_functions_per_100_lines,
+                max_small_function_ratio: args.function_proliferation.max_small_function_ratio,
+                min_repeated_literal_occurrences: args.min_repeated_literal_occurrences,
+                min_data_clump_occurrences: args.min_data_clump_occurrences,
+                include_test_structure: args.include_test_structure,
+            },
             churn: args.churn.expect("effective args should set churn mode"),
             hotspot_model: args
                 .hotspot_model

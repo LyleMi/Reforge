@@ -168,54 +168,53 @@ pub(in crate::detectors::structure) fn classify_file_naming_style(
     let has_underscore = stem.contains('_');
     let has_dash = stem.contains('-');
     let has_dot = stem.contains('.');
-    let separator_count = [has_underscore, has_dash, has_dot]
-        .into_iter()
-        .filter(|has_separator| *has_separator)
-        .count();
-    if separator_count > 1 {
+    if let Some(style) = separated_file_naming_style(stem, has_underscore, has_dash, has_dot) {
+        return Some(style);
+    }
+
+    unseparated_file_naming_style(stem)
+}
+
+fn separated_file_naming_style(
+    stem: &str,
+    has_underscore: bool,
+    has_dash: bool,
+    has_dot: bool,
+) -> Option<FileNamingStyle> {
+    let separators = [has_underscore, has_dash, has_dot];
+    if separators.into_iter().filter(|present| *present).count() > 1 {
         return Some(FileNamingStyle::Mixed);
     }
+    let (separator, style) = match (has_underscore, has_dash, has_dot) {
+        (true, false, false) => ('_', FileNamingStyle::SnakeCase),
+        (false, true, false) => ('-', FileNamingStyle::KebabCase),
+        (false, false, true) => ('.', FileNamingStyle::DotSeparated),
+        _ => return None,
+    };
+    Some(if separated_words_are_lowercase(stem, separator) {
+        style
+    } else {
+        FileNamingStyle::Mixed
+    })
+}
 
-    if has_underscore {
-        return Some(if separated_words_are_lowercase(stem, '_') {
-            FileNamingStyle::SnakeCase
-        } else {
-            FileNamingStyle::Mixed
-        });
-    }
-
-    if has_dash {
-        return Some(if separated_words_are_lowercase(stem, '-') {
-            FileNamingStyle::KebabCase
-        } else {
-            FileNamingStyle::Mixed
-        });
-    }
-
-    if has_dot {
-        return Some(if separated_words_are_lowercase(stem, '.') {
-            FileNamingStyle::DotSeparated
-        } else {
-            FileNamingStyle::Mixed
-        });
-    }
-
+fn unseparated_file_naming_style(stem: &str) -> Option<FileNamingStyle> {
     let first = stem.chars().next()?;
     let has_uppercase = stem.chars().any(|character| character.is_ascii_uppercase());
     let has_lowercase = stem.chars().any(|character| character.is_ascii_lowercase());
 
-    if first.is_ascii_uppercase() && has_lowercase {
-        Some(FileNamingStyle::PascalCase)
+    Some(if first.is_ascii_uppercase() && has_lowercase {
+        FileNamingStyle::PascalCase
     } else if first.is_ascii_lowercase() && has_uppercase {
-        Some(FileNamingStyle::CamelCase)
+        FileNamingStyle::CamelCase
     } else if stem
         .chars()
         .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
     {
-        Some(FileNamingStyle::Lowercase)
+        FileNamingStyle::Lowercase
     } else {
-        Some(FileNamingStyle::Mixed)
-    }
+        FileNamingStyle::Mixed
+    })
 }
 
 pub(in crate::detectors::structure) fn separated_words_are_lowercase(
@@ -427,26 +426,47 @@ pub(in crate::detectors::structure) fn split_directory_concept_words(text: &str)
     let mut words = Vec::new();
     let mut current = String::new();
     for character in text.chars() {
-        if character == '_' || character == '-' || character == '.' {
-            if !current.is_empty() {
-                words.push(current.to_ascii_lowercase());
-                current.clear();
+        match directory_word_action(character, current.is_empty()) {
+            DirectoryWordAction::Break => push_directory_word(&mut words, &mut current),
+            DirectoryWordAction::BreakAndKeep => {
+                push_directory_word(&mut words, &mut current);
+                current.push(character);
             }
-        } else if character.is_uppercase() && !current.is_empty() {
-            words.push(current.to_ascii_lowercase());
-            current.clear();
-            current.push(character);
-        } else if character.is_alphanumeric() {
-            current.push(character);
+            DirectoryWordAction::Keep => current.push(character),
+            DirectoryWordAction::Skip => {}
         }
     }
 
-    if !current.is_empty() {
-        words.push(current.to_ascii_lowercase());
-    }
+    push_directory_word(&mut words, &mut current);
 
     words
         .into_iter()
         .filter(|word| word.len() > 2 && !matches!(word.as_str(), "mod" | "lib" | "main" | "test"))
         .collect()
+}
+
+enum DirectoryWordAction {
+    Break,
+    BreakAndKeep,
+    Keep,
+    Skip,
+}
+
+fn directory_word_action(character: char, current_is_empty: bool) -> DirectoryWordAction {
+    if matches!(character, '_' | '-' | '.') {
+        DirectoryWordAction::Break
+    } else if character.is_uppercase() && !current_is_empty {
+        DirectoryWordAction::BreakAndKeep
+    } else if character.is_alphanumeric() {
+        DirectoryWordAction::Keep
+    } else {
+        DirectoryWordAction::Skip
+    }
+}
+
+fn push_directory_word(words: &mut Vec<String>, current: &mut String) {
+    if !current.is_empty() {
+        words.push(current.to_ascii_lowercase());
+        current.clear();
+    }
 }

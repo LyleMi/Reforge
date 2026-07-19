@@ -28,6 +28,13 @@ pub(crate) fn load_scoring_policy(path: Option<&Path>) -> Result<EffectiveScorin
 }
 
 fn validate(policy: &ScoringPolicy) -> Result<()> {
+    validate_identity(policy)?;
+    validate_weights(policy.global_weights)?;
+    validate_reliability(policy)?;
+    validate_policy_fingerprint(policy)
+}
+
+fn validate_identity(policy: &ScoringPolicy) -> Result<()> {
     if policy.version != 1 {
         bail!(
             "unsupported scoring policy version {}; expected 1",
@@ -40,7 +47,10 @@ fn validate(policy: &ScoringPolicy) -> Result<()> {
     if policy.policy_id.trim().is_empty() {
         bail!("scoring policy ID must not be empty");
     }
-    let weights = policy.global_weights;
+    Ok(())
+}
+
+fn validate_weights(weights: crate::model::ScoringWeights) -> Result<()> {
     let values = [
         weights.impact,
         weights.intensity,
@@ -57,6 +67,10 @@ fn validate(policy: &ScoringPolicy) -> Result<()> {
     if (weights.sum() - 1.0).abs() > 1e-9 {
         bail!("scoring policy weights must sum to 1");
     }
+    Ok(())
+}
+
+fn validate_reliability(policy: &ScoringPolicy) -> Result<()> {
     for (kind, value) in &policy.detector_reliability {
         if !value.detection.is_finite()
             || !value.interpretation.is_finite()
@@ -66,6 +80,11 @@ fn validate(policy: &ScoringPolicy) -> Result<()> {
             bail!("scoring policy reliability for {kind:?} must be in 0..=1");
         }
     }
+    Ok(())
+}
+
+fn validate_policy_fingerprint(policy: &ScoringPolicy) -> Result<()> {
+    let weights = policy.global_weights;
     let expected = policy_fingerprint(
         &policy.policy_id,
         policy.version,

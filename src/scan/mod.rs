@@ -108,27 +108,8 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     let effective = effective_scan_config(args, &root)?;
     let scoring_policy = load_scoring_policy(effective.scoring_policy_path.as_deref())?;
     let effective_args = effective.args;
-    let mut scan = SourceScan::default();
-    let source_plan = collect_source_scan_plan(&root, &effective_args)?;
-
-    let total_source_files = progress
-        .wants_detailed_progress()
-        .then_some(source_plan.source_files.len());
-
-    report_scan_start(progress, &root, total_source_files);
-    scan_sources(
-        source_plan,
-        &effective_args,
-        total_source_files,
-        progress,
-        &mut scan,
-    )?;
-    run_scan_signals(&root, &effective_args, progress, &mut scan)?;
-    let unity_scan = crate::unity::scan_unity(&root, &effective_args)?;
-    scan.findings.extend(unity_scan.findings);
-    scan.findings.extend(scan_documentation(&root)?);
-    merge_structure_raw_metrics(&mut scan.raw_metrics, &scan.parsed_sources);
-    let churn_summary = collect_churn_metrics(&root, &effective_args, &mut scan.raw_metrics)?;
+    let (mut scan, unity_scan, churn_summary) =
+        collect_scan_observations(&root, &effective_args, progress)?;
     let metrics_summary = summarize_raw_metrics(&scan.raw_metrics);
     let hotspots = rank_hotspots(
         &scan.raw_metrics,
@@ -155,35 +136,17 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     let issues = cluster_findings(&mut scan.findings);
     let manifest = detector_manifest();
     let (coverage_manifest, coverage_summary, detector_execution, raw_metric_coverage) =
-        coverage(CoverageProjectionInput {
-            manifest: &manifest,
-            stats: &scan.stats,
-            source_files: &scan.structure_sources,
-            function_count: scan.raw_metrics.functions.len(),
-            type_count: scan.raw_metrics.types.len(),
-            findings: &scan.findings,
-            parse_failures: &scan.parse_failures,
-            unresolved_dependency_edges: scan.unresolved_dependency_edges,
-            churn: &churn_summary,
-            unity_observed: matches!(
-                unity_scan.report.status,
-                crate::model::UnityProjectStatus::Observed
-                    | crate::model::UnityProjectStatus::PartiallyObserved
-            ),
-        });
+        project_scan_coverage(&scan, &manifest, &churn_summary, unity_scan.report.status);
 
-    let summary = ScanSummary {
-        scanned_files: scan.stats.source_files_scanned,
-        finding_count: scan.findings.len(),
-        issue_count: issues.len(),
-        hotspot_count: hotspots.len(),
-        similar_function_group_count: post_score_controls.similar_function_group_count,
-        duration_ms: started_at.elapsed().as_millis(),
-        hotspot_model: effective_args
-            .hotspot_model
-            .expect("effective args should set hotspot model"),
+    let summary = build_scan_summary(ScanSummaryInput {
+        scan: &scan,
+        issues: &issues,
+        hotspots: &hotspots,
+        controls: &post_score_controls,
+        args: &effective_args,
         churn: churn_summary,
-    };
+        duration_ms: started_at.elapsed().as_millis(),
+    });
 
     finish_progress(progress, &summary);
 
@@ -209,6 +172,86 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     })
 }
 
+fn project_scan_coverage(
+    scan: &SourceScan,
+    manifest: &[crate::model::DetectorManifestEntry],
+    churn: &crate::model::ChurnSummary,
+    unity_status: crate::model::UnityProjectStatus,
+) -> (
+    Vec<CoverageManifestEntry>,
+    CoverageSummary,
+    Vec<DetectorExecutionReceipt>,
+    Vec<RawMetricCoverage>,
+) {
+    coverage(CoverageProjectionInput {
+        manifest,
+        stats: &scan.stats,
+        source_files: &scan.structure_sources,
+        function_count: scan.raw_metrics.functions.len(),
+        type_count: scan.raw_metrics.types.len(),
+        findings: &scan.findings,
+        parse_failures: &scan.parse_failures,
+        unresolved_dependency_edges: scan.unresolved_dependency_edges,
+        churn,
+        unity_observed: matches!(
+            unity_status,
+            crate::model::UnityProjectStatus::Observed
+                | crate::model::UnityProjectStatus::PartiallyObserved
+        ),
+    })
+}
+
+fn collect_scan_observations(
+    root: &Path,
+    args: &ScanArgs,
+    progress: &mut dyn ProgressSink,
+) -> Result<(
+    SourceScan,
+    crate::unity::UnityScan,
+    crate::model::ChurnSummary,
+)> {
+    let mut scan = SourceScan::default();
+    let source_plan = collect_source_scan_plan(root, args)?;
+    let total_source_files = progress
+        .wants_detailed_progress()
+        .then_some(source_plan.source_files.len());
+    report_scan_start(progress, root, total_source_files);
+    scan_sources(source_plan, args, total_source_files, progress, &mut scan)?;
+    run_scan_signals(root, args, progress, &mut scan)?;
+    let mut unity_scan = crate::unity::scan_unity(root, args)?;
+    scan.findings.append(&mut unity_scan.findings);
+    scan.findings.extend(scan_documentation(root)?);
+    merge_structure_raw_metrics(&mut scan.raw_metrics, &scan.parsed_sources);
+    let churn = collect_churn_metrics(root, args, &mut scan.raw_metrics)?;
+    Ok((scan, unity_scan, churn))
+}
+
+struct ScanSummaryInput<'a> {
+    scan: &'a SourceScan,
+    issues: &'a [crate::model::Issue],
+    hotspots: &'a [crate::model::Hotspot],
+    controls: &'a PostScoreControls,
+    args: &'a ScanArgs,
+    churn: crate::model::ChurnSummary,
+    duration_ms: u128,
+}
+
+fn build_scan_summary(input: ScanSummaryInput<'_>) -> ScanSummary {
+    ScanSummary {
+        scanned_files: input.scan.stats.source_files_scanned,
+        finding_count: input.scan.findings.len(),
+        issue_count: input.issues.len(),
+        hotspot_count: input.hotspots.len(),
+        similar_function_group_count: input.controls.similar_function_group_count,
+        duration_ms: input.duration_ms,
+        hotspot_model: input
+            .args
+            .hotspot_model
+            .expect("effective args should set hotspot model"),
+        churn: input.churn,
+    }
+}
+
 fn finish_progress(progress: &mut dyn ProgressSink, summary: &ScanSummary) {
     progress.report(&format!(
         "Finished scan: {} files, {} findings",
@@ -217,413 +260,7 @@ fn finish_progress(progress: &mut dyn ProgressSink, summary: &ScanSummary) {
     progress.finish();
 }
 
-struct CoverageProjectionInput<'a> {
-    manifest: &'a [crate::model::DetectorManifestEntry],
-    stats: &'a ScanStats,
-    source_files: &'a [SourceFile],
-    function_count: usize,
-    type_count: usize,
-    findings: &'a [Finding],
-    parse_failures: &'a [ParseFailure],
-    unresolved_dependency_edges: usize,
-    churn: &'a crate::model::ChurnSummary,
-    unity_observed: bool,
-}
-
-fn coverage(
-    input: CoverageProjectionInput<'_>,
-) -> (
-    Vec<CoverageManifestEntry>,
-    CoverageSummary,
-    Vec<DetectorExecutionReceipt>,
-    Vec<RawMetricCoverage>,
-) {
-    let CoverageProjectionInput {
-        manifest,
-        stats,
-        source_files,
-        function_count,
-        type_count,
-        findings,
-        parse_failures,
-        unresolved_dependency_edges,
-        churn,
-        unity_observed,
-    } = input;
-    let mut detected_languages = source_files
-        .iter()
-        .filter_map(|source| detected_language(&source.path))
-        .collect::<BTreeSet<_>>();
-    if unity_observed {
-        detected_languages.insert("unity".to_string());
-    }
-    let entity_counts = BTreeMap::from([
-        (crate::model::EntityScope::Repository, 1),
-        (
-            crate::model::EntityScope::Directory,
-            stats.directories_scanned,
-        ),
-        (crate::model::EntityScope::File, stats.source_files_scanned),
-        (crate::model::EntityScope::Function, function_count),
-        (crate::model::EntityScope::Type, type_count),
-    ]);
-    let detector_execution = manifest
-        .iter()
-        .map(|entry| {
-            let applicable = detector_is_applicable(entry, &detected_languages);
-            let analyzed_entities = if applicable {
-                entity_counts
-                    .get(&entry.entity_scope)
-                    .copied()
-                    .unwrap_or_else(|| {
-                        findings
-                            .iter()
-                            .filter(|finding| finding.kind == entry.kind)
-                            .count()
-                    })
-            } else {
-                0
-            };
-            let parse_sensitive = detector_requires_parse(entry);
-            let unresolved = if entry.approach == crate::model::DetectionApproach::GraphAnalysis {
-                unresolved_dependency_edges
-            } else {
-                0
-            };
-            DetectorExecutionReceipt {
-                kind: entry.kind,
-                status: if applicable {
-                    DetectorExecutionStatus::Completed
-                } else {
-                    DetectorExecutionStatus::NotApplicable
-                },
-                analyzed_entities,
-                candidate_groups: if entry.entity_scope == crate::model::EntityScope::FindingGroup {
-                    findings
-                        .iter()
-                        .filter(|finding| finding.kind == entry.kind)
-                        .count()
-                } else {
-                    0
-                },
-                unobservable_count: if applicable && parse_sensitive {
-                    parse_failures.len() + unresolved
-                } else {
-                    0
-                },
-                unobservable_reasons: if applicable {
-                    [
-                        (!parse_failures.is_empty() && parse_sensitive).then(|| {
-                            format!(
-                                "{} source files failed syntax parsing",
-                                parse_failures.len()
-                            )
-                        }),
-                        (unresolved > 0).then(|| {
-                            format!("{unresolved} dependency edges could not be resolved")
-                        }),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    .collect()
-                } else {
-                    Vec::new()
-                },
-            }
-        })
-        .collect::<Vec<_>>();
-    let coverage_manifest = coverage_targets().into_iter().map(|(mechanism, entity_scope, expectation)| {
-            let entries = manifest.iter().filter(|entry| entry.mechanism == mechanism && entry.entity_scope == entity_scope).collect::<Vec<_>>();
-            let applicable = entries.iter().filter(|entry| detector_is_applicable(entry, &detected_languages)).collect::<Vec<_>>();
-            let completed_detectors = applicable.iter().map(|entry| entry.kind).collect::<Vec<_>>();
-            let unsupported_detectors = entries.iter().filter(|entry| !detector_is_applicable(entry, &detected_languages)).map(|entry| entry.kind).collect::<Vec<_>>();
-            let entity_count = entity_counts.get(&entity_scope).copied().unwrap_or_else(|| applicable.iter().map(|entry| findings.iter().filter(|finding| finding.kind == entry.kind).count()).sum());
-            let graph_cell = applicable.iter().any(|entry| entry.approach == crate::model::DetectionApproach::GraphAnalysis);
-            let partial = !unsupported_detectors.is_empty() || (!parse_failures.is_empty() && applicable.iter().any(|entry| detector_requires_parse(entry))) || (graph_cell && unresolved_dependency_edges > 0);
-            let status = match expectation {
-                CoverageExpectation::Planned => CoverageStatus::Planned,
-                CoverageExpectation::IntentionallyOutOfScope => CoverageStatus::IntentionallyOutOfScope,
-                CoverageExpectation::Required if applicable.is_empty() => CoverageStatus::Unsupported,
-                CoverageExpectation::Required if partial => CoverageStatus::PartiallyObserved,
-                CoverageExpectation::Required if entity_count == 0 => CoverageStatus::NoEntities,
-                CoverageExpectation::Required => CoverageStatus::Observed,
-            };
-            CoverageManifestEntry {
-                mechanism,
-                entity_scope,
-                expectation,
-                status,
-                reason: coverage_reason(status).into(),
-                detectors: entries.into_iter().map(|entry| entry.kind).collect(),
-                completed_detectors,
-                entity_count,
-                unobservable_reasons: if partial { [(!unsupported_detectors.is_empty()).then(|| format!("{} detectors do not support the detected languages: {}", unsupported_detectors.len(), unsupported_detectors.iter().map(|kind| serialized_finding_kind(*kind)).collect::<Vec<_>>().join(", "))), (!parse_failures.is_empty()).then(|| format!("{} source files failed syntax parsing", parse_failures.len())), (graph_cell && unresolved_dependency_edges > 0).then(|| format!("{unresolved_dependency_edges} dependency edges could not be resolved"))].into_iter().flatten().collect() } else { Vec::new() },
-            }
-        }).collect();
-    let coverage_summary = CoverageSummary {
-        detected_languages: detected_languages.iter().cloned().collect(),
-        applicable_detectors: manifest
-            .iter()
-            .filter(|entry| detector_is_applicable(entry, &detected_languages))
-            .map(|entry| entry.kind)
-            .collect(),
-        analyzed_entities: entity_counts,
-        parse_failures: parse_failures.to_vec(),
-        unresolved_dependency_edges,
-        unobservable_reasons: if parse_failures.is_empty() {
-            Vec::new()
-        } else {
-            vec![format!(
-                "{} source files failed syntax parsing",
-                parse_failures.len()
-            )]
-        },
-    };
-    let raw_metric_coverage = canonical_raw_metrics()
-        .iter()
-        .copied()
-        .map(|metric| {
-            raw_metric_observation(
-                metric,
-                stats,
-                function_count,
-                type_count,
-                parse_failures,
-                churn,
-            )
-        })
-        .collect();
-    (
-        coverage_manifest,
-        coverage_summary,
-        detector_execution,
-        raw_metric_coverage,
-    )
-}
-
-fn detector_requires_parse(entry: &crate::model::DetectorManifestEntry) -> bool {
-    matches!(
-        entry.entity_scope,
-        crate::model::EntityScope::Function | crate::model::EntityScope::Type
-    ) || matches!(
-        entry.approach,
-        crate::model::DetectionApproach::ParsedAnalysis
-            | crate::model::DetectionApproach::GraphAnalysis
-    )
-}
-
-fn coverage_targets() -> Vec<(
-    crate::model::SignalMechanism,
-    crate::model::EntityScope,
-    CoverageExpectation,
-)> {
-    use crate::model::{EntityScope as E, SignalMechanism as M};
-    const MECHANISMS: [M; 7] = [
-        M::CognitiveLoad,
-        M::DependencyPropagation,
-        M::ResponsibilityDispersion,
-        M::DuplicationDivergence,
-        M::ChangePressure,
-        M::VerificationDifficulty,
-        M::KnowledgeDrift,
-    ];
-    const SCOPES: [E; 6] = [
-        E::Repository,
-        E::Directory,
-        E::File,
-        E::Function,
-        E::Type,
-        E::FindingGroup,
-    ];
-    let required = |m, e| {
-        matches!(
-            (m, e),
-            (M::CognitiveLoad, E::Function)
-                | (M::DependencyPropagation, E::File | E::FindingGroup)
-                | (
-                    M::ResponsibilityDispersion,
-                    E::Directory | E::File | E::Type
-                )
-                | (M::DuplicationDivergence, E::FindingGroup)
-                | (M::ChangePressure, E::File | E::FindingGroup)
-                | (M::VerificationDifficulty, E::FindingGroup)
-                | (M::KnowledgeDrift, E::Directory | E::Repository)
-        )
-    };
-    MECHANISMS
-        .into_iter()
-        .flat_map(|m| {
-            SCOPES.into_iter().map(move |e| {
-                (
-                    m,
-                    e,
-                    if required(m, e) {
-                        CoverageExpectation::Required
-                    } else {
-                        CoverageExpectation::IntentionallyOutOfScope
-                    },
-                )
-            })
-        })
-        .collect()
-}
-
-fn coverage_reason(status: CoverageStatus) -> &'static str {
-    match status {
-        CoverageStatus::Observed => "all applicable detectors completed",
-        CoverageStatus::PartiallyObserved => {
-            "coverage is incomplete for the detected languages or available entities"
-        }
-        CoverageStatus::Unsupported => "no detector supports the detected languages",
-        CoverageStatus::NoEntities => "no entities were available for analysis",
-        CoverageStatus::Planned => "coverage is planned for a future schema",
-        CoverageStatus::IntentionallyOutOfScope => {
-            "this mechanism and scope are intentionally out of scope"
-        }
-    }
-}
-
-fn canonical_raw_metrics() -> &'static [MetricId] {
-    use MetricId::*;
-    &[
-        FileLoc,
-        FileImports,
-        FilePublicItems,
-        FileIsTest,
-        DirectorySourceFiles,
-        FunctionLoc,
-        FunctionComplexity,
-        FunctionNestingDepth,
-        FunctionParameterCount,
-        FunctionIsTest,
-        TypeLoc,
-        TypeMemberCount,
-        TypeIsTest,
-        ChurnCommitsTouched,
-        ChurnLinesAdded,
-        ChurnLinesDeleted,
-        ChurnAuthorsCount,
-        ChurnRecentWeighted,
-    ]
-}
-
-fn raw_metric_observation(
-    metric: MetricId,
-    stats: &ScanStats,
-    function_count: usize,
-    type_count: usize,
-    failures: &[ParseFailure],
-    churn: &crate::model::ChurnSummary,
-) -> RawMetricCoverage {
-    let is_churn = matches!(
-        metric,
-        MetricId::ChurnCommitsTouched
-            | MetricId::ChurnLinesAdded
-            | MetricId::ChurnLinesDeleted
-            | MetricId::ChurnAuthorsCount
-            | MetricId::ChurnRecentWeighted
-    );
-    let parse_sensitive = matches!(
-        metric,
-        MetricId::FunctionLoc
-            | MetricId::FunctionComplexity
-            | MetricId::FunctionNestingDepth
-            | MetricId::FunctionParameterCount
-            | MetricId::FunctionIsTest
-            | MetricId::TypeLoc
-            | MetricId::TypeMemberCount
-            | MetricId::TypeIsTest
-            | MetricId::FileImports
-            | MetricId::FilePublicItems
-    );
-    let entity_count = match metric {
-        MetricId::DirectorySourceFiles => stats.directories_scanned,
-        MetricId::FunctionLoc
-        | MetricId::FunctionComplexity
-        | MetricId::FunctionNestingDepth
-        | MetricId::FunctionParameterCount
-        | MetricId::FunctionIsTest => function_count,
-        MetricId::TypeLoc | MetricId::TypeMemberCount | MetricId::TypeIsTest => type_count,
-        _ => stats.source_files_scanned,
-    };
-    let status = if is_churn && !churn.enabled {
-        RawMetricCoverageStatus::Unavailable
-    } else if parse_sensitive && !failures.is_empty() {
-        RawMetricCoverageStatus::PartiallyObserved
-    } else {
-        RawMetricCoverageStatus::Observed
-    };
-    RawMetricCoverage {
-        metric,
-        status,
-        entity_count,
-        reason: match status {
-            RawMetricCoverageStatus::Observed => "metric observed for available entities",
-            RawMetricCoverageStatus::PartiallyObserved => {
-                "metric unavailable for files that failed parsing"
-            }
-            RawMetricCoverageStatus::Unavailable => {
-                "Git churn collection was disabled or unavailable"
-            }
-        }
-        .into(),
-        unobservable_reasons: if status == RawMetricCoverageStatus::PartiallyObserved {
-            vec![format!(
-                "{} source files failed syntax parsing",
-                failures.len()
-            )]
-        } else if status == RawMetricCoverageStatus::Unavailable {
-            churn.reason.clone().into_iter().collect()
-        } else {
-            Vec::new()
-        },
-    }
-}
-
-fn detector_is_applicable(
-    entry: &crate::model::DetectorManifestEntry,
-    detected_languages: &BTreeSet<String>,
-) -> bool {
-    entry.supported_languages.iter().any(|language| {
-        matches!(language.as_str(), "repository" | "language_neutral_paths")
-            || detected_languages.contains(language)
-    })
-}
-
-fn detected_language(path: &Path) -> Option<String> {
-    const EXTENSION_LANGUAGES: &[(&str, &str)] = &[
-        ("rs", "rust"),
-        ("js", "javascript"),
-        ("jsx", "javascript"),
-        ("mjs", "javascript"),
-        ("cjs", "javascript"),
-        ("ts", "typescript"),
-        ("tsx", "tsx"),
-        ("vue", "tsx"),
-        ("mts", "typescript"),
-        ("cts", "typescript"),
-        ("py", "python"),
-        ("go", "go"),
-        ("java", "java"),
-        ("cs", "csharp"),
-        ("csx", "csharp"),
-        ("kt", "kotlin"),
-        ("php", "php"),
-        ("rb", "ruby"),
-        ("c", "c"),
-        ("h", "c"),
-        ("cc", "cpp"),
-        ("cpp", "cpp"),
-        ("cxx", "cpp"),
-        ("hh", "cpp"),
-        ("hpp", "cpp"),
-        ("hxx", "cpp"),
-    ];
-    let extension = path.extension()?.to_str()?;
-    EXTENSION_LANGUAGES
-        .iter()
-        .find_map(|(candidate, language)| (*candidate == extension).then(|| (*language).into()))
-}
+include!("coverage.rs");
 
 fn run_scan_signals(
     root: &Path,
@@ -827,428 +464,4 @@ impl ScanSignalContext<'_> {
     }
 }
 
-fn resolve_scan_root(args: &ScanArgs) -> Result<PathBuf> {
-    args.path
-        .canonicalize()
-        .with_context(|| format!("failed to resolve path {}", args.path.display()))
-}
-
-fn report_scan_start(
-    progress: &mut dyn ProgressSink,
-    root: &Path,
-    total_source_files: Option<usize>,
-) {
-    match total_source_files {
-        Some(total) => progress.report(&format!(
-            "Scanning {} ({total} source {})",
-            display_path(root),
-            pluralize(total, "file")
-        )),
-        None => progress.report(&format!("Scanning {}", display_path(root))),
-    }
-}
-
-fn scan_sources(
-    source_plan: SourceScanPlan,
-    args: &ScanArgs,
-    total_source_files: Option<usize>,
-    progress: &mut dyn ProgressSink,
-    scan: &mut SourceScan,
-) -> Result<()> {
-    scan.stats.directories_scanned = source_plan.directories_scanned;
-    for path in &source_plan.source_files {
-        let file_options = FileScanOptions {
-            max_file_lines: args.max_file_lines,
-        };
-        scan_file(path, file_options, scan)?;
-        report_file_scan_progress(progress, &scan.stats, total_source_files, path);
-    }
-
-    scan_directories(
-        &source_plan.directory_source_files,
-        args.max_dir_files,
-        &mut scan.raw_metrics,
-        &mut scan.findings,
-    );
-    Ok(())
-}
-
-fn report_file_scan_progress(
-    progress: &mut dyn ProgressSink,
-    stats: &ScanStats,
-    total_source_files: Option<usize>,
-    path: &Path,
-) {
-    if let Some(total) = total_source_files {
-        let detail = display_path(path);
-        progress.report_scan_progress(ProgressEvent {
-            completed: stats.source_files_scanned,
-            total,
-            detail: &detail,
-        });
-    }
-}
-
-struct ScanSimilarityProgress<'a> {
-    progress: &'a mut dyn ProgressSink,
-}
-
-impl SimilarFunctionProgress for ScanSimilarityProgress<'_> {
-    fn report_extract_progress(&mut self, completed: usize, total: usize, path: &str) {
-        self.progress.report_analysis_progress(
-            ProgressEvent {
-                completed,
-                total,
-                detail: path,
-            },
-            "extracting candidates",
-        );
-    }
-
-    fn report_compare_progress(&mut self, completed: usize, total: usize) {
-        self.progress.report_analysis_progress(
-            ProgressEvent {
-                completed,
-                total,
-                detail: "",
-            },
-            "comparing candidates",
-        );
-    }
-}
-
-fn collect_source_scan_plan(root: &Path, args: &ScanArgs) -> Result<SourceScanPlan> {
-    let mut plan = SourceScanPlan::default();
-
-    if root.is_file() {
-        if is_supported_source(root) && should_scan_source_file(root, args) {
-            plan.source_files.push(root.to_path_buf());
-        }
-        return Ok(plan);
-    }
-
-    let mut builder = WalkBuilder::new(root);
-    builder
-        .hidden(!args.filters.include_hidden)
-        .git_ignore(!args.filters.no_gitignore)
-        .git_global(!args.filters.no_gitignore)
-        .git_exclude(!args.filters.no_gitignore)
-        .require_git(false);
-
-    let root_for_filter = root.to_path_buf();
-    let args_for_filter = args.clone();
-    for entry in builder
-        .filter_entry(move |entry| should_visit_entry(entry, &root_for_filter, &args_for_filter))
-        .build()
-    {
-        let entry = entry?;
-        let Some(file_type) = entry.file_type() else {
-            continue;
-        };
-
-        if file_type.is_dir() {
-            plan.directories_scanned += 1;
-        } else if file_type.is_file()
-            && is_supported_source(entry.path())
-            && should_scan_source_file(entry.path(), args)
-        {
-            let path = entry.path().to_path_buf();
-            count_source_file_parent(&path, &mut plan.directory_source_files);
-            plan.source_files.push(path);
-        }
-    }
-
-    Ok(plan)
-}
-
-fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Result<()> {
-    if !is_supported_source(path) {
-        return Ok(());
-    }
-
-    scan.stats.source_files_scanned += 1;
-
-    let source = fs::read_to_string(path)
-        .with_context(|| format!("failed to read source file {}", path.display()))?;
-    let source: Arc<str> = Arc::from(source);
-    let line_count = source.lines().count();
-    let display_path = display_path(path);
-    let is_test = is_test_source(path)
-        || (path.extension().and_then(|value| value.to_str()) == Some("cs")
-            && (source.contains("[Test]") || source.contains("[UnityTest]")));
-
-    scan.raw_metrics.files.push(FileRawMetric {
-        path: display_path.clone(),
-        loc: line_count,
-        imports: 0,
-        public_items: 0,
-        is_test,
-        churn: ChurnFileMetric::default(),
-    });
-
-    if line_count > options.max_file_lines {
-        scan.findings.push(Finding::from(FindingInput::new(
-            FindingKind::LargeFile,
-            display_path.clone(),
-            Some(1),
-            format!("file has {line_count} lines; consider splitting responsibilities"),
-            vec![FindingMetric::threshold(
-                MetricId::FileLoc,
-                line_count,
-                options.max_file_lines,
-                "lines",
-            )],
-        )));
-    }
-
-    for (index, line) in source.lines().enumerate() {
-        if has_debt_marker(line) {
-            scan.findings.push(Finding::from(FindingInput::new(
-                FindingKind::DebtMarker,
-                display_path.clone(),
-                Some(index + 1),
-                "technical-debt marker found",
-                Vec::new(),
-            )));
-        }
-    }
-
-    if is_supported_structure_source(path) {
-        let source_file = SourceFile {
-            path: path.to_path_buf(),
-            display_path: display_path.clone(),
-            source: Arc::clone(&source),
-        };
-
-        match parse_source_file(source_file.clone())? {
-            Some(parsed) => scan.parsed_sources.push(parsed),
-            None => scan.parse_failures.push(ParseFailure {
-                path: display_path.clone(),
-                language: detected_language(path).unwrap_or_else(|| "unknown".into()),
-                reason: ParseFailureReason::SyntaxError,
-            }),
-        }
-
-        scan.structure_sources.push(source_file);
-    }
-
-    Ok(())
-}
-
-fn count_source_file_parent(path: &Path, directory_source_files: &mut BTreeMap<PathBuf, usize>) {
-    if let Some(parent) = path.parent() {
-        *directory_source_files
-            .entry(parent.to_path_buf())
-            .or_insert(0) += 1;
-    }
-}
-
-fn scan_directories(
-    directory_source_files: &BTreeMap<PathBuf, usize>,
-    max_dir_files: usize,
-    raw_metrics: &mut RawMetrics,
-    findings: &mut Vec<Finding>,
-) {
-    for (directory, file_count) in directory_source_files {
-        raw_metrics.directories.push(DirectoryRawMetric {
-            path: display_path(directory),
-            source_files: *file_count,
-        });
-        if *file_count > max_dir_files {
-            findings.push(Finding::from(FindingInput::new(
-                FindingKind::LargeDirectory,
-                display_path(directory),
-                None,
-                format!(
-                    "directory contains {file_count} source files; consider grouping related responsibilities"
-                ),
-                vec![FindingMetric::threshold(
-                    MetricId::DirectorySourceFiles,
-                    *file_count,
-                    max_dir_files,
-                    "source files",
-                )],
-            )));
-        }
-    }
-}
-
-fn has_debt_marker(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    let is_comment = trimmed.starts_with("//")
-        || trimmed.starts_with('#')
-        || trimmed.starts_with("/*")
-        || trimmed.starts_with('*')
-        || trimmed.starts_with("<!--");
-
-    if !is_comment {
-        return false;
-    }
-
-    let normalized = trimmed.to_ascii_lowercase();
-    normalized.contains("todo") || normalized.contains("fixme")
-}
-
-fn is_supported_source(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|extension| extension.to_str()),
-        Some(
-            "c" | "cc"
-                | "cpp"
-                | "cs"
-                | "csx"
-                | "go"
-                | "java"
-                | "js"
-                | "jsx"
-                | "mjs"
-                | "cjs"
-                | "kt"
-                | "php"
-                | "py"
-                | "rb"
-                | "rs"
-                | "ts"
-                | "tsx"
-                | "vue"
-                | "mts"
-                | "cts"
-        )
-    )
-}
-
-fn is_hidden(entry: &DirEntry) -> bool {
-    entry
-        .file_name()
-        .to_str()
-        .is_some_and(|name| name.starts_with('.'))
-}
-
-fn is_default_excluded_dir(entry: &DirEntry) -> bool {
-    entry
-        .file_type()
-        .is_some_and(|file_type| file_type.is_dir())
-        && entry
-            .file_name()
-            .to_str()
-            .is_some_and(|name| DEFAULT_EXCLUDED_DIRS.contains(&name))
-}
-
-fn should_visit_entry(entry: &DirEntry, root: &Path, args: &ScanArgs) -> bool {
-    let is_root = entry.path() == root;
-    is_root
-        || ((args.filters.include_hidden || !is_hidden(entry))
-            && (args.filters.include_generated || !is_default_excluded_dir(entry)))
-            && !is_ignored_path(entry.path(), root, args)
-            && !is_excluded_test_path(entry.path(), args)
-}
-
-fn is_ignored_path(path: &Path, root: &Path, args: &ScanArgs) -> bool {
-    if args.filters.ignore_paths.is_empty() {
-        return false;
-    }
-
-    let relative = path
-        .strip_prefix(root)
-        .ok()
-        .map(display_path)
-        .unwrap_or_else(|| display_path(path));
-    args.filters.ignore_paths.iter().any(|ignore| {
-        let ignore = ignore.replace('\\', "/").trim_matches('/').to_string();
-        !ignore.is_empty()
-            && (relative == ignore
-                || relative
-                    .strip_prefix(&ignore)
-                    .is_some_and(|suffix| suffix.starts_with('/')))
-    })
-}
-
-fn is_excluded_test_path(path: &Path, args: &ScanArgs) -> bool {
-    args.filters.exclude_tests && (is_test_source(path) || csharp_source_declares_tests(path))
-}
-
-fn should_scan_source_file(path: &Path, args: &ScanArgs) -> bool {
-    !is_excluded_test_path(path, args)
-}
-
-fn pluralize(count: usize, noun: &str) -> String {
-    if count == 1 {
-        noun.to_string()
-    } else {
-        format!("{noun}s")
-    }
-}
-
-pub(crate) fn is_test_source(path: &Path) -> bool {
-    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
-        return false;
-    };
-
-    if file_name.starts_with("test_")
-        || file_name.contains(".test.")
-        || file_name.contains(".spec.")
-        || file_name.ends_with("_test.go")
-        || file_name.ends_with("_test.py")
-        || file_name.ends_with("_test.rs")
-        || file_name.ends_with("_tests.rs")
-    {
-        return true;
-    }
-
-    path.components().any(|component| {
-        component.as_os_str().to_str().is_some_and(|name| {
-            matches!(
-                name.to_ascii_lowercase().as_str(),
-                "test" | "tests" | "__tests__" | "spec" | "specs" | "editmode" | "playmode"
-            )
-        })
-    }) || nearest_asmdef_is_test_assembly(path)
-}
-
-fn csharp_source_declares_tests(path: &Path) -> bool {
-    path.extension().and_then(|value| value.to_str()) == Some("cs")
-        && fs::read_to_string(path)
-            .is_ok_and(|source| source.contains("[Test]") || source.contains("[UnityTest]"))
-}
-
-fn nearest_asmdef_is_test_assembly(path: &Path) -> bool {
-    if path.extension().and_then(|value| value.to_str()) != Some("cs") {
-        return false;
-    }
-    let mut current = path.parent();
-    for _ in 0..12 {
-        let Some(directory) = current else { break };
-        if let Ok(entries) = fs::read_dir(directory) {
-            for asmdef in entries
-                .flatten()
-                .map(|entry| entry.path())
-                .filter(|candidate| {
-                    candidate.extension().and_then(|value| value.to_str()) == Some("asmdef")
-                })
-            {
-                if fs::read_to_string(asmdef).is_ok_and(|source| source.contains("TestAssemblies"))
-                {
-                    return true;
-                }
-            }
-        }
-        current = directory.parent();
-    }
-    false
-}
-
-fn display_path(path: &Path) -> String {
-    let display = path.to_string_lossy().replace('\\', "/");
-    display
-        .strip_prefix("//?/")
-        .unwrap_or(display.as_str())
-        .to_string()
-}
-
-#[cfg(test)]
-#[path = "../scanner_tests.rs"]
-mod scanner_tests;
-
-#[cfg(test)]
-#[path = "../scan_documentation_tests.rs"]
-mod scan_documentation_tests;
+include!("walk.rs");

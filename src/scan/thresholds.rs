@@ -288,97 +288,110 @@ impl ThresholdOverrides {
 
     fn from_config(config: ConfigThresholdDefaults) -> Self {
         let defaults = ThresholdSettings::BALANCED;
-        Self {
-            max_file_lines: configured_usize(
-                config.file.max_file_lines,
-                defaults.file.max_file_lines,
-            ),
-            max_dir_files: configured_usize(config.file.max_dir_files, defaults.file.max_dir_files),
-            min_similar_functions: configured_usize(
-                config.similarity.min_similar_functions,
-                defaults.similarity.min_similar_functions,
-            ),
-            min_function_tokens: configured_usize(
-                config.similarity.min_function_tokens,
-                defaults.similarity.min_function_tokens,
-            ),
-            function_similarity: configured_f64(
-                config.similarity.function_similarity,
-                defaults.similarity.function_similarity,
-            ),
-            max_function_lines: configured_usize(
-                config.structure.max_function_lines,
-                defaults.structure.max_function_lines,
-            ),
-            max_function_complexity: configured_usize(
-                config.structure.max_function_complexity,
-                defaults.structure.max_function_complexity,
-            ),
-            max_nesting_depth: configured_usize(
-                config.structure.max_nesting_depth,
-                defaults.structure.max_nesting_depth,
-            ),
-            max_function_parameters: configured_usize(
-                config.structure.max_function_parameters,
-                defaults.structure.max_function_parameters,
-            ),
-            max_type_lines: configured_usize(
-                config.structure.max_type_lines,
-                defaults.structure.max_type_lines,
-            ),
-            max_type_members: configured_usize(
-                config.structure.max_type_members,
-                defaults.structure.max_type_members,
-            ),
-            max_imports: configured_usize(
-                config.structure.max_imports,
-                defaults.structure.max_imports,
-            ),
-            max_public_items: configured_usize(
-                config.structure.max_public_items,
-                defaults.structure.max_public_items,
-            ),
-            max_functions_per_file: configured_usize(
-                config.structure.max_functions_per_file,
-                defaults.structure.max_functions_per_file,
-            ),
-            max_functions_per_100_lines: configured_usize(
-                config.structure.max_functions_per_100_lines,
-                defaults.structure.max_functions_per_100_lines,
-            ),
-            max_small_function_ratio: configured_usize(
-                config.structure.max_small_function_ratio,
-                defaults.structure.max_small_function_ratio,
-            ),
-            min_repeated_literal_occurrences: configured_usize(
-                config.repetition.min_repeated_literal_occurrences,
-                defaults.repetition.min_repeated_literal_occurrences,
-            ),
-            min_data_clump_occurrences: configured_usize(
-                config.repetition.min_data_clump_occurrences,
-                defaults.repetition.min_data_clump_occurrences,
-            ),
-            max_unity_assembly_dependencies: configured_usize(
-                config.unity.max_assembly_dependencies,
-                defaults.unity.max_assembly_dependencies,
-            ),
-            max_unity_scene_objects: configured_usize(
-                config.unity.max_scene_objects,
-                defaults.unity.max_scene_objects,
-            ),
-            max_unity_prefab_objects: configured_usize(
-                config.unity.max_prefab_objects,
-                defaults.unity.max_prefab_objects,
-            ),
-            max_unity_serialized_fields: configured_usize(
-                config.unity.max_serialized_fields,
-                defaults.unity.max_serialized_fields,
-            ),
-            max_unity_lifecycle_methods: configured_usize(
-                config.unity.max_lifecycle_methods,
-                defaults.unity.max_lifecycle_methods,
-            ),
-        }
+        let mut overrides = Self::default();
+        overrides.set_config_file_thresholds(config.file, defaults);
+        overrides.set_config_similarity_thresholds(config.similarity, defaults);
+        overrides.set_config_structure_thresholds(config.structure, defaults);
+        overrides.set_config_repetition_thresholds(config.repetition, defaults);
+        overrides.set_config_unity_thresholds(config.unity, defaults);
+        overrides
+    }
+
+    fn set_config_file_thresholds(
+        &mut self,
+        config: ConfigFileThresholdDefaults,
+        defaults: ThresholdSettings,
+    ) {
+        self.max_file_lines = configured_usize(config.max_file_lines, defaults.file.max_file_lines);
+        self.max_dir_files = configured_usize(config.max_dir_files, defaults.file.max_dir_files);
+    }
+
+    fn set_config_similarity_thresholds(
+        &mut self,
+        config: ConfigSimilarityThresholdDefaults,
+        defaults: ThresholdSettings,
+    ) {
+        self.min_similar_functions = configured_usize(
+            config.min_similar_functions,
+            defaults.similarity.min_similar_functions,
+        );
+        self.min_function_tokens = configured_usize(
+            config.min_function_tokens,
+            defaults.similarity.min_function_tokens,
+        );
+        self.function_similarity = configured_f64(
+            config.function_similarity,
+            defaults.similarity.function_similarity,
+        );
+    }
+
+    fn set_config_structure_thresholds(
+        &mut self,
+        config: ConfigStructureThresholdDefaults,
+        defaults: ThresholdSettings,
+    ) {
+        let values = defaults.structure;
+        self.max_function_lines =
+            configured_usize(config.max_function_lines, values.max_function_lines);
+        self.max_function_complexity = configured_usize(
+            config.max_function_complexity,
+            values.max_function_complexity,
+        );
+        self.max_nesting_depth =
+            configured_usize(config.max_nesting_depth, values.max_nesting_depth);
+        self.max_function_parameters = configured_usize(
+            config.max_function_parameters,
+            values.max_function_parameters,
+        );
+        self.max_type_lines = configured_usize(config.max_type_lines, values.max_type_lines);
+        self.max_type_members = configured_usize(config.max_type_members, values.max_type_members);
+        self.max_imports = configured_usize(config.max_imports, values.max_imports);
+        self.max_public_items = configured_usize(config.max_public_items, values.max_public_items);
+        self.max_functions_per_file =
+            configured_usize(config.max_functions_per_file, values.max_functions_per_file);
+        self.max_functions_per_100_lines = configured_usize(
+            config.max_functions_per_100_lines,
+            values.max_functions_per_100_lines,
+        );
+        self.max_small_function_ratio = configured_usize(
+            config.max_small_function_ratio,
+            values.max_small_function_ratio,
+        );
+    }
+
+    fn set_config_repetition_thresholds(
+        &mut self,
+        config: ConfigRepetitionThresholdDefaults,
+        defaults: ThresholdSettings,
+    ) {
+        self.min_repeated_literal_occurrences = configured_usize(
+            config.min_repeated_literal_occurrences,
+            defaults.repetition.min_repeated_literal_occurrences,
+        );
+        self.min_data_clump_occurrences = configured_usize(
+            config.min_data_clump_occurrences,
+            defaults.repetition.min_data_clump_occurrences,
+        );
+    }
+
+    fn set_config_unity_thresholds(
+        &mut self,
+        config: ConfigUnityThresholdDefaults,
+        defaults: ThresholdSettings,
+    ) {
+        let values = defaults.unity;
+        self.max_unity_assembly_dependencies = configured_usize(
+            config.max_assembly_dependencies,
+            values.max_assembly_dependencies,
+        );
+        self.max_unity_scene_objects =
+            configured_usize(config.max_scene_objects, values.max_scene_objects);
+        self.max_unity_prefab_objects =
+            configured_usize(config.max_prefab_objects, values.max_prefab_objects);
+        self.max_unity_serialized_fields =
+            configured_usize(config.max_serialized_fields, values.max_serialized_fields);
+        self.max_unity_lifecycle_methods =
+            configured_usize(config.max_lifecycle_methods, values.max_lifecycle_methods);
     }
 
     fn apply(self, args: &mut ScanArgs) {

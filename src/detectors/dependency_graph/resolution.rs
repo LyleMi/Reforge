@@ -16,30 +16,41 @@ pub(super) fn build_dependency_graph(
     let mut unresolved_edges = 0;
 
     for source in sources {
-        graph.add_node(source.display_path.clone());
-        let language = Language::for_path(&source.path);
-        if language == Language::CSharp {
-            for target in resolve_csharp_dependencies(source, &csharp_types) {
-                if target != source.display_path {
-                    graph.add_edge(source.display_path.clone(), target);
-                }
-            }
-            continue;
-        }
-        let vue_source = crate::language::vue_script_source(&source.path, &source.source);
-        let dependency_source = vue_source.as_deref().unwrap_or(&source.source);
-        for specifier in import_specifiers(dependency_source, language) {
-            if let Some(target) =
-                resolve_import(source, specifier.as_str(), language, &root, &index)
-            {
-                graph.add_edge(source.display_path.clone(), target);
-            } else if is_local_specifier(specifier.as_str(), language) {
-                unresolved_edges += 1;
-            }
-        }
+        unresolved_edges +=
+            add_source_dependencies(source, &root, &index, &csharp_types, &mut graph);
     }
 
     (graph, unresolved_edges)
+}
+
+fn add_source_dependencies(
+    source: &SourceFile,
+    root: &Path,
+    index: &BTreeMap<PathBuf, String>,
+    csharp_types: &CSharpTypeIndex,
+    graph: &mut DependencyGraph,
+) -> usize {
+    graph.add_node(source.display_path.clone());
+    let language = Language::for_path(&source.path);
+    if language == Language::CSharp {
+        for target in resolve_csharp_dependencies(source, csharp_types) {
+            if target != source.display_path {
+                graph.add_edge(source.display_path.clone(), target);
+            }
+        }
+        return 0;
+    }
+    let vue_source = crate::language::vue_script_source(&source.path, &source.source);
+    let dependency_source = vue_source.as_deref().unwrap_or(&source.source);
+    let mut unresolved = 0;
+    for specifier in import_specifiers(dependency_source, language) {
+        match resolve_import(source, &specifier, language, root, index) {
+            Some(target) => graph.add_edge(source.display_path.clone(), target),
+            None if is_local_specifier(&specifier, language) => unresolved += 1,
+            None => {}
+        }
+    }
+    unresolved
 }
 
 fn is_local_specifier(specifier: &str, language: Language) -> bool {
@@ -267,39 +278,15 @@ fn resolve_csharp_dependencies(source: &SourceFile, index: &CSharpTypeIndex) -> 
     let identifiers = csharp_identifiers(&code)
         .into_iter()
         .collect::<std::collections::BTreeSet<_>>();
-    let mut imported_namespaces = Vec::new();
-    let mut aliases = Vec::new();
-    for line in code.lines() {
-        let trimmed = line.trim();
-        let Some(specifier) = csharp_import_specifier(trimmed) else {
-            continue;
-        };
-        if let Some((left, _)) = trimmed
-            .strip_prefix("using ")
-            .and_then(|value| value.split_once('='))
-        {
-            aliases.push((left.trim().to_string(), specifier));
-        } else {
-            imported_namespaces.push(specifier);
-        }
-    }
+    let (imported_namespaces, aliases) = csharp_imports(&code);
     let mut targets = std::collections::BTreeSet::new();
-    for namespace in declared_namespaces.iter().chain(imported_namespaces.iter()) {
-        if let Some(types) = index.by_namespace.get(namespace) {
-            for (type_name, paths) in types {
-                if identifiers.contains(type_name) {
-                    targets.extend(paths.iter().cloned());
-                }
-            }
-        }
-    }
-    for (alias, qualified) in aliases {
-        if identifiers.contains(&alias)
-            && let Some(paths) = index.by_qualified_name.get(&qualified)
-        {
-            targets.extend(paths.iter().cloned());
-        }
-    }
+    add_namespace_targets(
+        declared_namespaces.iter().chain(imported_namespaces.iter()),
+        &identifiers,
+        index,
+        &mut targets,
+    );
+    add_alias_targets(aliases, &identifiers, index, &mut targets);
     for (qualified, paths) in &index.by_qualified_name {
         if code.contains(qualified) {
             targets.extend(paths.iter().cloned());
@@ -308,77 +295,167 @@ fn resolve_csharp_dependencies(source: &SourceFile, index: &CSharpTypeIndex) -> 
     targets.into_iter().collect()
 }
 
-fn csharp_code_only(source: &str) -> String {
-    #[derive(Clone, Copy)]
-    enum State {
-        Code,
-        LineComment,
-        BlockComment,
-        String,
-        Character,
-    }
-
-    let mut output = String::with_capacity(source.len());
-    let mut chars = source.chars().peekable();
-    let mut state = State::Code;
-    while let Some(character) = chars.next() {
-        match state {
-            State::Code if character == '/' && chars.peek() == Some(&'/') => {
-                output.push(' ');
-                output.push(' ');
-                chars.next();
-                state = State::LineComment;
-            }
-            State::Code if character == '/' && chars.peek() == Some(&'*') => {
-                output.push(' ');
-                output.push(' ');
-                chars.next();
-                state = State::BlockComment;
-            }
-            State::Code if character == '"' => {
-                output.push(' ');
-                state = State::String;
-            }
-            State::Code if character == '\'' => {
-                output.push(' ');
-                state = State::Character;
-            }
-            State::Code => output.push(character),
-            State::LineComment if character == '\n' => {
-                output.push('\n');
-                state = State::Code;
-            }
-            State::LineComment => output.push(' '),
-            State::BlockComment if character == '*' && chars.peek() == Some(&'/') => {
-                output.push(' ');
-                output.push(' ');
-                chars.next();
-                state = State::Code;
-            }
-            State::BlockComment if character == '\n' => output.push('\n'),
-            State::BlockComment => output.push(' '),
-            State::String | State::Character if character == '\\' => {
-                output.push(' ');
-                if let Some(escaped) = chars.next() {
-                    output.push(if escaped == '\n' { '\n' } else { ' ' });
-                }
-            }
-            State::String if character == '"' => {
-                output.push(' ');
-                state = State::Code;
-            }
-            State::Character if character == '\'' => {
-                output.push(' ');
-                state = State::Code;
-            }
-            State::String | State::Character if character == '\n' => {
-                output.push('\n');
-                state = State::Code;
-            }
-            State::String | State::Character => output.push(' '),
+fn csharp_imports(code: &str) -> (Vec<String>, Vec<(String, String)>) {
+    let mut namespaces = Vec::new();
+    let mut aliases = Vec::new();
+    for line in code.lines() {
+        let trimmed = line.trim();
+        let Some(specifier) = csharp_import_specifier(trimmed) else {
+            continue;
+        };
+        match trimmed
+            .strip_prefix("using ")
+            .and_then(|value| value.split_once('='))
+        {
+            Some((left, _)) => aliases.push((left.trim().to_string(), specifier)),
+            None => namespaces.push(specifier),
         }
     }
+    (namespaces, aliases)
+}
+
+fn add_namespace_targets<'a>(
+    namespaces: impl Iterator<Item = &'a String>,
+    identifiers: &std::collections::BTreeSet<String>,
+    index: &CSharpTypeIndex,
+    targets: &mut std::collections::BTreeSet<String>,
+) {
+    for namespace in namespaces {
+        let Some(types) = index.by_namespace.get(namespace) else {
+            continue;
+        };
+        for (type_name, paths) in types {
+            if identifiers.contains(type_name) {
+                targets.extend(paths.iter().cloned());
+            }
+        }
+    }
+}
+
+fn add_alias_targets(
+    aliases: Vec<(String, String)>,
+    identifiers: &std::collections::BTreeSet<String>,
+    index: &CSharpTypeIndex,
+    targets: &mut std::collections::BTreeSet<String>,
+) {
+    for (alias, qualified) in aliases {
+        if !identifiers.contains(&alias) {
+            continue;
+        }
+        if let Some(paths) = index.by_qualified_name.get(&qualified) {
+            targets.extend(paths.iter().cloned());
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum CSharpLexState {
+    Code,
+    LineComment,
+    BlockComment,
+    String,
+    Character,
+}
+
+fn csharp_code_only(source: &str) -> String {
+    let mut output = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    let mut state = CSharpLexState::Code;
+    while let Some(character) = chars.next() {
+        state = mask_csharp_character(state, character, &mut chars, &mut output);
+    }
     output
+}
+
+fn mask_csharp_character(
+    state: CSharpLexState,
+    character: char,
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    output: &mut String,
+) -> CSharpLexState {
+    match state {
+        CSharpLexState::Code => mask_csharp_code(character, chars, output),
+        CSharpLexState::LineComment => mask_csharp_line_comment(character, output),
+        CSharpLexState::BlockComment => mask_csharp_block_comment(character, chars, output),
+        CSharpLexState::String => mask_csharp_quoted(character, '"', chars, output),
+        CSharpLexState::Character => mask_csharp_quoted(character, '\'', chars, output),
+    }
+}
+
+fn mask_csharp_code(
+    character: char,
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    output: &mut String,
+) -> CSharpLexState {
+    let next_state = match (character, chars.peek()) {
+        ('/', Some('/')) => Some(CSharpLexState::LineComment),
+        ('/', Some('*')) => Some(CSharpLexState::BlockComment),
+        ('"', _) => Some(CSharpLexState::String),
+        ('\'', _) => Some(CSharpLexState::Character),
+        _ => None,
+    };
+    if let Some(next_state) = next_state {
+        output.push(' ');
+        if matches!(
+            next_state,
+            CSharpLexState::LineComment | CSharpLexState::BlockComment
+        ) {
+            output.push(' ');
+            chars.next();
+        }
+        next_state
+    } else {
+        output.push(character);
+        CSharpLexState::Code
+    }
+}
+
+fn mask_csharp_line_comment(character: char, output: &mut String) -> CSharpLexState {
+    if character == '\n' {
+        output.push('\n');
+        CSharpLexState::Code
+    } else {
+        output.push(' ');
+        CSharpLexState::LineComment
+    }
+}
+
+fn mask_csharp_block_comment(
+    character: char,
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    output: &mut String,
+) -> CSharpLexState {
+    if character == '*' && chars.peek() == Some(&'/') {
+        output.push_str("  ");
+        chars.next();
+        CSharpLexState::Code
+    } else {
+        output.push(if character == '\n' { '\n' } else { ' ' });
+        CSharpLexState::BlockComment
+    }
+}
+
+fn mask_csharp_quoted(
+    character: char,
+    quote: char,
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    output: &mut String,
+) -> CSharpLexState {
+    if character == '\\' {
+        output.push(' ');
+        if let Some(escaped) = chars.next() {
+            output.push(if escaped == '\n' { '\n' } else { ' ' });
+        }
+    } else {
+        output.push(if character == '\n' { '\n' } else { ' ' });
+    }
+    if character == quote || character == '\n' {
+        CSharpLexState::Code
+    } else if quote == '"' {
+        CSharpLexState::String
+    } else {
+        CSharpLexState::Character
+    }
 }
 
 fn csharp_declared_namespaces(source: &str) -> Vec<String> {

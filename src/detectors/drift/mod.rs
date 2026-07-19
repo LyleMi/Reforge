@@ -242,40 +242,12 @@ fn collect_type_shapes(file: &SourceFile, signals: &mut DriftSignals) {
         };
 
         let start_line = index + 1;
-        let mut fields = BTreeSet::new();
-        if braced {
-            let mut depth = brace_delta(lines[index]);
-            for field in field_names_from_line(lines[index]) {
-                fields.insert(field);
-            }
-            let mut scan_index = index + 1;
-            while scan_index < lines.len() {
-                for field in field_names_from_line(lines[scan_index]) {
-                    fields.insert(field);
-                }
-                depth += brace_delta(lines[scan_index]);
-                scan_index += 1;
-                if depth <= 0 {
-                    break;
-                }
-            }
-            index = scan_index;
+        let (fields, next_index) = if braced {
+            braced_type_fields(&lines, index)
         } else {
-            let class_indent = leading_spaces(lines[index]);
-            let mut scan_index = index + 1;
-            while scan_index < lines.len() {
-                let line = lines[scan_index];
-                let trimmed = line.trim();
-                if !trimmed.is_empty() && leading_spaces(line) <= class_indent {
-                    break;
-                }
-                for field in field_names_from_line(line) {
-                    fields.insert(field);
-                }
-                scan_index += 1;
-            }
-            index = scan_index;
-        }
+            indented_type_fields(&lines, index)
+        };
+        index = next_index;
 
         if fields.len() >= 3 {
             signals.type_shapes.push(TypeShape {
@@ -288,6 +260,36 @@ fn collect_type_shapes(file: &SourceFile, signals: &mut DriftSignals) {
             });
         }
     }
+}
+
+fn braced_type_fields(lines: &[&str], index: usize) -> (BTreeSet<String>, usize) {
+    let mut fields: BTreeSet<String> = field_names_from_line(lines[index]).into_iter().collect();
+    let mut depth = brace_delta(lines[index]);
+    let mut scan_index = index + 1;
+    while scan_index < lines.len() {
+        fields.extend(field_names_from_line(lines[scan_index]));
+        depth += brace_delta(lines[scan_index]);
+        scan_index += 1;
+        if depth <= 0 {
+            break;
+        }
+    }
+    (fields, scan_index)
+}
+
+fn indented_type_fields(lines: &[&str], index: usize) -> (BTreeSet<String>, usize) {
+    let class_indent = leading_spaces(lines[index]);
+    let mut fields = BTreeSet::new();
+    let mut scan_index = index + 1;
+    while scan_index < lines.len() {
+        let line = lines[scan_index];
+        if !line.trim().is_empty() && leading_spaces(line) <= class_indent {
+            break;
+        }
+        fields.extend(field_names_from_line(line));
+        scan_index += 1;
+    }
+    (fields, scan_index)
 }
 
 fn collect_config_keys(file: &SourceFile, signals: &mut DriftSignals) {
@@ -383,6 +385,9 @@ fn collect_boundary_bypasses(
     boundaries: BoundaryInventory,
     signals: &mut DriftSignals,
 ) {
+    if is_test_source(&file.path) {
+        return;
+    }
     let rules = active_bypass_rules(boundaries, &file.path);
     if rules.is_empty() {
         return;
@@ -409,7 +414,7 @@ fn collect_line_boundary_bypasses(
     line: &str,
     line_number: usize,
 ) {
-    let lowered = strip_line_comment(line).to_ascii_lowercase();
+    let lowered = code_without_quoted_literals(strip_line_comment(line)).to_ascii_lowercase();
 
     for rule in rules {
         if contains_any(&lowered, rule.patterns) {
@@ -527,15 +532,7 @@ fn duplicate_type_shape_findings(
             continue;
         }
 
-        let mut group = vec![ordered[index].clone()];
-        for candidate_index in index + 1..ordered.len() {
-            if used[candidate_index] {
-                continue;
-            }
-            if field_overlap(&ordered[index].fields, &ordered[candidate_index].fields) >= 0.75 {
-                group.push(ordered[candidate_index].clone());
-            }
-        }
+        let group = similar_shape_group(&ordered, &used, index);
 
         let unique_files = group
             .iter()
@@ -546,44 +543,63 @@ fn duplicate_type_shape_findings(
             continue;
         }
 
-        for shape in &group {
-            if let Some(position) = ordered.iter().position(|item| {
-                item.occurrence.path == shape.occurrence.path
-                    && item.occurrence.line == shape.occurrence.line
-            }) {
-                used[position] = true;
-            }
-        }
-
-        let fields = shared_fields(&group);
-        let representative = &group[0].occurrence;
-        findings.push(crate::scanner::Finding::from(
-            FindingInput::new(
-                FindingKind::DuplicateTypeShape,
-                representative.path.clone(),
-                Some(representative.line),
-                format!(
-                    "{} type shapes share fields: {}",
-                    group.len(),
-                    fields.into_iter().take(6).collect::<Vec<_>>().join(", ")
-                ),
-                vec![FindingMetric::threshold(
-                    crate::model::MetricId::GroupSize,
-                    group.len(),
-                    threshold,
-                    "type shapes",
-                )],
-            )
-            .with_related_locations(
-                group
-                    .iter()
-                    .map(|shape| related_location(&shape.occurrence))
-                    .collect(),
-            ),
-        ));
+        mark_used_shapes(&ordered, &group, &mut used);
+        findings.push(duplicate_shape_finding(&group, threshold));
     }
 
     findings
+}
+
+fn similar_shape_group(ordered: &[TypeShape], used: &[bool], index: usize) -> Vec<TypeShape> {
+    let mut group = vec![ordered[index].clone()];
+    for candidate_index in index + 1..ordered.len() {
+        if !used[candidate_index]
+            && field_overlap(&ordered[index].fields, &ordered[candidate_index].fields) >= 0.75
+        {
+            group.push(ordered[candidate_index].clone());
+        }
+    }
+    group
+}
+
+fn mark_used_shapes(ordered: &[TypeShape], group: &[TypeShape], used: &mut [bool]) {
+    for shape in group {
+        if let Some(position) = ordered.iter().position(|item| {
+            item.occurrence.path == shape.occurrence.path
+                && item.occurrence.line == shape.occurrence.line
+        }) {
+            used[position] = true;
+        }
+    }
+}
+
+fn duplicate_shape_finding(group: &[TypeShape], threshold: usize) -> Finding {
+    let fields = shared_fields(group);
+    let representative = &group[0].occurrence;
+    crate::scanner::Finding::from(
+        FindingInput::new(
+            FindingKind::DuplicateTypeShape,
+            representative.path.clone(),
+            Some(representative.line),
+            format!(
+                "{} type shapes share fields: {}",
+                group.len(),
+                fields.into_iter().take(6).collect::<Vec<_>>().join(", ")
+            ),
+            vec![FindingMetric::threshold(
+                crate::model::MetricId::GroupSize,
+                group.len(),
+                threshold,
+                "type shapes",
+            )],
+        )
+        .with_related_locations(
+            group
+                .iter()
+                .map(|shape| related_location(&shape.occurrence))
+                .collect(),
+        ),
+    )
 }
 
 fn generic_bucket_findings(

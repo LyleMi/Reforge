@@ -1,0 +1,412 @@
+use super::*;
+use crate::model::{
+    DependencyGraphEdge, DependencyGraphNode, DependencyGraphSnapshot, Hotspot, HotspotLevel,
+    MetricId,
+};
+use crate::scanner::{
+    ChurnFileMetric, ChurnSummary, FileRawMetric, FindingInput, FindingMetric, MetricsSummary,
+    RawMetrics, RelatedLocation, SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary,
+    SuppressionSummary, severity_for_priority,
+};
+
+fn report(findings: Vec<Finding>) -> ScanReport {
+    let mut findings = findings;
+    let issues = crate::scoring::cluster_findings(&mut findings);
+    ScanReport {
+        schema_version: SCAN_REPORT_SCHEMA_VERSION,
+        summary: ScanSummary {
+            scanned_files: 2,
+            finding_count: findings.len(),
+            issue_count: findings.len(),
+            hotspot_count: 0,
+            similar_function_group_count: findings
+                .iter()
+                .filter(|finding| finding.kind == FindingKind::SimilarFunctions)
+                .count(),
+            duration_ms: 1,
+            hotspot_model: crate::cli::HotspotModel::Hybrid,
+            churn: ChurnSummary {
+                mode: crate::cli::ChurnMode::Auto,
+                enabled: false,
+                status: "unavailable".to_string(),
+                reason: None,
+                window_days: 180,
+                max_commit_lines: 2_000,
+            },
+        },
+        stats: ScanStats::default(),
+        metrics_summary: MetricsSummary {
+            directories: BTreeMap::new(),
+            files: BTreeMap::new(),
+            functions: BTreeMap::new(),
+            types: BTreeMap::new(),
+            churn: BTreeMap::new(),
+        },
+        raw_metrics: RawMetrics::default(),
+        raw_metric_manifest: Vec::new(),
+        dependency_graph: DependencyGraphSnapshot::default(),
+        unity_project: crate::model::UnityProjectReport::default(),
+        hotspots: Vec::new(),
+        suppression_summary: SuppressionSummary::default(),
+        coverage_manifest: Vec::new(),
+        coverage_summary: crate::model::CoverageSummary::default(),
+        detector_execution: Vec::new(),
+        raw_metric_coverage: Vec::new(),
+        scoring_policy: crate::model::EffectiveScoringPolicy::builtin(),
+        issues,
+        detector_manifest: Vec::new(),
+        findings,
+    }
+}
+
+fn report_with_hotspots(findings: Vec<Finding>, hotspots: Vec<Hotspot>) -> ScanReport {
+    let mut report = report(findings);
+    report.summary.hotspot_count = hotspots.len();
+    report.hotspots = hotspots;
+    report
+}
+
+#[test]
+fn human_report_renders_cluster_primary_once_and_keeps_raw_signal_count() {
+    let mut findings = vec![
+        make_finding(
+            FindingKind::ComplexFunction,
+            "src/a.rs",
+            Some(10),
+            "complex",
+            vec![FindingMetric::threshold(
+                MetricId::FunctionComplexity,
+                20,
+                15,
+                "complexity",
+            )],
+            Vec::new(),
+        ),
+        make_finding(
+            FindingKind::DeepNesting,
+            "src/a.rs",
+            Some(10),
+            "nested",
+            vec![FindingMetric::threshold(
+                MetricId::FunctionNestingDepth,
+                6,
+                4,
+                "levels",
+            )],
+            Vec::new(),
+        ),
+    ];
+    let clusters = crate::scoring::cluster_findings(&mut findings);
+    let mut scan_report = report(findings);
+    scan_report.summary.issue_count = 1;
+    scan_report.issues = clusters;
+
+    let output = render_human_report(&scan_report);
+
+    assert!(output.contains("Issues               1"));
+    assert!(output.contains("Raw signals          2"));
+    assert!(output.contains("cluster 2 raw signals"));
+    assert_eq!(output.matches("src/a.rs:10").count(), 1);
+}
+
+fn make_finding(
+    kind: FindingKind,
+    path: impl Into<String>,
+    line: Option<usize>,
+    message: impl Into<String>,
+    metrics: Vec<FindingMetric>,
+    related_locations: Vec<RelatedLocation>,
+) -> Finding {
+    Finding::from(
+        FindingInput::new(kind, path, line, message, metrics)
+            .with_related_locations(related_locations),
+    )
+}
+
+fn large_file(path: &str, lines: usize) -> Finding {
+    make_finding(
+        FindingKind::LargeFile,
+        path,
+        Some(1),
+        "",
+        vec![FindingMetric::threshold(
+            MetricId::FileLoc,
+            lines,
+            800,
+            "lines",
+        )],
+        Vec::new(),
+    )
+}
+
+#[test]
+fn maps_priority_to_severity() {
+    assert_eq!(severity_for_priority(34), Severity::Info);
+    assert_eq!(severity_for_priority(35), Severity::Warning);
+    assert_eq!(severity_for_priority(69), Severity::Warning);
+    assert_eq!(severity_for_priority(70), Severity::Critical);
+}
+
+#[test]
+fn calculates_threshold_excess_ratio() {
+    let metric = FindingMetric::threshold(MetricId::FileLoc, 1_200, 800, "lines");
+
+    assert_eq!(metric.threshold, Some(800));
+    assert_eq!(metric.excess_ratio, Some(1.5));
+}
+
+#[test]
+fn spread_factor_increases_score_for_cross_file_groups() {
+    let local = make_finding(
+        FindingKind::SimilarFunctions,
+        "src/a.rs",
+        Some(1),
+        "similar",
+        vec![FindingMetric::threshold(
+            MetricId::GroupSize,
+            3,
+            3,
+            "functions",
+        )],
+        vec![RelatedLocation {
+            path: "src/a.rs".to_string(),
+            line: 1,
+            name: None,
+        }],
+    );
+    let spread = make_finding(
+        FindingKind::SimilarFunctions,
+        "src/a.rs",
+        Some(1),
+        "similar",
+        vec![FindingMetric::threshold(
+            MetricId::GroupSize,
+            3,
+            3,
+            "functions",
+        )],
+        vec![
+            RelatedLocation {
+                path: "src/a.rs".to_string(),
+                line: 1,
+                name: None,
+            },
+            RelatedLocation {
+                path: "src/b.rs".to_string(),
+                line: 1,
+                name: None,
+            },
+            RelatedLocation {
+                path: "src/c.rs".to_string(),
+                line: 1,
+                name: None,
+            },
+        ],
+    );
+
+    assert!(spread.priority > local.priority);
+}
+
+#[test]
+fn large_type_scores_from_strongest_metric() {
+    let moderate = make_finding(
+        FindingKind::LargeType,
+        "src/types.rs",
+        Some(1),
+        "large type",
+        vec![
+            FindingMetric::threshold(MetricId::TypeLoc, 260, 250, "lines"),
+            FindingMetric::threshold(MetricId::TypeMemberCount, 60, 30, "members"),
+        ],
+        Vec::new(),
+    );
+    let severe = make_finding(
+        FindingKind::LargeType,
+        "src/types.rs",
+        Some(1),
+        "large type",
+        vec![
+            FindingMetric::threshold(MetricId::TypeLoc, 260, 250, "lines"),
+            FindingMetric::threshold(MetricId::TypeMemberCount, 120, 30, "members"),
+        ],
+        Vec::new(),
+    );
+
+    assert!(severe.priority > moderate.priority);
+    assert_eq!(moderate.severity, Severity::Warning);
+    assert_eq!(severe.severity, Severity::Warning);
+}
+
+#[test]
+fn renders_empty_human_report_clearly() {
+    let output = render_human_report(&report(Vec::new()));
+
+    assert!(output.contains("Reforge scan"));
+    assert!(output.contains("2 files"));
+    assert!(output.contains("Result"));
+    assert!(output.contains("Issues               0"));
+    assert!(output.contains("Raw signals          0  critical 0 | warning 0 | info 0"));
+    assert!(output.contains("Scan details"));
+    assert!(output.contains("No threshold signals found."));
+}
+
+#[test]
+fn human_report_sorts_by_priority_and_renders_priority_confidence_and_metrics() {
+    let critical = make_finding(
+        FindingKind::ComplexFunction,
+        "src/critical.rs",
+        Some(10),
+        "complex",
+        vec![FindingMetric::threshold(
+            MetricId::FunctionComplexity,
+            30,
+            15,
+            "complexity",
+        )],
+        Vec::new(),
+    );
+    let warning = large_file("src/warning.rs", 1_200);
+    let info = make_finding(
+        FindingKind::DebtMarker,
+        "src/info.rs",
+        Some(3),
+        "technical-debt marker found",
+        Vec::new(),
+        Vec::new(),
+    );
+
+    let output = render_human_report(&report(vec![info, warning, critical]));
+
+    let critical_index = output.find("src/critical.rs:10").unwrap();
+    let warning_index = output.find("src/warning.rs:1").unwrap();
+    let info_index = output.find("src/info.rs:3").unwrap();
+    assert!(critical_index < warning_index);
+    assert!(warning_index < info_index);
+    assert!(output.contains("warning  p=52 c=0.90"));
+    assert!(output.matches("c=0.90").count() >= 2);
+    assert!(output.contains("Signal mix"));
+    assert!(output.contains("large file"));
+    assert!(output.contains("metrics file.loc=1200/800 lines"));
+    assert!(output.contains("rank cognitive-load signal, high action probability"));
+}
+
+#[test]
+fn renders_colored_human_report_when_enabled() {
+    let output = render_human_report_colored(&report(vec![large_file("src/a.rs", 900)]), true);
+
+    assert!(output.contains("\u{1b}[1;36mReforge scan\u{1b}[0m"));
+    assert!(output.contains("\u{1b}[1;33mwarning \u{1b}[0m p=42 c=0.90"));
+}
+
+#[test]
+fn renders_hotspots_even_when_no_findings() {
+    let output = render_human_report(&report_with_hotspots(
+        Vec::new(),
+        vec![Hotspot {
+            level: HotspotLevel::File,
+            path: "src/hot.rs".to_string(),
+            line: Some(12),
+            name: None,
+            priority: 61,
+            severity: Severity::Warning,
+            static_risk: 0.4,
+            churn_risk: 0.9,
+            reason: "hybrid model: churn dominates".to_string(),
+        }],
+    ));
+
+    assert!(output.contains("Watchlist            1 hotspots"));
+    assert!(output.contains("Watchlist\n"));
+    assert!(output.contains("warning   61  src/hot.rs:12"));
+    assert!(output.contains("No threshold signals found."));
+}
+
+#[test]
+fn renders_suppression_summary_when_findings_are_suppressed() {
+    let mut scan_report = report(Vec::new());
+    scan_report.suppression_summary.suppressed_count = 2;
+    scan_report
+        .suppression_summary
+        .suppressed_by_severity
+        .insert(Severity::Warning, 1);
+    scan_report
+        .suppression_summary
+        .suppressed_by_severity
+        .insert(Severity::Info, 1);
+    scan_report.suppression_summary.highest_suppressed_priority = Some(58);
+
+    let output = render_human_report(&scan_report);
+
+    assert!(output.contains(
+        "Suppressed           2 findings (highest p=58); critical 0 | warning 1 | info 1"
+    ));
+    assert!(output.contains("No threshold signals found."));
+}
+
+#[test]
+fn renders_human_baseline_diff_summary_and_selected_findings() {
+    let same = large_file("src/same.rs", 900);
+    let mut old_worse = large_file("src/worse.rs", 900);
+    let worse = large_file("src/worse.rs", 1_300);
+    let new = large_file("src/new.rs", 900);
+    let resolved = large_file("src/resolved.rs", 900);
+    old_worse.priority = old_worse.priority.saturating_sub(1);
+    let baseline = report(vec![same.clone(), old_worse, resolved]);
+    let scan_report = report(vec![same, worse, new]);
+    let diff = crate::baseline::diff_issues(
+        &scan_report.issues,
+        &baseline,
+        crate::cli::BaselineShow::NewOrWorse,
+    );
+
+    let output = render_human_report_with_baseline(&scan_report, &diff);
+
+    assert!(output.contains("Baseline diff"));
+    assert!(
+        output
+            .lines()
+            .any(|line| line.contains("New") && line.ends_with("1"))
+    );
+    assert!(
+        output
+            .lines()
+            .any(|line| line.contains("Worse") && line.ends_with("1"))
+    );
+    assert!(
+        output
+            .lines()
+            .any(|line| line.contains("Same") && line.ends_with("1"))
+    );
+    assert!(
+        output
+            .lines()
+            .any(|line| line.contains("Resolved") && line.ends_with("1"))
+    );
+    assert!(output.contains("Issues (new or worse)"));
+    assert!(output.contains("worse    warning"));
+    assert!(output.contains("new      warning"));
+    assert!(output.contains("src/worse.rs:1"));
+    assert!(output.contains("src/new.rs:1"));
+    assert!(!output.contains("src/same.rs:1"));
+    assert!(!output.contains("src/resolved.rs:1"));
+}
+
+#[test]
+fn renders_human_baseline_diff_when_selected_findings_are_empty() {
+    let same = large_file("src/same.rs", 900);
+    let resolved = large_file("src/resolved.rs", 900);
+    let baseline = report(vec![same.clone(), resolved]);
+    let scan_report = report(vec![same]);
+    let diff = crate::baseline::diff_issues(
+        &scan_report.issues,
+        &baseline,
+        crate::cli::BaselineShow::New,
+    );
+
+    let output = render_human_report_with_baseline(&scan_report, &diff);
+
+    assert!(output.contains("Baseline diff"));
+    assert!(output.contains("Issues (new)"));
+    assert!(output.contains("No issues matched --show new."));
+    assert!(!output.contains("src/same.rs:1"));
+}
