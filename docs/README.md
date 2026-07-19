@@ -2,7 +2,7 @@
   <img src="assets/reforge-logo.png" alt="Reforge logo">
   <div>
     <h1>Reforge</h1>
-    <p>A source-tree scanner for maintainability signals, refactoring priorities, and codebase drift.</p>
+    <p>A source-tree scanner for maintainability evidence, refactoring issues, and codebase drift.</p>
     <div class="docs-actions">
       <a href="user-guide.html">Start scanning</a>
       <a href="sample/index.html">Open the sample report</a>
@@ -12,7 +12,7 @@
 </div>
 
 Reforge collects directory, file, function, type, dependency, and optional git churn
-metrics before deriving hotspots and findings. It is designed for local audits,
+metrics before deriving issues, findings, coverage, and agent evidence. It is designed for local audits,
 CI gates, and evidence-led refactoring work. It is not a quality score, bug
 detector, or defect probability model.
 
@@ -22,8 +22,8 @@ detector, or defect probability model.
     <span>Threshold and detector signals that merit review.</span>
   </div>
   <div class="hotspots">
-    <strong>Hotspots</strong>
-    <span>A ranked watchlist combining static pressure and churn.</span>
+    <strong>Coverage</strong>
+    <span>Execution receipts and explicit observed, partial, or unavailable analysis.</span>
   </div>
   <div class="metrics">
     <strong>Metrics</strong>
@@ -54,13 +54,13 @@ cargo run -- scan . --output-file reforge-report.html --progress never
   troubleshoot common failures.
 - [Configuration](configuration.md): configure thresholds, exclusions,
   suppressions, churn, and precedence.
-- [Report Schema](report-schema.md): consume JSON/YAML schema 20 and SARIF 2.1.0.
+- [Report Schema](report-schema.md): consume JSON/YAML schema 21 and SARIF 2.1.0.
 - [HTML Report](report-app.md): build and use the self-contained visual report.
 
 ### Understand Results
 
-- [Metrics Model](metrics-model.md): interpret priority, confidence, severity,
-  percentiles, and hotspot ranking.
+- [Metrics Model](metrics-model.md): interpret raw metrics, percentiles,
+  findings, issues, coverage, and agent evidence.
 - [Detector Reference](detectors.md): review every detector family and its
   thresholds or heuristics.
 - [Calibration Samples](calibration-samples.md): inspect the sample set used to
@@ -70,6 +70,9 @@ cargo run -- scan . --output-file reforge-report.html --progress never
 
 - [Architecture](architecture.md): follow the scan pipeline, module boundaries,
   and extension points.
+- [Agent Workflow Research](agent-workflows.md): review the current agent
+  integration boundary, reference-workflow findings, and phased implementation
+  plan for safe, resumable refactoring assistance.
 - [Contributing](contributing.md): set up local development and validate changes.
 - [Release](release.md): prepare and package a release.
 

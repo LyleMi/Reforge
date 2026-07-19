@@ -49,7 +49,7 @@ cargo run -- config show . --output yaml
 
 `config validate` and `config show` parse `reforge.toml` but do not collect
 source files, run detectors, or read git churn. The effective thresholds shown
-by `config show` are used by both threshold findings and static hotspot risk.
+by `config show` are used by detector findings.
 
 ## Precedence
 
@@ -66,12 +66,11 @@ Boolean flags such as `--include-hidden`, `--include-generated`,
 `reforge.toml`.
 
 CI workflow flags such as `--baseline`, `--baseline-mode`, `--show`,
-`--fail-on`, `--output`, `--output-file`, `--progress`, and `--color` are also
-CLI-only.
+`--fail-on-findings`, `--output`, `--output-file`, `--progress`, and `--color`
+are also CLI-only.
 
-Finding filters such as `--only`, `--exclude-detector`, `--min-priority`, and
-`--severity` are CLI-only. Long-lived suppressions can be recorded in
-`reforge.toml`.
+Finding filters `--only` and `--exclude-detector` are CLI-only. Long-lived
+suppressions can be recorded in `reforge.toml`.
 
 ## Example
 
@@ -100,8 +99,6 @@ min-repeated-literal-occurrences = 5
 min-data-clump-occurrences = 4
 
 churn = "auto"
-hotspot-model = "hybrid"
-scoring-policy = "policies/accepted-policy.json"
 churn-window-days = 180
 churn-max-commit-lines = 2000
 
@@ -151,15 +148,13 @@ reason = "legacy migration tracked separately"
 | `min-repeated-literal-occurrences` | `12` | `--min-repeated-literal-occurrences` |
 | `min-data-clump-occurrences` | `4` | `--min-data-clump-occurrences` |
 | `churn` | `auto` | `--churn` |
-| `hotspot-model` | `hybrid` | `--hotspot-model` |
-| `scoring-policy` | none | `--scoring-policy` |
 | `churn-window-days` | `180` | `--churn-window-days` |
 | `churn-max-commit-lines` | `2000` | `--churn-max-commit-lines` |
 | `ignore-paths` | `[]` | `--ignore-path` |
 | `suppressions` | `[]` | none |
 
 `preset` accepts `strict`, `balanced`, or `relaxed`. `churn` accepts `auto`,
-`on`, or `off`. `hotspot-model` accepts `static`, `churn`, or `hybrid`.
+`on`, or `off`.
 
 ## Choosing Parameters
 
@@ -245,20 +240,12 @@ defaults rather than statistically universal cutoffs. Shorten the window for
 fast-moving products, lengthen it for stable libraries, and adjust the commit
 limit when legitimate repository changes are routinely larger or smaller.
 
-For a new policy, begin with `balanced`, keep `--churn auto` and
-`--hotspot-model hybrid` for exploratory audits, and use
-`--churn off --hotspot-model static` when comparing deterministic reports.
+For a new policy, begin with `balanced`, keep `--churn auto` for exploratory
+audits, and use `--churn off` when comparing reproducible source-only reports.
 Review findings with maintainers across several representative repositories,
-then validate proposed changes on a holdout repository. Prefer a baseline with
-`new-or-worse` for CI so adopting a policy does not turn unchanged legacy
-signals into an immediate blocking backlog.
-
-Only accepted policy v1 files can be loaded. A CLI path resolves from the
-current working directory and takes precedence over configuration. A relative
-`reforge.toml` path resolves from the configuration file directory. Unknown
-fields or detector kinds, invalid reliability ranges, weights that do not sum
-to one, version mismatch, non-accepted status, or fingerprint mismatch are
-fatal configuration errors.
+then validate proposed changes on a holdout repository. For CI, capture a
+schema 21 baseline and use `--baseline-mode new --fail-on-findings` so
+unchanged legacy evidence remains visible without blocking every change.
 
 ## Ignored Paths
 
@@ -286,8 +273,7 @@ generated/dependency directory list; it does not override git ignore rules.
 ## Suppressions
 
 Use suppressions for intentional findings that should be absent from reports
-and CI gates. Suppressions remove matching entries from `findings`; they do not
-remove hotspot watchlist entries, because hotspots are ranked from raw metrics.
+and CI gates. Suppressions remove matching entries from `findings`.
 Suppression summary context should stay visible in reviews so a report with
 zero findings is read as zero unsuppressed findings, not as proof that no
 maintainability signals were measured.

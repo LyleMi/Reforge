@@ -132,8 +132,8 @@ and ambiguous language-specific module systems are ignored rather than guessed.
 - `happy_path_only_tests`: a test file has at least three test cases with
   assertion evidence but no negative, error, or boundary evidence.
 
-Repeated-literal confidence is lower when the literal appears only in tests or
-looks like report/fixture text.
+Repeated-literal detection filters many report/fixture-like values, but
+test-only and protocol literals remain important confounders to inspect.
 
 ## Drift Signals
 
@@ -161,7 +161,7 @@ looks like report/fixture text.
   migration boundary.
 
 Drift detectors use path and identifier heuristics, so grouped cross-file
-findings deserve more weight than isolated info-level findings.
+findings generally provide stronger evidence than isolated matches.
 
 ## Documentation Signals
 
@@ -174,8 +174,8 @@ documentation set.
   CLI, configuration, output, and troubleshooting are missing.
 - `missing_report_schema_docs`: JSON/YAML fields and compatibility
   expectations are undocumented.
-- `missing_metrics_model_docs`: raw metrics, findings, hotspots, priority, or
-  confidence are undocumented.
+- `missing_metrics_model_docs`: raw metrics, findings, issues, coverage, or
+  agent evidence are undocumented.
 - `missing_architecture_docs`: scan pipeline, detector boundaries, data flow,
   or extension points are undocumented.
 - `stale_cli_documentation`: docs mention CLI flags but omit current flags.
@@ -187,21 +187,20 @@ guide.
 
 ## Interpreting Detector Output
 
-Prefer findings with high priority, high confidence, cross-file spread, and
-clear related locations. Treat low-confidence heuristic findings as prompts for
-inspection, not automatic refactor instructions.
+Choose findings using repository goals, metric excess, cross-file spread,
+detector precision risk, agent context/test-reachability evidence, and clear
+related locations. Treat heuristic findings as prompts for inspection, not
+automatic refactor instructions.
 
-`findings=0` means no findings remain after scoring, filters, and
+`findings=0` means no findings remain after detector filters and
 suppressions. It does not prove that the scanned code is healthy, bug-free, or
-free of maintainability pressure. Check hotspot watchlists, raw metrics, and
-suppression summary context when explaining an empty finding list.
+free of maintainability pressure. Check coverage, raw metrics, agent evidence,
+and suppression summary context when explaining an empty finding list.
 
 ## Filtering and Suppression
 
 Finding-kind controls use the snake-case detector names above. `--only` keeps
-only selected kinds, `--exclude-detector` removes selected kinds,
-`--min-priority` keeps findings at or above the final scored priority, and
-`--severity warning` keeps warning and critical findings.
+only selected kinds and `--exclude-detector` removes selected kinds.
 
 Intentional findings can be suppressed in source comments with
 `reforge:ignore`, `reforge:ignore-next-line`, or `reforge:ignore-file`.
@@ -210,6 +209,6 @@ reason. Long-lived suppressions can also be recorded in `reforge.toml` with
 `[[suppressions]]` entries.
 
 Suppressions remove matching findings from reports and CI gate selection, but
-they do not remove raw metrics or hotspot watchlist entries. Suppression
+they do not remove raw metrics. Suppression
 summary information exists to preserve that audit context and prevent zero
 unsuppressed findings from being read as zero observed signals.

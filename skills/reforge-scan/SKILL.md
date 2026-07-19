@@ -1,225 +1,189 @@
 ---
 name: reforge-scan
-description: Run the Reforge Rust CLI against source repositories to detect refactoring signals, code drift, similar functions, large files, structural complexity, TODO/FIXME clusters, mixed naming styles, documentation drift, churn-backed hotspots, and agent-written-code drift. Use when Codex is asked to audit a repository for maintainability issues, identify cleanup priorities, produce a human, HTML, JSON, YAML, or SARIF Reforge report, compare refactoring risk across modules, tune a reforge.toml scan configuration, configure CI gates or baselines, or recommend concrete refactors from Reforge findings.
+description: Run the Reforge Rust CLI against source repositories to collect maintainability and refactoring evidence, including structural thresholds, similarity, dependency and concept drift, documentation drift, Unity project signals, coverage receipts, and agent context/test-reachability evidence. Use when Codex is asked to audit a repository, explain Reforge findings, produce human/HTML/JSON/YAML/SARIF output, tune reforge.toml, or configure schema 21 baseline gates.
 ---
 
 # Reforge Scan
 
 ## Workflow
 
-Use Reforge as an evidence-gathering pass before proposing broad cleanup or refactoring work.
+Use Reforge as an evidence-gathering pass before proposing broad cleanup or
+refactoring work.
 
-1. Locate the target repository. Default to the current working directory unless the user provides a path.
-2. Prefer an installed `reforge` binary when available:
+1. Locate the target repository. Default to the current working directory
+   unless the user provides a path.
+2. Prefer an installed `reforge` binary:
 
 ```bash
 reforge scan <target-repo> --output json --output-file reforge-report.json --progress never
 ```
 
-3. If Reforge is not installed and the current working directory or a known checkout is the Reforge source repository, run it from that checkout:
+3. If Reforge is not installed and a source checkout is available, run it from
+   that checkout:
 
 ```bash
 cargo run --manifest-path <reforge-repo>/Cargo.toml -- scan <target-repo> --output json --output-file reforge-report.json --progress never
 ```
 
-4. If no installed binary or source checkout is available, ask the user to install the CLI or provide a Reforge checkout path before scanning.
-5. Read the report and group issues and findings by user impact, blast radius, detection reliability, and interpretation reliability. Treat high-severity threshold findings and large repeated groups as stronger signals than one-off info findings.
-6. Recommend scoped refactors. Prefer local, behavior-preserving cleanup unless the report shows cross-module duplication or drift.
-7. If making code changes, run the relevant project tests after edits. Reforge findings are maintainability and refactoring signals, not proof that a refactor is safe, that code is low quality, or that a bug exists.
+4. If neither is available, ask the user to install the CLI or provide a
+   checkout path.
+5. Check coverage and suppression context before interpreting an empty finding
+   list. Use `issues` for decision units and `findings` for atomic evidence.
+6. Scope recommendations with `agent_evidence`: context closure, unresolved
+   local dependencies, evidence dispersion, and reachable tests describe the
+   likely inspection and verification surface.
+7. If the user asks for code changes, inspect the relevant code before editing
+   and run the repository's tests plus a follow-up Reforge scan. A finding is a
+   refactoring prompt, not proof of a bug or proof that a refactor is safe.
 
 ## Running Reforge
 
-When `--output` is omitted, `--output-file` extensions `.json`, `.yaml`, and `.yml` select machine-readable output automatically:
+When `--output` is omitted, a recognized `--output-file` extension selects the
+format:
 
 ```bash
 reforge scan . --output-file reforge-report.json --progress never
 ```
 
-Pass additional scan flags directly after the target path:
+Pass thresholds directly after the target path:
 
 ```bash
 reforge scan . --output json --output-file reforge-report.json --progress never --max-file-lines 600 --function-similarity 0.9
 ```
 
-To tighten structural checks:
-
-```bash
-reforge scan . --progress never --max-function-lines 60 --max-function-complexity 10 --max-nesting-depth 3
-```
-
-To use built-in threshold defaults before per-threshold overrides:
+Use a built-in threshold preset:
 
 ```bash
 reforge scan . --preset strict --progress never
 ```
 
-For quick human review:
+Produce quick human or static HTML output:
 
 ```bash
 reforge scan . --output human --progress never
-```
-
-For a static visual report:
-
-```bash
 reforge scan . --output html --output-file reforge-report.html --progress never
 ```
 
-For CI code-scanning integrations:
+Produce automation formats:
 
 ```bash
+reforge scan . --output json --progress never
+reforge scan . --output yaml --output-file reforge-report.yaml --progress never
 reforge scan . --output sarif --output-file reforge-report.sarif --progress never
 ```
 
-To remove test files and test directories from the scan entirely:
+Disable git history for a reproducible source-only observation pass:
 
 ```bash
-reforge scan . --exclude-tests --progress never
+reforge scan . --churn off --output json --progress never
 ```
 
-For CI or agent-to-agent handoff, prefer JSON or YAML with progress disabled:
-
-```bash
-reforge scan . --output yaml --output-file reforge-report.yaml --progress never
-```
-
-For deterministic static-only output, disable git churn and use the static hotspot model:
-
-```bash
-reforge scan . --churn off --hotspot-model static --output json --progress never
-```
-
-For a Unity project, keep automatic root detection for normal audits:
+For Unity projects, keep automatic root detection for normal audits:
 
 ```bash
 reforge scan <unity-project-root> --unity auto --output json --progress never
 ```
 
-Use `--unity on` when the supplied path must be a Unity project and failure to
-recognize it should stop the scan. Use `--unity off` when Unity assets are
-intentionally outside the audit.
+Use `--unity on` when the path must be recognized as a Unity project and
+`--unity off` when Unity analysis is deliberately out of scope.
 
-To fail CI on current warning or critical findings:
-
-```bash
-reforge scan . --output json --progress never --fail-on warning
-```
-
-To compare against a prior baseline and gate only new or worse findings:
+Remove tests from the scan only when the requested scope requires it:
 
 ```bash
-reforge scan . --baseline baseline.json --baseline-mode new-or-worse --fail-on warning --output json --progress never
+reforge scan . --exclude-tests --progress never
 ```
+
+## Baseline Gates
+
+Schema 21 gates compare stable finding IDs. A blocking gate requires a current
+schema 21 JSON or YAML baseline:
+
+```bash
+reforge scan . --baseline baseline.json --baseline-mode new --fail-on-findings --output json --progress never
+```
+
+`--baseline-mode new` selects IDs absent from the baseline. Use
+`--baseline-mode all` only when every current unsuppressed finding should be
+selected. For human review, `--show new` limits the displayed finding list:
+
+```bash
+reforge scan . --baseline baseline.json --show new --output human --progress never
+```
+
+Schema 21 does not serialize priority, severity, a readiness score, or hotspot
+ranking. Do not invent those values and do not use removed options such as
+`--fail-on`, `--severity`, `--min-priority`, or `--hotspot-model`.
 
 ## Option Guidance
 
-- Keep `--churn auto` and `--hotspot-model hybrid` for normal repository audits; use `--churn on` only when missing git history should fail the scan.
-- Use `--churn off --hotspot-model static` for reproducible CI snapshots or when comparing output across machines.
-- Keep `--unity auto` for normal scans. Use `--unity on` to require a recognizable Unity root and `--unity off` to exclude Unity project analysis deliberately.
-- Treat `--max-unity-assembly-dependencies`, `--max-unity-scene-objects`, `--max-unity-prefab-objects`, `--max-unity-serialized-fields`, and `--max-unity-lifecycle-methods` as project-calibrated review budgets. The built-in values are operational heuristics, not public Unity benchmark limits.
-- Use `--config <path>` when the repository has a `reforge.toml`, or rely on default discovery from the scan root upward.
-- Use `reforge init`, `reforge config validate`, and `reforge config show` when the task is to create, check, or inspect configuration without scanning source files.
-- Use `--preset strict`, `--preset balanced`, or `--preset relaxed` to start from built-in threshold sets. Threshold precedence is CLI per-threshold flags, CLI `--preset`, `reforge.toml` per-threshold values, `reforge.toml` `preset`, then built-in `balanced`.
-- Keep generated and dependency directories excluded by default. Add `--include-generated` only when the user explicitly wants generated output scanned.
-- Keep hidden files excluded by default. Add `--include-hidden` only when dotfiles or hidden source trees are in scope.
-- Keep tests scanned by default. Add `--exclude-tests` when the user wants production-source-only results or when test fixture volume would drown out application signals.
-- Keep tests out of similar-function analysis by default. Add `--include-test-similarity` when repeated test setup or test helper extraction is the goal.
-- Keep tests out of general structural analysis by default. Add `--include-test-structure` when structural issues in tests are in scope.
-- Use `--baseline` with `--baseline-mode new-or-worse` and `--fail-on warning` for pull request gates that should not fail on unchanged legacy findings.
-- Treat hotspots as a watchlist, not a hard CI gate. `--fail-on` evaluates selected findings, not raw metrics or hotspot entries by themselves.
-- Lower `--max-file-lines`, `--max-function-lines`, or `--max-function-complexity` for mature codebases with strict maintainability budgets.
-- Raise similarity strictness with `--function-similarity 0.9` when noisy duplication reports would slow the user down.
-- Tune `--min-repeated-literal-occurrences` and `--min-data-clump-occurrences` when repeated literals, repeated error handling, data clumps, or test setup duplication are too noisy or too sparse.
+- Keep `--churn auto` for normal repository audits. Use `--churn on` only when
+  missing git history should fail the scan, and `--churn off` for reproducible
+  source-only comparisons.
+- Use `--config <path>` for an explicit configuration, or rely on discovery of
+  `reforge.toml` from the scan root upward.
+- Use `reforge init`, `reforge config validate`, and `reforge config show` to
+  create or inspect configuration without scanning.
+- Start with `balanced` unless the repository has an agreed maintenance
+  budget. `strict` increases review volume; `relaxed` reserves output for
+  stronger threshold excesses.
+- Keep generated, dependency, hidden, and git-ignored paths excluded unless
+  the user explicitly expands scope.
+- Keep tests scanned by default. Test files remain outside similar-function and
+  general-structure analysis unless `--include-test-similarity` or
+  `--include-test-structure` is supplied.
+- Treat Unity thresholds as project-calibrated review budgets, not public Unity
+  benchmark limits.
+- Tune thresholds only after reviewing a representative sample. Do not change
+  thresholds merely to force `findings=0`.
 
-## Choosing Parameters
+## Reading Schema 21
 
-Start with `balanced` unless the repository already has an agreed maintenance
-budget. Use `strict` when maintainers accept more review prompts to surface
-smaller or earlier signals. Use `relaxed` for an initial rollout or when
-framework-heavy and orchestration code creates known benign outliers.
+Read a JSON or YAML report in this order:
 
-Do not tune a threshold merely to make a report reach zero findings. Review a
-sample of the affected findings, record whether the evidence is correct and
-the recommendation is useful, change parameters only for a repeated pattern,
-and validate the change on another representative repository.
+1. `summary`, `coverage_summary`, `coverage_manifest`,
+   `detector_execution`, and `raw_metric_coverage`: establish what was scanned,
+   what was observable, and which detectors completed.
+2. `suppression_summary`: distinguish zero unsuppressed findings from zero
+   observed signals.
+3. `issues`: use stable `ri3-...` decision units, their refactor action,
+   canonical subject, and member finding IDs to organize review.
+4. `findings`: inspect stable `rf3-...` atomic evidence, metrics, messages,
+   recommendations, and related locations.
+5. `agent_evidence`: estimate inspection and verification scope from evidence
+   dispersion, context closure size, unresolved local dependencies, and test
+   reachability. `partial` coverage is a warning that the closure is incomplete.
+6. `raw_metrics`, `metrics_summary`, `dependency_graph`, and `unity_project`:
+   use measurement and project-specific context to validate the proposed work.
 
-Interpret parameter families by the tradeoff they control:
+Choose what to address using user impact, affected scope, threshold excess,
+cross-file evidence, test reachability, detector precision risk, and repository
+constraints. Schema 21 intentionally does not collapse those judgments into a
+single numeric rank.
 
-- File, directory, function, type, complexity, nesting, import, and public-item limits are absolute review budgets. Lower values increase recall and review volume; higher values reserve findings for stronger outliers.
-- Similarity depends jointly on minimum body tokens, minimum group size, and similarity percentage. Lower token or group minima increase sensitivity; a higher similarity percentage requires closer matches and reduces noise. Evaluate the three together.
-- Repetition minima control evidence strength. Lower occurrence counts find local repetition but are more vulnerable to fixtures, protocol constants, and framework conventions.
-- Churn window and maximum commit size are operational filters. Short windows emphasize current activity; long windows help low-activity repositories. The commit limit filters bulk mechanical changes that could dominate percentiles.
-- Unity thresholds represent assembly fan-out, serialized asset size, component state breadth, and lifecycle responsibility. Calibrate them on representative project assets before making them CI-blocking.
+`findings=0` means no unsuppressed findings remain after detector filters and
+suppressions. It does not prove complete coverage, code quality, safety, or the
+absence of bugs. When suppressions are nonzero, always report their count and
+kind breakdown.
 
-ISO/IEC 25010 informs Reforge's maintainability classification, not its numeric
-thresholds. Treat built-in thresholds and ranking weights as documented policy
-priors unless an accepted scoring policy and representative calibration data
-show otherwise.
+For Unity scans, inspect `unity_project.coverage` and `degraded_reasons` before
+interpreting absent asset or reference findings. `partially_observed` is
+incomplete evidence, not evidence of absence.
 
 ## Self-Debugging Reforge
 
-When working inside the Reforge source repository, use Reforge against itself after code or documentation changes:
+When working inside the Reforge source repository:
 
 ```bash
 cargo test
 cargo run -- scan . --progress never
 ```
 
-If the human scan output reports warnings introduced by the current change, address the smallest local cause first. Common self-debug fixes include splitting large option structs with Clap `flatten`, moving broad test fixtures into narrower modules, documenting new CLI flags in `README.md` and `docs/`, and using `--exclude-tests` only when the user explicitly wants to ignore test-maintenance signals.
-
-For a stable self-debug artifact:
+For a stable self-scan artifact:
 
 ```bash
-cargo run -- scan . --output json --output-file reforge-self-report.json --progress never --churn off --hotspot-model static
+cargo run -- scan . --output json --output-file reforge-self-report.json --progress never --churn off
 ```
 
-## Interpreting Findings
-
-Current schema 20 reports separate measurement, coverage, atomic evidence, and
-decision units. Read them in this order:
-
-1. Check `summary`, `coverage_summary`, `detector_execution`, and
-   `suppression_summary` so missing observation or suppressed evidence is not
-   mistaken for a clean scan.
-2. Use `issues` as the primary decision list. Each issue selects a primary
-   finding and retains related evidence without adding correlated signals more
-   than once.
-3. Inspect `findings` for atomic evidence, metrics, related locations, stable
-   IDs, reliability, and recommendations.
-4. Use `hotspots` as a separate watchlist and `raw_metrics` plus
-   `metrics_summary` for measurement context.
-5. For Unity scans, inspect `unity_project.coverage` and `degraded_reasons`
-   before interpreting absent asset or reference findings. A
-   `partially_observed` project is incomplete evidence, not evidence of absence.
-
-JSON and YAML also expose `coverage_manifest`, `raw_metric_coverage`,
-`scoring_policy`, and `detector_manifest` for auditing what could be observed
-and how ranking was produced. Human output sorts issues and findings by
-descending `priority`. `priority` is refactoring priority, not defect
-probability, a quality grade, or a health score.
-
-Within the issue and finding lists, prioritize evidence in this order:
-
-1. Critical findings that exceed thresholds by a wide margin.
-2. Repeated drift patterns that cross files or modules, especially shadowed abstractions, duplicate data shapes, adapter boundary bypasses, and parallel implementations.
-3. Similar functions with enough body tokens to indicate real duplication.
-4. Repeated literals, repeated error patterns, data clumps, and test setup duplication when they cluster around the same subsystem.
-5. Large directories, directory drift, mixed naming styles, and TODO/FIXME clusters as navigation and ownership signals.
-6. Info-level findings as backlog candidates unless they cluster around the same subsystem.
-
-Use hotspots after findings as watchlist context, especially when static risk and churn risk point to the same file, function, or type. Do not report hotspots as CI failures unless a separate project policy explicitly says so.
-
-`findings=0` means no unsuppressed atomic findings remain after scoring,
-filtering, and suppressions. It does not prove code quality, complete coverage,
-or absence of bugs. If suppressions are used, include suppression summary
-context so reviewers can see that the result means zero unsuppressed findings.
-
-Use `priority`, `detection_reliability`, `interpretation_reliability`,
-`priority_factors`, `rank_explanation`, and related locations when explaining
-why a finding matters. Avoid claiming Reforge found bugs; describe findings as
-maintainability or refactoring signals.
-
-When reporting results, include the command used, output file path if any,
-churn status, hotspot model, coverage or degraded-reason context, suppression
-summary when nonzero, top issues and supporting findings, and suggested next
-actions.
+Report the command, artifact path, schema version, churn state, coverage or
+degraded-reason context, suppression summary when nonzero, selected issues and
+supporting findings, and suggested verification steps.

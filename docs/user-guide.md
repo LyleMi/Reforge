@@ -194,17 +194,16 @@ to control ANSI color in human output.
 
 Human output is organized for quick terminal triage:
 
-- `Result`: total threshold signals, severity counts, hotspot watchlist size,
-  suppression summary when present, and similar-function group count.
+- `Result`: issue and raw-signal counts, suppression summary when present, and
+  similar-function group count.
 - `Scan details`: source files, directories, and function candidates scanned.
+- `Coverage`: partially observed required cells and degraded reasons.
 - `Signal mix`: finding counts by detector kind, shown when findings exist.
-- `Findings`: actionable threshold signals sorted by priority.
-- `Watchlist`: hotspot locations ranked by static risk, churn risk, or both.
+- `Issues`: stable decision units with supporting raw signals.
 
 HTML output renders the same report through the React + TypeScript report app
-as summary cards, a severity distribution bar, construct/mechanism metadata, the
-File Overview, hotspot watchlist, similar-function groups, and prioritized
-findings.
+as summary cards, construct/mechanism metadata, file observations,
+similar-function groups, issues, and atomic findings.
 When `--output` is omitted, `.html` and `.htm` output-file extensions select
 the same HTML report format automatically.
 

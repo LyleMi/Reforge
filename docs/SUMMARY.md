@@ -19,5 +19,6 @@
 # Maintain Reforge
 
 - [Architecture](architecture.md)
+- [Agent Workflow Research](agent-workflows.md)
 - [Contributing](contributing.md)
 - [Release](release.md)

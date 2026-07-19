@@ -1,260 +1,173 @@
-# Metrics Model
+# Metrics and Evidence Model
 
-Priority is `round(100 × refactor_utility × action_probability)`, where
-`action_probability = detection_reliability × interpretation_reliability`.
-Coverage is reported independently and never discounts an already observed
-issue. Utility uses non-negative weights summing to one; correlated metrics use
-the strongest evidence within a factor rather than being added together.
-
-Reforge separates measurement from interpretation. The scanner first collects
-raw directory, file, function, type, and churn metrics, then derives summaries, hotspots,
-and findings from that model. The model reports maintainability and
-refactoring signals; it is not a quality score, health score, bug detector, or
-defect probability model.
-
-## Scoring policy and issue orthogonality
-
-Every report records its effective scoring policy. The five global weights
-affect finding and issue priority only; hotspot ranking keeps its existing
-model. Accepted calibration may override detector detection and interpretation
-reliability. Impact, actionability, and uncalibrated detectors retain manifest
-theory values.
-
-An issue copies the complete factors, reliability, priority, and severity of
-its highest-priority primary finding. Related findings add evidence IDs and
-kinds but cannot raise priority by contributing isolated stronger factors.
+Reforge separates observations, detector evidence, issue decision units, and
+coverage. Schema 21 does not emit a quality score, priority, severity, hotspot
+rank, defect probability, or refactor-readiness score.
 
 ## Raw Metrics
 
-File metrics:
+Raw metrics are direct observations grouped by entity:
 
-- `loc`: total line count.
-- `imports`: top-level import/use declarations for supported Tree-sitter
-  languages.
-- `public_items`: public or exported top-level items.
-- `is_test`: whether the path looks like a test file.
-- `churn`: git churn metrics when enabled.
+- Directory: direct source-file count.
+- File: lines, imports, public/exported items, test classification, and optional
+  churn.
+- Function: lines, estimated cyclomatic complexity, nesting depth, parameter
+  count, and test classification.
+- Type: lines, member count, and test classification.
+- Churn: commits touched, lines added/deleted, distinct authors, and recency-
+  weighted churn.
 
-Directory metrics:
+Every metric definition in `raw_metric_manifest` declares a stable dotted ID,
+entity scope, unit, scale, direction, and description. A
+`higher_is_more_pressure` direction means larger values may support detector
+evidence; it does not define a universal quality threshold. `context_only`
+metrics provide interpretation context without independently voting for a
+finding.
 
-- `source_files`: number of direct source files. A directory is sampled once,
-  so large directories do not receive extra percentile weight from containing
-  more files.
+## Percentiles and Finding Metric Context
 
-Function metrics:
+`metrics_summary` reports p50, p75, p90, p95, and max for directory, file,
+function, type, and churn families. Percentiles are relative to the current
+scan, so they help explain how unusual an observation is inside that project;
+they are not a cross-project grade.
 
-- `loc`: function line span.
-- `complexity`: estimated cyclomatic complexity.
-- `nesting_depth`: maximum nested control-flow depth.
-- `parameter_count`: parameter count.
-- `is_test`: whether the function belongs to a test file.
+Finding metrics contain:
 
-Type metrics:
+- `name`: canonical dotted metric ID.
+- `value`: observed value.
+- `threshold`: configured detector boundary, when applicable.
+- `unit`: metric unit.
+- `excess_ratio`: value divided by threshold for threshold findings.
+- `normalized`: bounded metric context combining threshold excess and project
+  percentile.
+- `percentile`: project-relative position when enough observations exist.
 
-- `loc`: type line span.
-- `member_count`: fields, variants, methods, signatures, or equivalent member
-  constructs.
-- `is_test`: whether the type belongs to a test file.
+The normalized value is interpretation context. It does not order findings or
+turn a heuristic into higher-confidence evidence.
 
-Churn metrics:
+## Findings and Issues
 
-- `commits_touched`
-- `lines_added`
-- `lines_deleted`
-- `authors_count`
-- `recent_weighted_churn`
+A finding is atomic detector evidence with a stable `rf3-...` ID. It records
+its detector kind, primary and related locations, metrics, maintainability
+construct, observable mechanism, message, and recommendation.
 
-## Percentiles
+An issue is a stable `ri3-...` decision unit. Compatible atomic findings are
+clustered by issue family and canonical subject so correlated evidence can be
+reviewed together without discarding detector-level details. An issue records
+its refactor action and all member finding IDs; findings remain available for
+baseline comparison and detector filtering.
 
-`metrics_summary` records `p50`, `p75`, `p90`, `p95`, and `max` for each metric
-category. Percentiles help rank hotspots relative to the scanned project, not
-against a universal standard.
+Issue order is deterministic presentation order, not a priority ranking.
+Choose work based on repository goals, affected behavior, metric excess,
+evidence spread, test reachability, detector precision risk, and maintainer
+judgment.
 
-Finding metrics use canonical dotted IDs such as `file.loc` and
-`function.complexity`. A detector can emit only metrics declared by its
-manifest entry. Finding metrics may include a `percentile` value when at least
-five values are available for that metric. When both threshold excess and a
-project percentile describe the same observation, intensity takes the
-stronger lens rather than adding duplicate evidence.
+## Constructs, Mechanisms, and Actions
 
-## Finding Priority
+Every detector maps evidence to an ISO/IEC 25010-aligned maintainability
+construct:
 
-`priority` is a refactoring priority score from 0 through 100. It is not a
-defect probability, quality grade, or health score.
+- modularity;
+- reusability;
+- analysability;
+- modifiability;
+- testability.
 
-Priority factors:
+The mechanism explains the source-observable maintenance pressure, while the
+action describes the intended refactoring direction. These classifications
+organize evidence; they are not measurements of product quality.
 
-- `impact`: how important the detector's signal usually is.
-- `intensity`: how far the strongest metric exceeds its threshold or
-  normalized baseline.
-- `spread`: how broadly related locations cross files.
-- `change_pressure`: churn pressure from matching hotspots.
-- `actionability`: how directly the signal suggests a refactoring action.
-- `detection_reliability`: estimated probability that the evidence is correct.
-- `interpretation_reliability`: conditional probability that the proposed action is suitable.
+See [Metric Ontology](metric-ontology.md) for the complete mechanism and action
+vocabulary and [Detector Reference](detectors.md) for detector mappings.
 
-The weighted priority formula is:
+## Coverage and Execution Receipts
 
-```text
-((impact * 0.30)
- + (intensity * 0.30)
- + (spread * 0.15)
- + (change_pressure * 0.15)
- + (actionability * 0.10))
-* detection reliability × interpretation reliability
-```
+An absent finding is meaningful only when the corresponding analysis could run.
+Schema 21 therefore records:
 
-Severity bands:
+- `coverage_manifest`: expected mechanism/entity-scope cells and their runtime
+  status;
+- `coverage_summary`: detected languages, analyzed entities, parse failures,
+  unresolved dependency edges, and unobservable reasons;
+- `detector_execution`: one receipt per detector, including completed
+  zero-finding runs;
+- `raw_metric_coverage`: whether each canonical raw metric was observed,
+  unavailable, unsupported, or not applicable.
 
-- `info`: priority 0 through 34.
-- `warning`: priority 35 through 69.
-- `critical`: priority 70 through 100.
+Read these before interpreting a quiet report. `partial` or unavailable
+coverage means absence of evidence, not evidence of absence.
 
-The bands are workflow labels for triage and CI policy. They do not claim that
-a file is defective or that a change is safe.
+## Agent Evidence
 
-### Why these weights
+`agent_evidence` projects repository context for files and issues:
 
-The default coefficients are an explicit triage policy, not coefficients
-derived from ISO/IEC 25010 or a claim of defect probability. Impact and
-intensity receive 60% of utility so a broadly important signal that clearly
-exceeds its boundary dominates ranking. Spread and change pressure receive 30%
-so cross-file reach and recent maintenance activity can move a finding upward
-without creating a finding by themselves. Actionability receives the remaining
-10% as a tie-breaking preference for evidence with a clearer next step.
+- context-closure file and line counts;
+- unresolved local dependency counts;
+- evidence file, directory, and language dispersion;
+- direct and reachable tests;
+- nearest test distance and representative paths;
+- coverage and path-truncation status.
 
-Detection and interpretation reliability are multiplied after utility because
-uncertain evidence or uncertain advice should reduce the entire ranking, not
-merely one additive factor. This also prevents a high-impact but speculative
-heuristic from outranking well-observed evidence solely because of its nominal
-impact.
+This data helps an agent or maintainer estimate the inspection and verification
+surface. It is deliberately not collapsed into a readiness score. A small
+closure can still hide runtime coupling, while a reachable test is not proof
+that the affected behavior is asserted.
 
-The default weights, the `35` and `70` severity boundaries, and uncalibrated
-detector reliability values are theory-backed policy priors. They have not been
-established as universal empirical constants. Calibration can replace global
-weights and detector reliabilities only after the documented labeling and
-holdout checks succeed; every report records the effective policy so consumers
-can distinguish defaults from an accepted calibrated policy.
+## Churn
 
-## Constructs, Mechanisms, and Issue Clusters
+`--churn auto` collects git history when available and records a degraded reason
+otherwise. `--churn on` requires history; `--churn off` skips it. The window and
+maximum commit-size settings determine which history contributes to raw churn
+metrics.
 
-Each finding declares one ISO/IEC 25010-aligned maintainability `construct`
-and one source-observable `mechanism`. These classifications replace the old
-metric-dimension label, which mixed measurements, symptoms, and quality
-outcomes at different abstraction levels.
+Churn is context for maintainers and downstream consumers. Schema 21 does not
+combine it with structural observations into a hotspot or finding score.
+Disabled or unavailable churn is recorded as unavailable coverage, never as
+observed zero change pressure.
 
-Correlated atomic findings remain available for filtering, baselines, and CI,
-but `issues` combine evidence in the same family for the same normalized subject,
-mechanism, and likely action. Human and HTML output present the cluster's
-highest-priority finding as the issue and retain member IDs for auditability.
-See [Metric Ontology](metric-ontology.md) for definitions and invariants.
+## Threshold Selection
 
-## Confidence
+Built-in `strict`, `balanced`, and `relaxed` presets are operational starting
+points. Project configuration and per-threshold CLI flags can override them.
 
-Threshold-based structural findings generally use confidence `1.0`. Combined
-readability risk uses confidence `0.90` because the measured evidence is
-objective, but the readability interpretation is still a review prompt.
-Heuristic detectors use lower values when false positives are more likely. For
-example, repeated literals can be weaker in tests or report text, and
-happy-path-only test risk is intentionally conservative.
+Lower absolute thresholds generally increase recall and review volume.
+Similarity behavior depends jointly on minimum function tokens, group size,
+and similarity percentage. Repetition detectors depend on minimum occurrence
+counts. Unity thresholds are project-calibrated review budgets rather than
+public benchmark limits.
 
-## Hotspots
-
-Hotspots rank files, functions, and types independently from findings. They are
-retained when `priority >= 35`.
-
-`static_risk` and `churn_risk` are floating-point scores from 0 through 100.
-Hotspot `priority` applies the selected model, rounds the result to an integer,
-and clamps it to the same 0-100 range.
-
-Static risk is the strongest applicable structural signal for the location,
-not a blend of every detector mechanism:
-
-- File risk considers the file-LOC threshold, import threshold at 80% weight,
-  public-item threshold at 80%, and file-LOC percentile at 35%.
-- Function risk considers line and complexity thresholds, nesting at 85%,
-  parameter count at 75%, and function-LOC percentile at 35%.
-- Type risk considers line and member-count thresholds plus type-LOC
-  percentile at 35%.
-
-Threshold-based inputs use the same effective scan thresholds as findings
-after configuration and CLI overrides. Reforge takes the maximum weighted
-input and clamps it to 0-100.
-
-Churn risk likewise takes the strongest of these project-percentile inputs:
-
-- `commits_touched`
-- `recent_weighted_churn`
-- `authors_count` at 70% weight
-
-Function and type churn is inherited from file churn only when the scoped item
-has `static_risk >= 35`; otherwise its `churn_risk` is zero. File-level churn
-pressure is capped for line-level findings unless there is an exact
-function/type hotspot match.
-
-Hotspot models:
-
-- `static`: `priority = static_risk`
-- `churn`: `priority = churn_risk`
-- `hybrid`: `priority = static_risk * 0.65 + churn_risk * 0.35`
-
-The hybrid model gives structural risk the majority weight because source
-structure remains observable when git history is sparse, shallow, or shaped by
-repository migration. Churn contributes enough weight to distinguish equally
-strong structural candidates that differ in current change pressure. The
-65/35 split is an operational prior rather than a universal empirical optimum;
-teams that need different ranking behavior should validate it through an
-accepted scoring policy rather than treating hotspot priority as a defect
-probability.
-
-Hotspots are a review watchlist. They help identify places where static
-maintenance pressure and churn overlap, but they are not findings and should
-not be used as a hard CI gate by themselves.
+Do not tune a threshold merely to force a zero-finding scan. Review a sample,
+record whether the evidence and recommendation are useful, change a parameter
+only for a repeatable pattern, and validate it on another representative
+repository.
 
 ## Interpreting Empty Findings
 
-`findings=0` means no unsuppressed findings remain after scoring, filters, and
-suppressions. It does not mean the project has no maintainability risk, no
-hotspots, no raw metric outliers, or no bugs. Review `raw_metrics`,
-`metrics_summary`, `hotspots`, and suppression summary context before treating
-an empty finding list as a clean refactoring backlog.
+`findings=0` means no unsuppressed findings remain after detector filters and
+suppressions. It does not prove:
 
-Suppression summaries are audit context. They should explain how many findings
-were intentionally removed and why, so an empty finding list is not confused
-with an absence of measured signals.
+- complete language or detector coverage;
+- absence of raw metric outliers;
+- code quality or refactor safety;
+- absence of bugs;
+- presence of adequate tests.
 
-## Calibration
+Always report coverage limitations, churn status, parse failures, unresolved
+dependency context, and nonzero suppressions with an empty finding list.
 
-Calibrate thresholds and priority expectations with multiple real projects,
-not a single repository or synthetic fixture set.
+## Evaluating the Model
 
-1. Pick a representative sample, such as a small library, a service, a
-   frontend-heavy project, and a test-heavy project.
-2. Run stable reports with the same settings across the sample:
+Evaluate Reforge on multiple representative projects and keep measurement,
+detection, action usefulness, and workflow outcomes separate. Useful review
+questions include:
 
-```powershell
-cargo run -- scan D:\path\to\project --churn off --hotspot-model static --output json --progress never
-```
+- Did the detector observe the construct it claims to observe?
+- Does the issue cluster preserve the relevant atomic evidence?
+- Is the recommendation locally actionable?
+- Are coverage limitations visible?
+- Do stable IDs survive harmless ordering and message changes?
+- Did an accepted refactor preserve behavior under the project's tests?
 
-3. Compare `metrics_summary` percentiles, top findings, and hotspots across
-   projects. Look for detectors that are consistently noisy, consistently
-   silent, or only useful for one project shape.
-4. Review high-priority findings with maintainers who know the codebase. A
-   calibrated model should surface plausible refactoring work, not force every
-   mature project toward zero findings.
-5. Tune thresholds or detector filters only when the same pattern repeats
-   across the sample. Keep `priority` as an ordering signal, not an absolute
-   quality score.
-6. Validate the tuned settings on a holdout project before enabling a blocking
-   CI gate. Prefer a baseline gate such as `new-or-worse` so unchanged legacy
-   findings remain visible without blocking every change.
-
-## Churn Collection
-
-When enabled, Reforge runs git with `--no-merges`, `--numstat`, and the
-configured time window. Binary numstat rows, paths outside the scan root, and
-commits above `--churn-max-commit-lines` are ignored.
-
-`--churn auto` falls back gracefully when git history is unavailable.
-`--churn on` fails the scan if churn cannot be collected. `--churn off` skips
-git entirely.
+Maintainer labels can calibrate detector precision and recommendation utility,
+but they should not be converted into a universal codebase score without a
+separate, validated policy and explicit product decision.

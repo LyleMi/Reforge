@@ -1,117 +1,143 @@
 # Architecture
 
-Reforge is a single Rust CLI crate. The code is organized around a scan
-pipeline that collects raw metrics first, then runs detectors, ranks hotspots,
-scores findings, and renders reports.
+Reforge is a single Rust CLI crate. The scan pipeline observes source trees,
+collects raw metrics, runs detectors, groups atomic findings into decision
+units, projects coverage and agent context, and renders schema 21 reports.
 
 ## Module Boundaries
 
-- `src/main.rs`: CLI entrypoint, progress/color/output routing, file writing,
-  baseline gate evaluation, and broken-pipe handling.
-- `src/cli.rs`: Clap command definitions, scan arguments, output inference,
-  progress modes, color modes, churn modes, and hotspot models.
-- `src/scan/mod.rs`: scan orchestration, config discovery, source walking,
-  file-level findings, git churn collection, progress reporting, and final
+- `src/main.rs`: CLI entrypoint, config commands, progress/color/output routing,
+  baseline loading, new-finding gate evaluation, and broken-pipe handling.
+- `src/cli/`: Clap commands, scan argument groups, thresholds, output inference,
+  progress/color/churn modes, and value parsers.
+- `src/scan/`: scan orchestration, config discovery, source walking, git churn,
+  finding controls, coverage projection, agent evidence, and final
   `ScanReport` assembly.
-- `src/lang/mod.rs`: Tree-sitter language adapters and shared node-kind
-  constants.
-- `src/model/mod.rs`: serializable report model, finding kinds, raw metrics,
-  summaries, hotspots, severities, and schema version.
-- `src/detectors/`: similarity, structure, drift, and documentation detector
-  implementations.
-- `src/scoring/mod.rs`: metric summaries, priority scoring, severity mapping,
-  and hotspot ranking.
-- `src/baseline.rs`: schema 20 baseline loading, finding ID comparison, diff
-  classification, and `--fail-on` gate selection.
-- `src/unity.rs`: Unity project planning, text asset/GUID indexing, asmdef graph
-  analysis, and Unity-aware C# signals.
-- `src/output/mod.rs`: human, HTML, JSON, YAML, and SARIF output entry points.
+- `src/lang/`: Tree-sitter language adapters and shared syntax classification.
+- `src/model/`: schema 21 report data, finding/issue identity, coverage,
+  evidence subjects, raw metrics, dependency data, and Unity report data.
+- `src/detectors/`: structural, similarity, unused-function, dependency,
+  concept-drift, and documentation detectors plus their manifest contracts.
+- `src/scoring/`: metric percentile context and compatible-finding clustering.
+  Legacy scoring types remain internal compatibility details and are not
+  serialized by schema 21.
+- `src/baseline.rs`: schema 21 baseline validation, stable-ID diffing,
+  `--show` selection, and new unsuppressed finding selection.
+- `src/unity.rs` and `src/unity/`: Unity project planning, text asset/GUID
+  indexing, asmdef analysis, and Unity-aware C# signals.
+- `src/output/`: human, HTML, JSON, YAML, and issue-oriented SARIF rendering.
+- `web/report-app`: React + TypeScript source for the embedded offline HTML
+  report.
 
-`src/main.rs` re-exports internal modules under compatibility names such as
-`scanner`, `report`, `similar_functions`, and `structural` so existing inline
-tests and module references can stay stable while the implementation is split
-into clearer directories.
+`src/main.rs` re-exports some modules under compatibility names used by inline
+tests. These aliases are not public library API; Reforge is currently a binary
+crate.
 
 ## Scan Flow
 
 1. Parse `reforge scan [OPTIONS] [PATH]` with Clap.
-2. Resolve the scan root and load effective arguments from CLI plus optional
-   `reforge.toml`.
-3. Walk source files with default exclusions, explicit ignored paths, and
-   hidden/generated controls.
-4. Read each source file, collect line counts, file metrics, TODO/FIXME debt
-   markers, and parsed Tree-sitter sources where supported.
-5. Run structural, unused-function, dependency-graph, agent-drift,
-   similar-function, and documentation detectors.
-6. Merge structural raw metrics and the resolved dependency graph snapshot into
-   the report model.
-7. Collect git churn when enabled.
-8. Summarize raw metrics into percentiles.
-9. Rank hotspots with the chosen model.
-10. Finalize finding metrics, priority, confidence, severity, and ranking
-    explanations.
-11. Apply finding filters and suppressions, recording `suppression_summary`
-    for findings removed by suppressions.
-12. Render human, HTML, JSON, YAML, or SARIF output to stdout or
+2. Resolve the scan root and merge CLI values with an optional discovered or
+   explicit `reforge.toml`.
+3. Build a source plan with default generated/hidden/git-ignore exclusions,
+   explicit ignored paths, and test-scope controls.
+4. Read source files and collect basic file/directory observations plus parsed
+   Tree-sitter sources where supported.
+5. Run structural, unused-function, dependency-graph, concept-drift,
+   similar-function, documentation, and applicable Unity detectors.
+6. Merge structural function/type metrics and the resolved source dependency
+   graph into the observation model.
+7. Collect git churn when enabled. Missing history in `auto` mode degrades the
+   churn observation rather than failing the scan.
+8. Summarize raw metrics into project percentiles and attach normalized metric
+   context to findings.
+9. Remove composite summaries, apply detector filters and suppressions, and
+   record `suppression_summary`.
+10. Cluster compatible atomic findings into stable `ri3-...` issues while
+    retaining their stable `rf3-...` evidence IDs.
+11. Build `agent_evidence` from dependency closure, unresolved local edges,
+    evidence dispersion, and direct/reachable tests.
+12. Project coverage manifests, run-specific coverage summary, detector
+    execution receipts, and raw metric coverage.
+13. Render human, HTML, JSON, YAML, or SARIF output to stdout or
     `--output-file`.
-13. Apply `--fail-on` to all current unsuppressed findings or to the
-    baseline-selected finding set after the report is written. Human output
-    can also render baseline diff counts and `--show`-selected current
-    findings.
+14. When a schema 21 baseline is present, compute issue display diffs. If
+    `--fail-on-findings` is enabled, fail after writing the report when current
+    unsuppressed finding IDs are absent from the baseline.
 
-## Data Flow
+## Data Contract
 
-`ScanArgs` is the input configuration. `scan_report` produces a `ScanReport`
-with schema version `20`. Detectors emit `Finding` values with metrics and
-related locations. The dependency-graph detector also emits a resolved
-source-file graph snapshot. Scoring later enriches findings with constructs and mechanisms,
-normalized values, percentiles, `priority_factors`, `priority`, `severity`,
-`rank_explanation`, and stable `rf3-` IDs. After filtering and suppression,
-overlapping findings are grouped into issue clusters.
+`ScanArgs` is the resolved execution input. `scan_report` produces a schema 21
+`ScanReport`. The serialized layers are:
 
-Raw metrics remain available in reports so consumers can build their own
-ranking or dashboards without relying only on findings.
+- observations: `stats`, `raw_metrics`, `metrics_summary`,
+  `raw_metric_manifest`, and `raw_metric_coverage`;
+- topology and project context: `dependency_graph`, `agent_evidence`, and
+  `unity_project`;
+- observability: `coverage_manifest`, `coverage_summary`, and
+  `detector_execution`;
+- decisions and evidence: `issues`, `findings`, `detector_manifest`, and
+  `suppression_summary`.
+
+Findings carry metric values, thresholds, normalized context, construct,
+mechanism, message, recommendation, and related locations. Issues carry a
+stable canonical subject, refactor action, family, and member evidence IDs.
+
+Schema 21 does not serialize priority, severity, hotspot ranking, scoring
+policy, or reliability scores. Rust fields retained with Serde `skip` are
+compatibility implementation details and must not be documented as report
+fields. Consumers choose work using the evidence, coverage, project goals, and
+their own policy.
+
+See [Report Schema](report-schema.md) for the complete serialized contract and
+[Agent Workflow Research](agent-workflows.md) for the boundary between scanner
+facts and proposed agent orchestration.
 
 ## Parser Integration
 
-Tree-sitter support is routed through `LanguageAdapter`. Structural and
-similarity analysis currently supports Rust, JavaScript, TypeScript/TSX, Vue
-SFC script blocks, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
+Tree-sitter support is routed through language adapters. Structural and
+similarity analysis currently covers Rust, JavaScript, TypeScript/TSX, Vue SFC
+script blocks, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
 
-Files with parse errors are skipped for Tree-sitter detectors but can still
-contribute basic file metrics and debt-marker findings. Broad source discovery
-includes more extensions than Tree-sitter supports so simple file and directory
-signals still work on mixed repositories.
+Files with parse failures can still contribute language-neutral file,
+directory, debt-marker, dependency, and documentation evidence. Coverage
+receipts record parse failures and unobservable reasons so consumers do not
+mistake unsupported or partial analysis for an observed absence.
+
+## Stable Identity and Baselines
+
+Finding IDs use detector kind, metric names, and canonicalized evidence
+locations. Issue IDs use issue family and canonical subject. They intentionally
+exclude messages, metric values, and traversal order so the same evidence can
+survive harmless rendering or ordering changes.
+
+Schema 21 baselines select `new` or `all` evidence. They do not compare
+severity or priority because those values are not part of the serialized
+contract. `--fail-on-findings` requires a baseline and gates only new current
+unsuppressed finding IDs. Human display diffs operate on issue IDs and can show
+new, same, and resolved decision units.
 
 ## Progress and Output
 
 Progress is abstracted behind `ProgressSink`. `NoopProgress` is used when
-progress is disabled. `StderrProgress` writes either dynamic terminal progress
-or coarser line-oriented progress, depending on whether stderr is a TTY.
+progress is disabled. `StderrProgress` writes dynamic terminal progress or
+coarser line-oriented progress depending on whether stderr is a TTY.
 
-Human, HTML, and SARIF output are produced from the same `ScanReport` as JSON
-and YAML. The terminal-oriented renderer lives in `src/output/human.rs`, SARIF
-2.1.0 output lives in `src/output/sarif.rs`, and `src/output/mod.rs` keeps the
-format entry points and JSON/YAML writers. Color is applied only to human
-output.
+Human, HTML, and SARIF output derive from the same `ScanReport` as JSON and
+YAML. JSON and YAML preserve atomic findings and issues. SARIF emits issue
+decision units at `note` level with stable issue fingerprints. Color applies
+only to human output.
 
 ## HTML Report App
 
-`--output html` and output-file extensions `.html` or `.htm` produce a single
-offline HTML artifact. The active HTML implementation is the React +
-TypeScript report app.
+`--output html` and `.html`/`.htm` output-file extensions produce one offline
+artifact. The packaging flow is:
 
-The data and packaging flow is:
+1. The Rust scanner builds a schema 21 `ScanReport`.
+2. HTML output serializes the report as JSON into an HTML shell.
+3. The shell inlines the compiled React bundle and CSS.
+4. The browser renders locally without a server or network dependency.
 
-1. The Rust scanner builds a schema 20 `ScanReport`, including an independent Unity project graph when applicable.
-2. The HTML output path serializes that report as JSON.
-3. Reforge writes an HTML shell containing the serialized report data.
-4. The shell inlines the compiled React bundle and CSS.
-5. The browser runs the embedded app locally with no network or server
-   dependency.
-
-Frontend source lives under `web/report-app`. Build the app there when the
-visual report changes:
+Frontend source lives under `web/report-app`. After UI changes run:
 
 ```powershell
 cd web\report-app
@@ -119,44 +145,34 @@ npm ci
 npm run build
 ```
 
-The build is expected to refresh the checked-in report assets:
-
-- `assets/report-app.js`
-- `assets/report-app.css`
-
-Keep those generated assets in sync with frontend source changes so Rust can
-embed the current app into the offline report. Update `docs/report-schema.md`
-when the `ScanReport` shape changes; the report app should read the documented
-schema rather than private scanner internals.
+Commit frontend source together with refreshed `assets/report-app.js` and
+`assets/report-app.css`. Update the report schema documentation and frontend
+types in the same change when serialized fields change.
 
 ## Extension Points
 
 To add a detector:
 
-1. Add a `FindingKind` and display metadata.
-2. Implement the detector in `src/detectors/` or extend an existing detector
-   family.
-3. Add metrics with meaningful names, units, thresholds, and related
+1. Add a `FindingKind` and stable serialized name.
+2. Implement the detector in the owning detector family.
+3. Emit declared metrics with meaningful IDs, units, thresholds, and related
    locations.
-4. Wire the detector into `scan_report`.
-5. Add manifest classification, coverage, precision risk, parent, and overlap
-   metadata; update confidence, impact, and actionability when needed.
-6. Update report schema and detector docs.
-7. Add focused unit tests next to the module being changed.
+4. Add manifest construct, mechanism, action, entity scope, approach,
+   supported-language, precision-risk, issue-family, and evidence-role data.
+5. Wire execution and coverage receipts into the scan.
+6. Add focused detector, issue-clustering, output, and documentation tests.
 
 To add a language:
 
-1. Add the Tree-sitter crate dependency.
-2. Extend `LanguageFamily` and `adapter_for_path`.
-3. Add function, type, import, public item, complexity, and test-case handling
-   where applicable.
-4. Add tests for parsing, metrics, and detector behavior.
+1. Add the Tree-sitter dependency and language adapter.
+2. Define function, type, import, public-item, complexity, and test constructs.
+3. Update supported-language manifest data and coverage expectations.
+4. Add parsing, metric, detector, dependency-resolution, and failure tests.
 
 To change report shape:
 
 1. Update `SCAN_REPORT_SCHEMA_VERSION`.
-2. Update serializable model types.
-3. Update `docs/report-schema.md`.
-4. Update the React report app when the visual report depends on the changed
-   fields.
-5. Add or update report tests that pin important fields.
+2. Update serializable model types and baseline validation.
+3. Update JSON/YAML, human, SARIF, and HTML consumers as applicable.
+4. Update `docs/report-schema.md`, this architecture guide, and agent skills.
+5. Add zero-finding and nonzero-finding report contract tests.

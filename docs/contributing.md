@@ -147,8 +147,9 @@ removed, or renamed:
 - Update output tests.
 - Mention the compatibility impact in the pull request.
 
-Consumers should rely on stable finding `id`, `priority`, `confidence`,
-`priority_factors`, and `rank_explanation`; legacy v4 fields are not emitted.
+Consumers should rely on stable finding and issue IDs, typed metrics,
+construct/mechanism/action metadata, coverage receipts, and agent evidence.
+Schema 21 does not emit priority, confidence, severity, or hotspot ranking.
 
 ## Commits and Pull Requests
 
