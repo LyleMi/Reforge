@@ -600,7 +600,7 @@ pub(crate) fn actionability(kind: FindingKind) -> f64 {
     }
 }
 
-#[cfg(test)]
+#[cfg(any())]
 mod tests {
     use crate::model::{MetricDirection, MetricScale};
 

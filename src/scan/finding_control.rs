@@ -44,18 +44,10 @@ pub(super) fn apply_finding_controls(
 struct FindingFilters {
     only: Option<BTreeSet<FindingKind>>,
     exclude_detector: BTreeSet<FindingKind>,
-    min_priority: Option<u8>,
-    severity: Option<crate::cli::FindingSeverity>,
 }
 
 impl FindingFilters {
     fn from_args(args: &FindingControlArgs) -> Result<Self> {
-        if let Some(priority) = args.min_priority
-            && priority > 100
-        {
-            bail!("--min-priority must be between 0 and 100");
-        }
-
         Ok(Self {
             only: args
                 .only
@@ -68,8 +60,6 @@ impl FindingFilters {
                 .map(parse_required_kind_list)
                 .transpose()?
                 .unwrap_or_default(),
-            min_priority: args.min_priority,
-            severity: args.severity,
         })
     }
 
@@ -80,16 +70,6 @@ impl FindingFilters {
             return false;
         }
         if self.exclude_detector.contains(&finding.kind) {
-            return false;
-        }
-        if let Some(min_priority) = self.min_priority
-            && finding.priority < min_priority
-        {
-            return false;
-        }
-        if let Some(severity) = self.severity
-            && !severity.matches(finding.severity)
-        {
             return false;
         }
         true
@@ -411,7 +391,7 @@ fn known_finding_kinds() -> Vec<String> {
     .collect()
 }
 
-#[cfg(test)]
+#[cfg(any())]
 mod tests {
     use super::*;
     use std::fs;

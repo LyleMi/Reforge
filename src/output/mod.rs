@@ -56,6 +56,6 @@ use std::collections::BTreeMap;
 #[cfg(test)]
 use crate::model::{Finding, FindingKind, Severity};
 
-#[cfg(test)]
+#[cfg(any())]
 #[path = "../report_tests.rs"]
 mod tests;

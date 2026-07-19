@@ -10,8 +10,8 @@ fn source_file(path: &str, source: &str) -> SourceFile {
     }
 }
 
-fn options() -> AgentDriftOptions {
-    AgentDriftOptions {
+fn options() -> ConceptDriftOptions {
+    ConceptDriftOptions {
         min_repeated_occurrences: 3,
         min_data_shape_occurrences: 2,
         max_dir_files: 16,
@@ -48,7 +48,7 @@ fn detects_parallel_implementations_and_shadowed_helpers() {
         ),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     let parallel = findings
         .iter()
@@ -76,7 +76,7 @@ fn example() {
         ),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     assert!(
         findings
@@ -101,7 +101,7 @@ fn skips_two_cross_file_parallel_implementations_at_default_thresholds() {
     let mut opts = options();
     opts.min_repeated_occurrences = 4;
 
-    let findings = scan_agent_drift(&files, &opts);
+    let findings = scan_concept_drift(&files, &opts);
 
     assert!(
         findings
@@ -124,7 +124,7 @@ fn detects_duplicate_type_shapes() {
         ),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     let finding = findings
         .iter()
@@ -147,7 +147,7 @@ fn detects_duplicate_single_line_type_shapes() {
         ),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     let finding = findings
         .iter()
@@ -174,7 +174,7 @@ fn detects_config_key_drift() {
         ),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     let finding = findings
         .iter()
@@ -192,7 +192,7 @@ fn ignores_config_keys_inside_comments() {
         source_file("src/job.ts", "// fetch(\"/api/login\");"),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     assert!(
         findings
@@ -215,7 +215,7 @@ fn detects_fixture_factory_drift_in_tests() {
         ),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     let finding = findings
         .iter()
@@ -250,7 +250,7 @@ fn detects_generic_bucket_directories() {
         ),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     let finding = findings
         .iter()
@@ -272,7 +272,7 @@ export function validateAuth() {}
 "#,
     )];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     assert!(
         findings
@@ -303,10 +303,10 @@ fn skips_generic_bucket_drift_in_tests_by_default() {
         ),
     ];
 
-    let default_findings = scan_agent_drift(&files, &options());
+    let default_findings = scan_concept_drift(&files, &options());
     let mut included_options = options();
     included_options.include_test_structure = true;
-    let included_findings = scan_agent_drift(&files, &included_options);
+    let included_findings = scan_concept_drift(&files, &included_options);
 
     assert!(
         default_findings
@@ -345,7 +345,7 @@ fn detects_adapter_boundary_bypasses_when_boundary_exists() {
         ),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     let finding = findings
         .iter()
@@ -368,7 +368,7 @@ fn test_only_boundary_does_not_enable_production_bypass_detection() {
         source_file("src/d.rs", "fn d() { std::fs::read(\"d\"); }"),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     assert!(
         findings
@@ -395,7 +395,7 @@ fn skips_adapter_boundary_bypasses_in_support_scripts() {
         ),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     assert!(
         findings
@@ -426,7 +426,7 @@ fn skips_adapter_boundary_bypasses_in_cli_entrypoints() {
         ),
     ];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     assert!(
         findings
@@ -453,7 +453,7 @@ export function mapLegacyUser(payload: LegacyUser) {
 "#,
     )];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     let finding = findings
         .iter()
@@ -479,7 +479,7 @@ export function loadFallbackUser(payload: User) {
 "#,
     )];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     assert!(
         findings
@@ -501,7 +501,7 @@ export function mapLegacyUser(payload: LegacyUser) {
 "#,
     )];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     assert!(
         findings
@@ -522,7 +522,7 @@ export function mapLegacyUserFixture(payload: LegacyUser) {
 "#,
     )];
 
-    let findings = scan_agent_drift(&files, &options());
+    let findings = scan_concept_drift(&files, &options());
 
     assert!(
         findings

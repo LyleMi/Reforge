@@ -174,6 +174,12 @@ impl EffectiveScoringPolicy {
     }
 }
 
+impl Default for EffectiveScoringPolicy {
+    fn default() -> Self {
+        Self::builtin()
+    }
+}
+
 pub fn policy_fingerprint(
     policy_id: &str,
     version: u8,

@@ -10,6 +10,6 @@ describe("view state hash", () => {
     expect(serializeViewState(state)).toBe("#issues?query=main&severity=critical&kind=large_file&sort=path");
   });
   it("rejects a file absent from the report", () => {
-    expect(parseViewState("#map?file=missing.rs", { schema_version: 20, raw_metrics: { files: [{ path: "src/main.rs" }] } }).file).toBeNull();
+    expect(parseViewState("#map?file=missing.rs", { schema_version: 21, raw_metrics: { files: [{ path: "src/main.rs" }] } }).file).toBeNull();
   });
 });

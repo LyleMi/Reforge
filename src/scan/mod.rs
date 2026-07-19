@@ -7,8 +7,8 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use ignore::{DirEntry, WalkBuilder};
 
-use crate::agent_drift::{AgentDriftOptions, scan_agent_drift};
 use crate::cli::ScanArgs;
+use crate::concept_drift::{ConceptDriftOptions, scan_concept_drift};
 use crate::detectors::dependency_graph::scan_dependency_graph_report;
 use crate::detectors::manifest::{detector_manifest, evidence_role, raw_metric_manifest};
 use crate::documentation::scan_documentation;
@@ -20,11 +20,8 @@ use crate::model::{
     SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary, SuppressionSummary,
     TypeRawMetric, serialized_finding_kind,
 };
-#[cfg(test)]
-use crate::scoring::finalize_scoring;
 use crate::scoring::{
-    FindingInput, StaticRiskThresholds, cluster_findings, finalize_scoring_with_policy,
-    load_scoring_policy, rank_hotspots, summarize_raw_metrics,
+    FindingInput, cluster_findings, finalize_metric_context, summarize_raw_metrics,
 };
 use crate::similar_functions::{
     ParsedSourceFile, SimilarFunctionOptions, SimilarFunctionProgress, SourceFile,
@@ -82,6 +79,7 @@ struct SourceScan {
     stats: ScanStats,
     parse_failures: Vec<ParseFailure>,
     unresolved_dependency_edges: usize,
+    unresolved_dependency_edges_by_file: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Default)]
@@ -106,27 +104,13 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     let started_at = Instant::now();
     let root = resolve_scan_root(args)?;
     let effective = effective_scan_config(args, &root)?;
-    let scoring_policy = load_scoring_policy(effective.scoring_policy_path.as_deref())?;
     let effective_args = effective.args;
     let (mut scan, unity_scan, churn_summary) =
         collect_scan_observations(&root, &effective_args, progress)?;
     let metrics_summary = summarize_raw_metrics(&scan.raw_metrics);
-    let hotspots = rank_hotspots(
-        &scan.raw_metrics,
-        &metrics_summary,
-        effective_args
-            .hotspot_model
-            .expect("effective args should set hotspot model"),
-        StaticRiskThresholds::from(&effective_args),
-    );
     scan.findings
         .retain(|finding| evidence_role(finding.kind) != EvidenceRole::CompositeSummary);
-    finalize_scoring_with_policy(
-        &mut scan.findings,
-        &scan.raw_metrics,
-        &hotspots,
-        &scoring_policy,
-    );
+    finalize_metric_context(&mut scan.findings, &scan.raw_metrics);
     let post_score_controls = apply_post_score_finding_controls(
         &mut scan,
         &root,
@@ -134,6 +118,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         &effective.suppressions,
     )?;
     let issues = cluster_findings(&mut scan.findings);
+    let agent_evidence = build_agent_evidence(&scan, &issues);
     let manifest = detector_manifest();
     let (coverage_manifest, coverage_summary, detector_execution, raw_metric_coverage) =
         project_scan_coverage(&scan, &manifest, &churn_summary, unity_scan.report.status);
@@ -141,9 +126,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     let summary = build_scan_summary(ScanSummaryInput {
         scan: &scan,
         issues: &issues,
-        hotspots: &hotspots,
         controls: &post_score_controls,
-        args: &effective_args,
         churn: churn_summary,
         duration_ms: started_at.elapsed().as_millis(),
     });
@@ -158,14 +141,15 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         raw_metrics: scan.raw_metrics,
         raw_metric_manifest: raw_metric_manifest(),
         dependency_graph: scan.dependency_graph,
+        agent_evidence,
         unity_project: unity_scan.report,
-        hotspots,
+        hotspots: Vec::new(),
         suppression_summary: post_score_controls.suppression_summary,
         coverage_manifest,
         coverage_summary,
         detector_execution,
         raw_metric_coverage,
-        scoring_policy,
+        scoring_policy: crate::model::EffectiveScoringPolicy::builtin(),
         issues,
         detector_manifest: manifest,
         findings: scan.findings,
@@ -229,9 +213,7 @@ fn collect_scan_observations(
 struct ScanSummaryInput<'a> {
     scan: &'a SourceScan,
     issues: &'a [crate::model::Issue],
-    hotspots: &'a [crate::model::Hotspot],
     controls: &'a PostScoreControls,
-    args: &'a ScanArgs,
     churn: crate::model::ChurnSummary,
     duration_ms: u128,
 }
@@ -241,13 +223,10 @@ fn build_scan_summary(input: ScanSummaryInput<'_>) -> ScanSummary {
         scanned_files: input.scan.stats.source_files_scanned,
         finding_count: input.scan.findings.len(),
         issue_count: input.issues.len(),
-        hotspot_count: input.hotspots.len(),
+        hotspot_count: 0,
         similar_function_group_count: input.controls.similar_function_group_count,
         duration_ms: input.duration_ms,
-        hotspot_model: input
-            .args
-            .hotspot_model
-            .expect("effective args should set hotspot model"),
+        hotspot_model: crate::cli::HotspotModel::Hybrid,
         churn: input.churn,
     }
 }
@@ -260,6 +239,7 @@ fn finish_progress(progress: &mut dyn ProgressSink, summary: &ScanSummary) {
     progress.finish();
 }
 
+include!("agent_evidence.rs");
 include!("coverage.rs");
 
 fn run_scan_signals(
@@ -277,7 +257,7 @@ fn run_scan_signals(
     signals.scan_structural_signals()?;
     signals.scan_unused_function_signals();
     signals.scan_dependency_graph_signals();
-    signals.scan_agent_drift_signals();
+    signals.scan_concept_drift_signals();
     signals.scan_similarity_signals()?;
     Ok(())
 }
@@ -364,16 +344,17 @@ impl ScanSignalContext<'_> {
         ));
         let dependency_scan = scan_dependency_graph_report(&self.scan.structure_sources, self.root);
         self.scan.unresolved_dependency_edges = dependency_scan.unresolved_edges;
+        self.scan.unresolved_dependency_edges_by_file = dependency_scan.unresolved_by_file;
         self.scan.dependency_graph = dependency_scan.snapshot;
         self.scan.findings.extend(dependency_scan.findings);
     }
 
-    fn scan_agent_drift_signals(&mut self) {
+    fn scan_concept_drift_signals(&mut self) {
         self.progress.report(&format!(
-            "Analyzing agent drift signals in {} files",
+            "Analyzing concept drift signals in {} files",
             self.scan.structure_sources.len()
         ));
-        let options = AgentDriftOptions {
+        let options = ConceptDriftOptions {
             min_repeated_occurrences: self.args.min_repeated_literal_occurrences,
             min_data_shape_occurrences: self.args.min_data_clump_occurrences,
             max_dir_files: self.args.max_dir_files,
@@ -381,7 +362,7 @@ impl ScanSignalContext<'_> {
         };
         self.scan
             .findings
-            .extend(scan_agent_drift(&self.scan.structure_sources, &options));
+            .extend(scan_concept_drift(&self.scan.structure_sources, &options));
     }
 
     fn scan_structural_signals(&mut self) -> Result<()> {

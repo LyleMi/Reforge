@@ -1,6 +1,28 @@
 churn = "auto"
-hotspot-model = "hybrid"
 ignore-paths = [
   "assets/report-app.js",
   "web/report-app/src/vite-env.d.ts",
 ]
+
+[[suppressions]]
+kind = "repeated_literal"
+path = "src/cli/commands.rs"
+reason = "Clap command metadata repeats the CLI name in tests and help assertions."
+
+[[suppressions]]
+kind = "similar_functions"
+path = "src/cli/values.rs"
+line = 543
+reason = "Parser tests intentionally repeat option-shape assertions."
+
+[[suppressions]]
+kind = "similar_functions"
+path = "src/scan/config.rs"
+line = 518
+reason = "Configuration tests intentionally repeat setup shapes across precedence cases."
+
+[[suppressions]]
+kind = "similar_functions"
+path = "src/scan/finding_control.rs"
+line = 460
+reason = "Suppression tests intentionally repeat fixture construction patterns."

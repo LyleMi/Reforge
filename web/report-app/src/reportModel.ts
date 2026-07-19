@@ -1,6 +1,6 @@
 import type { Finding, FileRawMetric, ScanReport, Severity } from "./reportTypes";
 
-export const REPORT_SCHEMA_VERSION = 20;
+export const REPORT_SCHEMA_VERSION = 21;
 
 export type FileOverview = {
   path: string;
@@ -100,7 +100,7 @@ export function deriveRepositoryFiles(report: ScanReport): RepositoryFileView[] 
     const fileIssues = (report.issues ?? []).filter((issue) => normalizeReportPath(issue.path) === path);
     const hotspot = (report.hotspots ?? []).filter((item) => normalizeReportPath(item.path) === path);
     const priority = Math.max(0, ...fileFindings.map((item) => number(item.priority)), ...fileIssues.map((item) => number(item.priority)), ...hotspot.map((item) => number(item.priority)));
-    const severity = [...fileFindings.map((item) => item.severity), ...fileIssues.map((item) => item.severity), ...hotspot.map((item) => item.severity ?? "info")].reduce<Severity>(maxSeverity, "info");
+    const severity = [...fileFindings.map((item) => item.severity ?? "info"), ...fileIssues.map((item) => item.severity ?? "info"), ...hotspot.map((item) => item.severity ?? "info")].reduce<Severity>(maxSeverity, "info");
     const dependency = nodes.get(path);
     const similarityGroups = (report.findings ?? []).filter((finding) => finding.kind === "similar_functions" && [finding.path, ...(finding.related_locations ?? []).map((item) => item.path)].map(normalizeReportPath).includes(path));
     const loc = number(metric?.loc);

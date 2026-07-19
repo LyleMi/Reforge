@@ -4,6 +4,7 @@ use super::*;
 pub struct Finding {
     pub id: EvidenceId,
     pub kind: FindingKind,
+    #[serde(default, skip)]
     pub severity: Severity,
     pub path: String,
     pub line: Option<usize>,
@@ -11,10 +12,15 @@ pub struct Finding {
     pub construct: QualityConstruct,
     pub mechanism: SignalMechanism,
     pub issue_id: Option<IssueKey>,
+    #[serde(default, skip)]
     pub priority: u8,
+    #[serde(default, skip)]
     pub detection_reliability: f64,
+    #[serde(default, skip)]
     pub interpretation_reliability: f64,
+    #[serde(default, skip)]
     pub priority_factors: PriorityFactors,
+    #[serde(default, skip)]
     pub rank_explanation: String,
     pub message: String,
     pub related_locations: Vec<RelatedLocation>,
@@ -342,24 +348,15 @@ impl Serialize for Finding {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("Finding", 17)?;
+        let mut state = serializer.serialize_struct("Finding", 11)?;
         state.serialize_field("id", &self.id)?;
         state.serialize_field("kind", &self.kind)?;
-        state.serialize_field("severity", &self.severity)?;
         state.serialize_field("path", &self.path)?;
         state.serialize_field("line", &self.line)?;
         state.serialize_field("metrics", &self.metrics)?;
         state.serialize_field("construct", &self.construct)?;
         state.serialize_field("mechanism", &self.mechanism)?;
         state.serialize_field("issue_id", &self.issue_id)?;
-        state.serialize_field("priority", &self.priority)?;
-        state.serialize_field("detection_reliability", &self.detection_reliability)?;
-        state.serialize_field(
-            "interpretation_reliability",
-            &self.interpretation_reliability,
-        )?;
-        state.serialize_field("priority_factors", &self.priority_factors)?;
-        state.serialize_field("rank_explanation", &self.rank_explanation)?;
         state.serialize_field("message", &self.message)?;
         state.serialize_field("recommendation", &self.recommendation())?;
         state.serialize_field("related_locations", serialized_related_locations(self))?;

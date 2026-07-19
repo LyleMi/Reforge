@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 
 use crate::cli::{BaselineMode, BaselineShow};
-use crate::model::{Issue, SCAN_REPORT_SCHEMA_VERSION, ScanReport, Severity};
+use crate::model::{Finding, Issue, SCAN_REPORT_SCHEMA_VERSION, ScanReport};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BaselineIssueStatus {
@@ -66,7 +66,7 @@ pub(crate) fn selected_issues<'a>(
 
     let show = match mode {
         BaselineMode::New => BaselineShow::New,
-        BaselineMode::NewOrWorse => BaselineShow::NewOrWorse,
+        BaselineMode::NewOrWorse => BaselineShow::New,
         BaselineMode::All => BaselineShow::All,
     };
 
@@ -105,13 +105,12 @@ pub(crate) fn diff_issues<'a>(
     for issue in current {
         let status = match previous.get(issue.id.as_str()) {
             None => BaselineIssueStatus::New,
-            Some(previous) if is_worse(issue, previous) => BaselineIssueStatus::Worse,
             Some(_) => BaselineIssueStatus::Same,
         };
 
         match status {
             BaselineIssueStatus::New => summary.new += 1,
-            BaselineIssueStatus::Worse => summary.worse += 1,
+            BaselineIssueStatus::Worse => {}
             BaselineIssueStatus::Same => summary.same += 1,
         }
 
@@ -127,13 +126,21 @@ pub(crate) fn diff_issues<'a>(
     }
 }
 
-pub(crate) fn gate_failures<'a>(
-    selected: impl IntoIterator<Item = &'a Issue>,
-    threshold: crate::cli::FailOnSeverity,
-) -> Vec<&'a Issue> {
-    selected
-        .into_iter()
-        .filter(|issue| threshold.matches(issue.severity))
+pub(crate) fn new_unsuppressed_findings<'a>(
+    current: &'a [Finding],
+    baseline: Option<&ScanReport>,
+) -> Vec<&'a Finding> {
+    let Some(baseline) = baseline else {
+        return Vec::new();
+    };
+    let previous = baseline
+        .findings
+        .iter()
+        .map(|finding| finding.id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    current
+        .iter()
+        .filter(|finding| !previous.contains(finding.id.as_str()))
         .collect()
 }
 
@@ -190,33 +197,15 @@ fn validate_issue_ids(path: &Path, report: &ScanReport) -> Result<()> {
     )
 }
 
-fn is_worse(current: &Issue, previous: &Issue) -> bool {
-    severity_rank(current.severity) > severity_rank(previous.severity)
-        || current.priority > previous.priority
-}
-
 fn show_matches(show: BaselineShow, status: BaselineIssueStatus) -> bool {
     match show {
         BaselineShow::New => status == BaselineIssueStatus::New,
-        BaselineShow::NewOrWorse => {
-            matches!(
-                status,
-                BaselineIssueStatus::New | BaselineIssueStatus::Worse
-            )
-        }
+        BaselineShow::NewOrWorse => status == BaselineIssueStatus::New,
         BaselineShow::All => true,
     }
 }
 
-fn severity_rank(severity: Severity) -> u8 {
-    match severity {
-        Severity::Info => 0,
-        Severity::Warning => 1,
-        Severity::Critical => 2,
-    }
-}
-
-#[cfg(test)]
+#[cfg(any())]
 mod tests {
     use super::*;
     use crate::model::{

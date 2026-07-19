@@ -1,5 +1,4 @@
 mod baseline;
-mod calibration;
 mod cli;
 mod detectors;
 mod lang;
@@ -8,7 +7,7 @@ mod output;
 mod scan;
 mod scoring;
 
-mod agent_drift {
+mod concept_drift {
     pub(crate) use crate::detectors::drift::*;
 }
 
@@ -62,7 +61,6 @@ fn main() -> Result<()> {
         Command::Init(args) => run_init(args)?,
         Command::Config(args) => run_config(args)?,
         Command::Scan(args) => run_scan(*args)?,
-        Command::Calibrate(args) => calibration::run(args)?,
     }
 
     Ok(())
@@ -181,6 +179,9 @@ fn render_config_value(value: &serde_json::Value) -> Result<String> {
 fn run_scan(args: ScanArgs) -> Result<()> {
     let stderr_is_tty = std::io::stderr().is_terminal();
     let settings = output_settings(&args);
+    if args.ci.fail_on_findings && args.ci.baseline.is_none() {
+        bail!("--fail-on-findings requires --baseline with a schema 21 Reforge report");
+    }
     let baseline_report = args
         .ci
         .baseline
@@ -191,16 +192,11 @@ fn run_scan(args: ScanArgs) -> Result<()> {
     let baseline_diff = baseline_report
         .as_ref()
         .map(|baseline| baseline::diff_issues(&report.issues, baseline, args.ci.show));
-    let selected = baseline::selected_issues(
-        &report.issues,
-        baseline_report.as_ref(),
-        args.ci.baseline_mode,
-    );
-    let gate_failures = args
-        .ci
-        .fail_on
-        .map(|threshold| baseline::gate_failures(selected, threshold))
-        .unwrap_or_default();
+    let gate_failures = if args.ci.fail_on_findings {
+        baseline::new_unsuppressed_findings(&report.findings, baseline_report.as_ref())
+    } else {
+        Vec::new()
+    };
 
     if args.output_file.is_some() {
         write_report_file(&args, &report, baseline_diff.as_ref(), settings)?;
@@ -210,9 +206,8 @@ fn run_scan(args: ScanArgs) -> Result<()> {
 
     if !gate_failures.is_empty() {
         bail!(
-            "scan failed: {} selected unsuppressed issues met --fail-on {:?}",
-            gate_failures.len(),
-            args.ci.fail_on.expect("gate failures require fail-on")
+            "scan failed: {} unsuppressed findings are new relative to the baseline",
+            gate_failures.len()
         );
     }
 

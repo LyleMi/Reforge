@@ -3,7 +3,7 @@ use std::io::{self, Write};
 
 use serde_json::{Value, json};
 
-use crate::model::{Issue, ScanReport, Severity};
+use crate::model::{Issue, ScanReport};
 
 pub fn print_sarif_report(report: &ScanReport) -> io::Result<()> {
     write_sarif_report(std::io::stdout().lock(), report)
@@ -47,7 +47,6 @@ fn sarif_log(report: &ScanReport) -> Value {
                     "cells": report.coverage_manifest,
                     "summary": report.coverage_summary
                 },
-                "scoringPolicy": report.scoring_policy
             }
         }]
     })
@@ -85,7 +84,7 @@ fn sarif_result(issue: &Issue, rule_indices: &BTreeMap<String, usize>) -> Value 
     json!({
         "ruleId": issue.family,
         "ruleIndex": rule_indices.get(&issue.family).copied().unwrap_or(0),
-        "level": sarif_level(issue.severity),
+        "level": "note",
         "message": { "text": issue.summary },
         "locations": [{
             "physicalLocation": physical_location(&issue.path, issue.line)
@@ -96,15 +95,10 @@ fn sarif_result(issue: &Issue, rule_indices: &BTreeMap<String, usize>) -> Value 
         "properties": {
             "id": issue.id,
             "family": issue.family,
-            "priority": issue.priority,
-            "severity": severity_label(issue.severity),
             "construct": issue.construct,
             "mechanism": issue.mechanism,
             "action": issue.action,
-            "evidence_ids": issue.finding_ids,
-            "detection_reliability": issue.detection_reliability,
-            "interpretation_reliability": issue.interpretation_reliability,
-            "priority_factors": issue.priority_factors
+            "evidence_ids": issue.finding_ids
         }
     })
 }
@@ -118,22 +112,6 @@ fn physical_location(path: &str, line: Option<usize>) -> Value {
             "startLine": line.unwrap_or(1).max(1)
         }
     })
-}
-
-fn sarif_level(severity: Severity) -> &'static str {
-    match severity {
-        Severity::Critical => "error",
-        Severity::Warning => "warning",
-        Severity::Info => "note",
-    }
-}
-
-fn severity_label(severity: Severity) -> &'static str {
-    match severity {
-        Severity::Critical => "critical",
-        Severity::Warning => "warning",
-        Severity::Info => "info",
-    }
 }
 
 fn artifact_uri(path: &str) -> String {

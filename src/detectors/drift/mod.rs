@@ -7,7 +7,7 @@ use crate::scanner::{
 use crate::similar_functions::SourceFile;
 
 #[derive(Debug, Clone)]
-pub struct AgentDriftOptions {
+pub struct ConceptDriftOptions {
     pub min_repeated_occurrences: usize,
     pub min_data_shape_occurrences: usize,
     pub max_dir_files: usize,
@@ -79,7 +79,7 @@ struct OccurrenceGroupSpec {
     require_cross_file: bool,
 }
 
-pub fn scan_agent_drift(files: &[SourceFile], options: &AgentDriftOptions) -> Vec<Finding> {
+pub fn scan_concept_drift(files: &[SourceFile], options: &ConceptDriftOptions) -> Vec<Finding> {
     let boundaries = boundary_inventory(files);
     let mut signals = DriftSignals::default();
 
@@ -134,7 +134,7 @@ pub fn scan_agent_drift(files: &[SourceFile], options: &AgentDriftOptions) -> Ve
 
 fn collect_file_signals(
     file: &SourceFile,
-    options: &AgentDriftOptions,
+    options: &ConceptDriftOptions,
     boundaries: BoundaryInventory,
     signals: &mut DriftSignals,
 ) {
@@ -439,7 +439,7 @@ fn push_bypass(
 
 fn parallel_implementation_findings(
     functions: &[FunctionSignal],
-    _options: &AgentDriftOptions,
+    _options: &ConceptDriftOptions,
 ) -> Vec<Finding> {
     let threshold = 3;
     let mut groups = BTreeMap::<String, Vec<Occurrence>>::new();
@@ -476,7 +476,7 @@ fn parallel_implementation_findings(
 
 fn shadowed_abstraction_findings(
     functions: &[FunctionSignal],
-    _options: &AgentDriftOptions,
+    _options: &ConceptDriftOptions,
 ) -> Vec<Finding> {
     let threshold = 3;
     let mut groups = BTreeMap::<String, Vec<Occurrence>>::new();
@@ -513,7 +513,7 @@ fn shadowed_abstraction_findings(
 
 fn duplicate_type_shape_findings(
     shapes: &[TypeShape],
-    options: &AgentDriftOptions,
+    options: &ConceptDriftOptions,
 ) -> Vec<Finding> {
     let threshold = options.min_data_shape_occurrences.max(2);
     let mut ordered = shapes.to_vec();
@@ -605,7 +605,7 @@ fn duplicate_shape_finding(group: &[TypeShape], threshold: usize) -> Finding {
 fn generic_bucket_findings(
     directories: &BTreeMap<PathBuf, GenericDirectory>,
     generic_files: &[(String, Occurrence)],
-    options: &AgentDriftOptions,
+    options: &ConceptDriftOptions,
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
     let concept_threshold = (options.max_dir_files / 4).clamp(4, 12);
@@ -779,5 +779,5 @@ use analysis::*;
 use compatibility::*;
 
 #[cfg(test)]
-#[path = "../../agent_drift_tests.rs"]
+#[path = "../../concept_drift_tests.rs"]
 mod tests;

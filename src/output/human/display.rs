@@ -1,8 +1,5 @@
 #[derive(Debug, Default)]
 struct FindingBreakdown {
-    critical: usize,
-    warnings: usize,
-    info: usize,
     by_kind: BTreeMap<FindingKind, usize>,
 }
 
@@ -11,12 +8,6 @@ impl FindingBreakdown {
         let mut breakdown = Self::default();
 
         for finding in findings {
-            match finding.severity {
-                Severity::Critical => breakdown.critical += 1,
-                Severity::Warning => breakdown.warnings += 1,
-                Severity::Info => breakdown.info += 1,
-            }
-
             *breakdown.by_kind.entry(finding.kind).or_insert(0) += 1;
         }
 
@@ -361,18 +352,6 @@ fn render_status_cell(status: BaselineIssueStatus, color: bool) -> String {
     )
 }
 
-fn render_severity_cell(severity: Severity, color: bool) -> String {
-    paint(
-        color,
-        &format!("{:<8}", severity.to_string()),
-        match severity {
-            Severity::Critical => AnsiStyle::Critical,
-            Severity::Warning => AnsiStyle::Warning,
-            Severity::Info => AnsiStyle::Info,
-        },
-    )
-}
-
 fn baseline_status_label(status: BaselineIssueStatus) -> &'static str {
     match status {
         BaselineIssueStatus::New => "new",
@@ -384,7 +363,7 @@ fn baseline_status_label(status: BaselineIssueStatus) -> &'static str {
 fn baseline_show_label(show: BaselineShow) -> &'static str {
     match show {
         BaselineShow::New => "new",
-        BaselineShow::NewOrWorse => "new or worse",
+        BaselineShow::NewOrWorse => "new",
         BaselineShow::All => "all current",
     }
 }
@@ -392,7 +371,7 @@ fn baseline_show_label(show: BaselineShow) -> &'static str {
 fn baseline_show_value(show: BaselineShow) -> &'static str {
     match show {
         BaselineShow::New => "new",
-        BaselineShow::NewOrWorse => "new-or-worse",
+        BaselineShow::NewOrWorse => "new",
         BaselineShow::All => "all",
     }
 }
@@ -421,15 +400,5 @@ fn format_duration(duration_ms: u128) -> String {
         format!("{duration_ms} ms")
     } else {
         format!("{:.2} s", duration_ms as f64 / 1_000.0)
-    }
-}
-
-impl std::fmt::Display for Severity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Severity::Info => write!(f, "info"),
-            Severity::Warning => write!(f, "warning"),
-            Severity::Critical => write!(f, "critical"),
-        }
     }
 }

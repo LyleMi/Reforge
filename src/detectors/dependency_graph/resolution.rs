@@ -8,19 +8,21 @@ use super::DependencyGraph;
 pub(super) fn build_dependency_graph(
     sources: &[SourceFile],
     root: &Path,
-) -> (DependencyGraph, usize) {
+) -> (DependencyGraph, BTreeMap<String, usize>) {
     let root = normalize_path(root);
     let index = source_index(sources);
     let csharp_types = csharp_type_index(sources);
     let mut graph = DependencyGraph::default();
-    let mut unresolved_edges = 0;
+    let mut unresolved_by_file = BTreeMap::new();
 
     for source in sources {
-        unresolved_edges +=
-            add_source_dependencies(source, &root, &index, &csharp_types, &mut graph);
+        let unresolved = add_source_dependencies(source, &root, &index, &csharp_types, &mut graph);
+        if unresolved > 0 {
+            unresolved_by_file.insert(source.display_path.clone(), unresolved);
+        }
     }
 
-    (graph, unresolved_edges)
+    (graph, unresolved_by_file)
 }
 
 fn add_source_dependencies(

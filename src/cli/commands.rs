@@ -16,38 +16,6 @@ pub enum Command {
     Config(ConfigArgs),
     /// Scan a directory for basic refactoring signals.
     Scan(Box<ScanArgs>),
-    /// Prepare, validate, fit, or evaluate anonymous local calibration data.
-    Calibrate(CalibrateArgs),
-}
-
-#[derive(Debug, Clone, Args)]
-pub struct CalibrateArgs {
-    #[command(subcommand)]
-    pub command: CalibrateCommand,
-}
-
-#[derive(Debug, Clone, Subcommand)]
-pub enum CalibrateCommand {
-    Prepare(CalibratePrepareArgs),
-    Validate(CalibrateArtifactArgs),
-    Fit(CalibrateArtifactArgs),
-    Evaluate(CalibrateArtifactArgs),
-}
-
-#[derive(Debug, Clone, Args)]
-pub struct CalibratePrepareArgs {
-    #[arg(long)]
-    pub samples_root: PathBuf,
-    #[arg(long, default_value = "target/calibration")]
-    pub output_dir: PathBuf,
-    #[arg(long, default_value_t = 300)]
-    pub max_issues: usize,
-}
-
-#[derive(Debug, Clone, Args)]
-pub struct CalibrateArtifactArgs {
-    #[arg(long, default_value = "target/calibration")]
-    pub calibration_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, Args)]

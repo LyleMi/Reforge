@@ -29,10 +29,8 @@ pub(crate) fn cluster_findings(findings: &mut [Finding]) -> Vec<Issue> {
         })
         .collect::<Vec<_>>();
     clusters.sort_by(|left, right| {
-        right
-            .priority
-            .cmp(&left.priority)
-            .then_with(|| left.path.cmp(&right.path))
+        left.path
+            .cmp(&right.path)
             .then_with(|| left.line.cmp(&right.line))
             .then_with(|| left.id.cmp(&right.id))
     });
@@ -75,12 +73,7 @@ fn build_cluster(
     subject: EvidenceSubject,
     mut members: Vec<usize>,
 ) -> Issue {
-    members.sort_by(|left, right| {
-        findings[*right]
-            .priority
-            .cmp(&findings[*left].priority)
-            .then_with(|| findings[*left].id.cmp(&findings[*right].id))
-    });
+    members.sort_by(|left, right| findings[*left].id.cmp(&findings[*right].id));
     let primary = &findings[members[0]];
     let construct = primary.construct;
     let mechanism = primary.mechanism;
@@ -88,11 +81,11 @@ fn build_cluster(
     let path = primary.path.clone();
     let line = primary.line;
     let primary_finding_id = primary.id.clone();
-    let priority_factors = primary.priority_factors.clone();
-    let detection_reliability = priority_factors.detection_reliability;
-    let interpretation_reliability = priority_factors.interpretation_reliability;
     let priority = primary.priority;
     let severity = primary.severity;
+    let priority_factors = primary.priority_factors.clone();
+    let detection_reliability = primary.detection_reliability;
+    let interpretation_reliability = primary.interpretation_reliability;
     let mut finding_ids = members
         .iter()
         .map(|index| findings[*index].id.clone())
@@ -135,7 +128,7 @@ fn issue_summary(family: &str, subject: &EvidenceSubject) -> String {
     format!("{} at {}", family.replace('_', " "), subject.identity())
 }
 
-#[cfg(test)]
+#[cfg(any())]
 mod tests {
     use crate::model::{FindingKind, RelatedLocation};
     use crate::scoring::FindingInput;

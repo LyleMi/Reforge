@@ -3,10 +3,9 @@ use std::io::{self, Write};
 
 use crate::baseline::{BaselineDiff, BaselineIssue, BaselineIssueStatus};
 use crate::cli::BaselineShow;
-use crate::model::{Finding, FindingKind, Hotspot, Issue, MetricId, ScanReport, Severity};
+use crate::model::{Finding, FindingKind, Issue, MetricId, ScanReport};
 
 const RELATED_LOCATION_LIMIT: usize = 3;
-const HOTSPOT_LIMIT: usize = 10;
 
 pub fn print_human_report(report: &ScanReport) -> io::Result<()> {
     write_human_report_colored(std::io::stdout().lock(), report, false)
@@ -110,13 +109,11 @@ fn render_human_report_view<'report>(
         context.output.push_str(
             "No threshold signals found. Watchlist entries are review targets, not findings.\n",
         );
-        context.render_watchlist();
         return output;
     }
 
     context.render_signal_mix(&breakdown);
     context.render_findings();
-    context.render_watchlist();
     output
 }
 
@@ -170,10 +167,8 @@ impl ReportRenderContext<'_, '_, '_> {
             .filter(|cell| cell.status == CoverageStatus::Observed)
             .count();
         self.output.push_str(&format!(
-            "\nCoverage  {observed}/{} required cells observed  policy {} ({:?})\n",
-            required.len(),
-            self.report.scoring_policy.policy_id,
-            self.report.scoring_policy.source
+            "\nCoverage  {observed}/{} required cells observed\n",
+            required.len()
         ));
         for cell in required.into_iter().filter(|cell| {
             matches!(
@@ -193,10 +188,9 @@ impl ReportRenderContext<'_, '_, '_> {
             .push_str(&paint(self.color, "Reforge scan", AnsiStyle::Header));
         self.output.push('\n');
         self.output.push_str(&format!(
-            "{} files  {}  model {}  churn {}{}\n",
+            "{} files  {}  churn {}{}\n",
             self.report.summary.scanned_files,
             format_duration(self.report.summary.duration_ms),
-            hotspot_model_label(self.report.summary.hotspot_model),
             self.report.summary.churn.status,
             self.report
                 .summary
@@ -208,26 +202,13 @@ impl ReportRenderContext<'_, '_, '_> {
         ));
     }
 
-    fn render_result(&mut self, breakdown: &FindingBreakdown) {
+    fn render_result(&mut self, _breakdown: &FindingBreakdown) {
         self.output.push('\n');
         self.output
             .push_str(&paint(self.color, "Result", AnsiStyle::Section));
         self.output.push('\n');
         self.render_summary_row("Issues", self.report.summary.issue_count);
-        self.render_summary_row(
-            "Raw signals",
-            format!(
-                "{}  critical {} | warning {} | info {}",
-                self.report.summary.finding_count,
-                breakdown.critical,
-                breakdown.warnings,
-                breakdown.info
-            ),
-        );
-        self.render_summary_row(
-            "Watchlist",
-            format!("{} hotspots", self.report.summary.hotspot_count),
-        );
+        self.render_summary_row("Raw signals", self.report.summary.finding_count);
         if self.report.suppression_summary.suppressed_count > 0 {
             self.render_summary_row("Suppressed", render_suppression_summary(self.report));
         }
@@ -352,34 +333,6 @@ impl ReportRenderContext<'_, '_, '_> {
         }
     }
 
-    fn render_watchlist(&mut self) {
-        if self.report.hotspots.is_empty() {
-            return;
-        }
-
-        self.output.push('\n');
-        self.output
-            .push_str(&paint(self.color, "Watchlist", AnsiStyle::Section));
-        self.output.push('\n');
-        self.output.push_str(&format!(
-            "  {} {}  {}  {}\n",
-            paint(self.color, "severity", AnsiStyle::Muted),
-            paint(self.color, "pri", AnsiStyle::Muted),
-            paint(self.color, "target", AnsiStyle::Muted),
-            paint(self.color, "why", AnsiStyle::Muted)
-        ));
-        for hotspot in self.report.hotspots.iter().take(HOTSPOT_LIMIT) {
-            self.output
-                .push_str(&render_watchlist_item(hotspot, self.color));
-        }
-        if self.report.hotspots.len() > HOTSPOT_LIMIT {
-            self.output.push_str(&format!(
-                "  +{} more hotspots\n",
-                self.report.hotspots.len() - HOTSPOT_LIMIT
-            ));
-        }
-    }
-
     fn render_summary_row(&mut self, label: &str, value: impl std::fmt::Display) {
         self.output.push_str(&format!(
             "  {} {}\n",
@@ -403,22 +356,13 @@ fn render_cluster_context(cluster: &Issue, color: bool) -> String {
     )
 }
 
-fn hotspot_model_label(model: crate::cli::HotspotModel) -> &'static str {
-    match model {
-        crate::cli::HotspotModel::Static => "static",
-        crate::cli::HotspotModel::Churn => "churn",
-        crate::cli::HotspotModel::Hybrid => "hybrid",
-    }
-}
-
 fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
     let mut sorted = findings.iter().collect::<Vec<_>>();
     sorted.sort_by(|left, right| {
-        right
-            .priority
-            .cmp(&left.priority)
-            .then_with(|| left.path.cmp(&right.path))
+        left.path
+            .cmp(&right.path)
             .then_with(|| left.line.cmp(&right.line))
+            .then_with(|| left.id.cmp(&right.id))
     });
     sorted
 }
@@ -426,12 +370,11 @@ fn sorted_findings(findings: &[Finding]) -> Vec<&Finding> {
 fn sorted_baseline_issues<'a>(issues: &'a [BaselineIssue<'a>]) -> Vec<&'a BaselineIssue<'a>> {
     let mut sorted = issues.iter().collect::<Vec<_>>();
     sorted.sort_by(|left, right| {
-        right
-            .issue
-            .priority
-            .cmp(&left.issue.priority)
-            .then_with(|| left.issue.path.cmp(&right.issue.path))
+        left.issue
+            .path
+            .cmp(&right.issue.path)
             .then_with(|| left.issue.line.cmp(&right.issue.line))
+            .then_with(|| left.issue.id.cmp(&right.issue.id))
     });
     sorted
 }
@@ -444,10 +387,12 @@ fn render_finding(finding: &Finding, color: bool) -> String {
     let metrics = render_metric_summary(finding);
 
     let mut output = format!(
-        "  {} p={:>2} c={:.2}  {}\n            {}\n",
-        render_severity_cell(finding.severity, color),
-        finding.priority,
-        finding.detection_reliability * finding.interpretation_reliability,
+        "  {}  {}\n            {}\n",
+        paint(
+            color,
+            &crate::model::serialized_finding_kind(finding.kind),
+            AnsiStyle::Info
+        ),
         concise_finding_message(finding),
         paint(color, &location, AnsiStyle::Path),
     );
@@ -455,18 +400,9 @@ fn render_finding(finding: &Finding, color: bool) -> String {
     if let Some(metrics) = metrics {
         output.push_str(&format!("            metrics {metrics}\n"));
     }
-    if !finding.rank_explanation.is_empty() {
-        output.push_str(&format!("            rank {}\n", finding.rank_explanation));
-    }
-    if should_render_recommendation(finding) {
-        output.push_str(&format!("            hint {}\n", finding.recommendation()));
-    }
+    output.push_str(&format!("            hint {}\n", finding.recommendation()));
 
     output
-}
-
-fn should_render_recommendation(finding: &Finding) -> bool {
-    finding.priority >= 35
 }
 
 fn render_diff_issue(entry: &BaselineIssue<'_>, color: bool) -> String {
@@ -477,47 +413,12 @@ fn render_diff_issue(entry: &BaselineIssue<'_>, color: bool) -> String {
         .unwrap_or_else(|| display_path(&issue.path));
 
     format!(
-        "  {} {} p={:>2} reliability={:.2}  {}\n            {}\n            evidence {}\n",
+        "  {} {}\n            {}\n            evidence {}\n",
         render_status_cell(entry.status, color),
-        render_severity_cell(issue.severity, color),
-        issue.priority,
-        issue.detection_reliability * issue.interpretation_reliability,
         issue.summary,
         paint(color, &location, AnsiStyle::Path),
         issue.finding_ids.len(),
     )
-}
-
-fn render_watchlist_item(hotspot: &Hotspot, color: bool) -> String {
-    let target = render_hotspot_target(hotspot);
-
-    format!(
-        "  {} {:>3}  {}  {}\n",
-        render_severity_cell(hotspot.severity, color),
-        hotspot.priority,
-        paint(color, &target, AnsiStyle::Path),
-        concise_hotspot_reason(&hotspot.reason)
-    )
-}
-
-fn render_hotspot_target(hotspot: &Hotspot) -> String {
-    let mut target = display_path(&hotspot.path);
-    if let Some(line) = hotspot.line {
-        target.push_str(&format!(":{line}"));
-    }
-    if let Some(name) = &hotspot.name {
-        target.push(' ');
-        target.push_str(name);
-    }
-    target
-}
-
-fn concise_hotspot_reason(reason: &str) -> &str {
-    reason
-        .strip_prefix("hybrid model: ")
-        .or_else(|| reason.strip_prefix("static model: "))
-        .or_else(|| reason.strip_prefix("churn model: "))
-        .unwrap_or(reason)
 }
 
 fn display_path(path: &str) -> String {
@@ -567,27 +468,7 @@ fn render_metric_summary(finding: &Finding) -> Option<String> {
 
 fn render_suppression_summary(report: &ScanReport) -> String {
     let summary = &report.suppression_summary;
-    let mut value = format!("{} findings", summary.suppressed_count);
-    if let Some(priority) = summary.highest_suppressed_priority {
-        value.push_str(&format!(" (highest p={priority})"));
-    }
-
-    value.push_str(&format!(
-        "; critical {} | warning {} | info {}",
-        suppressed_severity_count(report, Severity::Critical),
-        suppressed_severity_count(report, Severity::Warning),
-        suppressed_severity_count(report, Severity::Info)
-    ));
-    value
-}
-
-fn suppressed_severity_count(report: &ScanReport, severity: Severity) -> usize {
-    report
-        .suppression_summary
-        .suppressed_by_severity
-        .get(&severity)
-        .copied()
-        .unwrap_or(0)
+    format!("{} findings", summary.suppressed_count)
 }
 
 fn concise_finding_message(finding: &Finding) -> String {

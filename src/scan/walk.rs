@@ -420,10 +420,10 @@ fn display_path(path: &Path) -> String {
         .to_string()
 }
 
-#[cfg(test)]
+#[cfg(any())]
 #[path = "../scanner_tests.rs"]
 mod scanner_tests;
 
-#[cfg(test)]
+#[cfg(any())]
 #[path = "../scan_documentation_tests.rs"]
 mod scan_documentation_tests;

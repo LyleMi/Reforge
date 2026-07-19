@@ -14,7 +14,7 @@ import {
 import type { ScanReport } from "../src/reportTypes";
 
 function report(overrides: Partial<ScanReport> = {}): ScanReport {
-  return { schema_version: 20, ...overrides };
+  return { schema_version: 21, ...overrides };
 }
 
 describe("repository workspace model", () => {
@@ -55,14 +55,14 @@ describe("repository workspace model", () => {
 });
 
 describe("validateReport", () => {
-it("accepts schema 20", () => {
-  expect(validateReport({ schema_version: 20 })).toEqual({ schema_version: 20 });
+it("accepts schema 21", () => {
+  expect(validateReport({ schema_version: 21 })).toEqual({ schema_version: 21 });
   });
 
   it.each([{}, { schema_version: 15 }, { schema_version: 16 }, { schema_version: 17 }])(
-  "rejects reports outside schema 20",
+  "rejects reports outside schema 21",
     (candidate) => {
-    expect(() => validateReport(candidate)).toThrow(/requires schema 20/);
+    expect(() => validateReport(candidate)).toThrow(/requires schema 21/);
     },
   );
 });

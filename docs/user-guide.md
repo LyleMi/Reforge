@@ -96,10 +96,10 @@ Produce stable machine-readable output:
 cargo run -- scan . --output json --progress never
 ```
 
-Disable git churn when you want deterministic static-only output:
+Disable git churn when you want deterministic output without repository history:
 
 ```powershell
-cargo run -- scan . --churn off --hotspot-model static --output json --progress never
+cargo run -- scan . --churn off --output json --progress never
 ```
 
 Write a report to disk:
@@ -140,16 +140,13 @@ Test files and test directories such as `tests`, `__tests__`, `spec`, and
 `*.test.ts` are scanned by default. Use `--exclude-tests` when you want a
 production-source-only scan.
 
-Use finding filters when you want the report and CI gate to consider only part
-of the final scored finding set:
+Use finding filters when you want the report to include only selected detector
+kinds:
 
 ```powershell
-cargo run -- scan . --only large_file,complex_function --min-priority 35
-cargo run -- scan . --exclude-detector debt_marker --severity warning
+cargo run -- scan . --only large_file,complex_function
+cargo run -- scan . --exclude-detector debt_marker
 ```
-
-`--severity warning` keeps warning and critical findings. `--severity critical`
-keeps only critical findings.
 
 ## Output
 
@@ -208,113 +205,66 @@ Reports contain four main data layers plus suppression audit context:
 
 - `raw_metrics`: directory, file, function, type, and churn measurements.
 - `metrics_summary`: percentile summaries for the scanned project.
-- `hotspots`: file, function, and type locations ranked by static risk, churn
-  risk, or both.
+- `agent_evidence`: context closure and test reachability evidence for files
+  and issues.
 - `suppression_summary`: counts of findings removed by suppressions.
 - `issues`: compatible atomic evidence grouped into refactoring issues.
 - `detector_manifest`: detector coverage, classification, and overlap metadata.
 - `findings`: actionable refactoring signals derived from thresholds and
   detectors.
 
-Severity comes from `priority`: `info` is below 35, `warning` is 35 through
-69, and `critical` is 70 or above. Priority is a refactoring priority signal,
-not a claim that the code is defective.
-
-`findings=0` means no findings remain after scoring, filters, and
-suppressions. It does not prove code quality, rule out bugs, or mean the
-hotspot watchlist and raw metrics are empty. When suppressions are used, keep
-the suppression summary visible so reviewers can distinguish zero
-unsuppressed findings from zero observed signals.
+`findings=0` means no findings remain after detector filters and suppressions.
+It does not prove code quality, rule out bugs, or mean raw metrics are empty.
+When suppressions are used, keep the suppression summary visible so reviewers
+can distinguish zero unsuppressed findings from zero observed signals.
 
 Every finding in JSON and YAML has a stable evidence `id` with an `rf3-` prefix.
 The ID is derived from the finding kind, primary location, related locations,
 and metric names so it can be used for baseline comparison.
 
-Filtering and suppression happen after scoring, so `priority`, `severity`, and
-stable IDs are calculated the same way whether or not a finding appears in the
-final report.
+Filtering and suppression preserve stable IDs, so baseline comparison remains
+consistent whether or not a finding appears in the final report.
 
 `unused_function` findings are conservative dead-code prompts. Reforge reports
 private named free functions only when no same-name reference appears outside
 the function body. Public/exported functions, methods, and common entry-point
 names are skipped.
 
-## Churn and Hotspots
+## Churn
 
 The default `--churn auto` mode collects git churn when the scan root is inside
 a git repository. Outside git history, `auto` records the reason and continues
 without churn. Use `--churn on` when git churn is required and the scan should
 fail if it is unavailable. Use `--churn off` to skip git entirely.
 
-Hotspot models:
-
-- `--hotspot-model static`: rank by the strongest 0-100 structural risk for
-  each location. File risk considers lines, imports, public items, and
-  file-LOC percentile; function risk considers
-  lines, complexity, nesting, parameters, and function-LOC percentile; type
-  risk considers lines, members, and type-LOC percentile.
-- `--hotspot-model churn`: rank by the strongest 0-100 project-percentile
-  signal from commits touched and recent weighted churn, with author-count
-  percentile weighted at 70%. Function and type locations inherit file churn
-  only when their static risk is at least 35.
-- `--hotspot-model hybrid`: default ranking, combining `static_risk * 0.65`
-  and `churn_risk * 0.35`, then rounding priority to an integer.
-
 Tune churn collection with `--churn-window-days` and
 `--churn-max-commit-lines`. Commits above the max added+deleted line count are
 ignored so large mechanical changes do not dominate results.
 
-Hotspots are a watchlist, not findings. Use them to choose where to inspect or
-plan refactoring work; do not treat hotspot presence alone as a hard CI gate.
-
 ## CI Gates and Baselines
 
-Use `--fail-on info|warning|critical` to make a scan exit nonzero when selected
-findings meet or exceed that severity. Reforge writes the requested report
-before returning the failing exit status.
-
-CI gates evaluate selected findings only. They do not fail on raw metrics,
-metric summaries, or hotspot watchlist entries by themselves. Suppressed
-findings are excluded from gate selection, so suppression summary context
-matters when a blocking gate reports zero findings.
-
-Without `--baseline`, all current findings are selected:
-
-```powershell
-cargo run -- scan . --output json --progress never --fail-on warning
-```
-
-With `--baseline <PATH>`, Reforge reads a prior schema 20 JSON or YAML report
-and matches findings by stable `id`. Older reports without IDs are rejected;
-regenerate the baseline with the current Reforge.
+Use `--fail-on-findings` with `--baseline <PATH>` to make a scan exit nonzero
+when unsuppressed evidence IDs are absent from a prior schema 21 JSON or YAML
+report. Reforge writes the requested report before returning the failing exit
+status. The gate requires a baseline because v21 does not assign severity,
+priority, or a readiness score.
 
 `--baseline-mode` controls the selected findings:
 
 - `new`: IDs absent from the baseline.
-- `new-or-worse`: new findings plus findings whose priority or severity
-  increased. This is the default.
 - `all`: all current findings.
 
 ```powershell
-cargo run -- scan . --baseline baseline.json --baseline-mode new-or-worse --fail-on warning --output json --progress never
+cargo run -- scan . --baseline baseline.json --baseline-mode new --fail-on-findings --output json --progress never
 ```
 
 Human reports include baseline diff counts when `--baseline` is supplied:
-`new`, `worse`, `same`, and `resolved`. Use
-`--show new|new-or-worse|all` to choose which current findings appear in the
-human `Findings` section. The default is `all`, so existing report output is
-unchanged unless the display filter is selected.
+`new`, `same`, and `resolved`. Use `--show new|all` to choose which current
+findings appear in the human `Findings` section. The default is `all`.
 
 ```powershell
-cargo run -- scan . --baseline baseline.json --show new-or-worse --output human --progress never
+cargo run -- scan . --baseline baseline.json --show new --output human --progress never
 ```
-
-Before making a gate blocking, calibrate it on several real projects. Run the
-same JSON settings across representative repositories, compare high-priority
-findings with maintainers' refactoring backlog, tune thresholds only for
-repeatable noise or blind spots, and validate the settings on a holdout
-project. Prefer `--baseline-mode new-or-worse` for pull request gates so
-unchanged legacy findings stay visible without blocking every change.
 
 ## CLI Reference
 
@@ -349,8 +299,6 @@ git churn.
 | `--ignore-path` | none | Additional path to skip; can be repeated. |
 | `--only` | none | Report only these finding kinds, as `kind[,kind...]`. |
 | `--exclude-detector` | none | Exclude these finding kinds, as `kind[,kind...]`. |
-| `--min-priority` | none | Report findings whose final priority is at least this 0-100 value. |
-| `--severity` | none | Report findings at or above `info`, `warning`, or `critical`. |
 | `--min-similar-functions` | `3` | Report similar-function groups at or above this size. |
 | `--min-function-tokens` | `80` | Ignore smaller normalized function bodies. |
 | `--function-similarity` | `0.85` | Minimum normalized token similarity for grouping. |
@@ -370,13 +318,11 @@ git churn.
 | `--min-data-clump-occurrences` | `4` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a specific configuration file. |
-| `--baseline` | none | Read a prior schema 20 JSON/YAML report for gate comparison. |
-| `--scoring-policy` | none | Load an explicitly accepted scoring policy v1. |
-| `--baseline-mode` | `new-or-worse` | Gate on `new`, `new-or-worse`, or `all` findings when a baseline is present. |
-| `--show` | `all` | Display `new`, `new-or-worse`, or `all` current findings in human baseline reports. |
-| `--fail-on` | none | Exit nonzero when selected findings meet `info`, `warning`, or `critical`. |
+| `--baseline` | none | Read a prior schema 21 JSON/YAML report for gate comparison. |
+| `--baseline-mode` | `new` | Select `new` or `all` findings when a baseline is present. |
+| `--show` | `all` | Display `new` or `all` current findings in human baseline reports. |
+| `--fail-on-findings` | false | Exit nonzero when unsuppressed finding IDs are new relative to the baseline. |
 | `--churn` | `auto` | Use `auto`, `on`, or `off` for git churn metrics. |
-| `--hotspot-model` | `hybrid` | Use `static`, `churn`, or `hybrid` hotspot ranking. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
 | `--output` | inferred | Use `human`, `html`, `json`, `yaml`, or `sarif`. |

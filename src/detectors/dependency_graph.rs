@@ -92,13 +92,15 @@ pub(crate) fn scan_dependency_graph_report(
     sources: &[SourceFile],
     root: &Path,
 ) -> DependencyGraphScan {
-    let (graph, unresolved_edges) = build_dependency_graph(sources, root);
+    let (graph, unresolved_by_file) = build_dependency_graph(sources, root);
+    let unresolved_edges = unresolved_by_file.values().sum();
     let mut findings = dependency_cycle_findings(&graph);
     findings.extend(dependency_hub_findings(&graph));
     DependencyGraphScan {
         snapshot: graph.snapshot(),
         findings,
         unresolved_edges,
+        unresolved_by_file,
     }
 }
 
@@ -107,6 +109,7 @@ pub(crate) struct DependencyGraphScan {
     pub snapshot: DependencyGraphSnapshot,
     pub findings: Vec<Finding>,
     pub unresolved_edges: usize,
+    pub unresolved_by_file: BTreeMap<String, usize>,
 }
 
 fn dependency_cycle_findings(graph: &DependencyGraph) -> Vec<Finding> {

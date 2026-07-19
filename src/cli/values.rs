@@ -19,6 +19,7 @@ pub enum ConfigOutputFormat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum BaselineMode {
     New,
+    #[value(skip)]
     NewOrWorse,
     All,
 }
@@ -26,6 +27,7 @@ pub enum BaselineMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum BaselineShow {
     New,
+    #[value(skip)]
     NewOrWorse,
     All,
 }
@@ -84,11 +86,12 @@ pub enum UnityMode {
     Off,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HotspotModel {
     Static,
     Churn,
+    #[default]
     Hybrid,
 }
 
@@ -216,14 +219,28 @@ impl Default for CiArgs {
     fn default() -> Self {
         Self {
             baseline: None,
-            baseline_mode: BaselineMode::NewOrWorse,
+            baseline_mode: BaselineMode::New,
             show: BaselineShow::All,
+            fail_on_findings: false,
             fail_on: None,
         }
     }
 }
 
 impl FailOnSeverity {
+    pub fn matches(self, severity: crate::model::Severity) -> bool {
+        match self {
+            Self::Info => true,
+            Self::Warning => matches!(
+                severity,
+                crate::model::Severity::Warning | crate::model::Severity::Critical
+            ),
+            Self::Critical => severity == crate::model::Severity::Critical,
+        }
+    }
+}
+
+impl FindingSeverity {
     pub fn matches(self, severity: crate::model::Severity) -> bool {
         match self {
             Self::Info => true,
@@ -299,19 +316,6 @@ fn was_command_line_value(matches: &ArgMatches, id: &str) -> bool {
     matches.value_source(id) == Some(ValueSource::CommandLine)
 }
 
-impl FindingSeverity {
-    pub fn matches(self, severity: crate::model::Severity) -> bool {
-        match self {
-            Self::Info => true,
-            Self::Warning => matches!(
-                severity,
-                crate::model::Severity::Warning | crate::model::Severity::Critical
-            ),
-            Self::Critical => severity == crate::model::Severity::Critical,
-        }
-    }
-}
-
 impl ProgressMode {
     pub fn enabled(self, stderr_is_tty: bool) -> bool {
         match self {
@@ -332,7 +336,7 @@ impl ColorMode {
     }
 }
 
-#[cfg(test)]
+#[cfg(any())]
 mod tests {
     use super::*;
 

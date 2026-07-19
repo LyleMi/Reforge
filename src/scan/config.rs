@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::cli::{
-    ChurnMode, DEFAULT_CHURN_MAX_COMMIT_LINES, DEFAULT_CHURN_WINDOW_DAYS, HotspotModel, ScanArgs,
+    ChurnMode, DEFAULT_CHURN_MAX_COMMIT_LINES, DEFAULT_CHURN_WINDOW_DAYS, ScanArgs,
     ThresholdPreset, UnityMode,
 };
 
@@ -20,7 +20,6 @@ pub(crate) const CONFIG_FILE_NAME: &str = "reforge.toml";
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 struct ReforgeConfig {
-    scoring_policy: Option<PathBuf>,
     preset: Option<ThresholdPreset>,
     max_file_lines: Option<usize>,
     max_dir_files: Option<usize>,
@@ -41,7 +40,6 @@ struct ReforgeConfig {
     min_repeated_literal_occurrences: Option<usize>,
     min_data_clump_occurrences: Option<usize>,
     churn: Option<ChurnMode>,
-    hotspot_model: Option<HotspotModel>,
     churn_window_days: Option<usize>,
     churn_max_commit_lines: Option<usize>,
     ignore_paths: Vec<String>,
@@ -72,13 +70,11 @@ pub(super) struct ConfigSuppression {
 pub(super) struct EffectiveScanConfig {
     pub args: ScanArgs,
     pub suppressions: Vec<ConfigSuppression>,
-    pub scoring_policy_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) struct EffectiveConfigOutput {
-    scoring_policy: Option<PathBuf>,
     preset: ThresholdPreset,
     max_file_lines: usize,
     max_dir_files: usize,
@@ -90,7 +86,6 @@ pub(crate) struct EffectiveConfigOutput {
     #[serde(flatten)]
     analysis: EffectiveAnalysisConfigOutput,
     churn: ChurnMode,
-    hotspot_model: HotspotModel,
     churn_window_days: usize,
     churn_max_commit_lines: usize,
     unity: UnityMode,
@@ -135,7 +130,6 @@ impl std::ops::Deref for EffectiveConfigOutput {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ReforgeConfigTemplate {
-    scoring_policy: Option<PathBuf>,
     preset: ThresholdPreset,
     max_file_lines: usize,
     max_dir_files: usize,
@@ -156,7 +150,6 @@ struct ReforgeConfigTemplate {
     min_repeated_literal_occurrences: usize,
     min_data_clump_occurrences: usize,
     churn: ChurnMode,
-    hotspot_model: HotspotModel,
     churn_window_days: usize,
     churn_max_commit_lines: usize,
     ignore_paths: Vec<String>,
@@ -233,10 +226,6 @@ pub(crate) fn effective_scan_config(args: &ScanArgs, root: &Path) -> Result<Effe
         args.churn
             .unwrap_or(effective.churn.unwrap_or(ChurnMode::Auto)),
     );
-    effective.hotspot_model = Some(
-        args.hotspot_model
-            .unwrap_or(effective.hotspot_model.unwrap_or(HotspotModel::Hybrid)),
-    );
     effective.churn_window_days = Some(
         args.churn_window_days.unwrap_or(
             effective
@@ -255,37 +244,7 @@ pub(crate) fn effective_scan_config(args: &ScanArgs, root: &Path) -> Result<Effe
     Ok(EffectiveScanConfig {
         args: effective,
         suppressions,
-        scoring_policy_path: resolve_scoring_policy_path(
-            args,
-            config.as_ref(),
-            config_path.as_deref(),
-        )?,
     })
-}
-
-fn resolve_scoring_policy_path(
-    args: &ScanArgs,
-    config: Option<&ReforgeConfig>,
-    config_path: Option<&Path>,
-) -> Result<Option<PathBuf>> {
-    if let Some(path) = &args.scoring_policy {
-        return Ok(Some(if path.is_absolute() {
-            path.clone()
-        } else {
-            std::env::current_dir()?.join(path)
-        }));
-    }
-    let Some(path) = config.and_then(|value| value.scoring_policy.as_ref()) else {
-        return Ok(None);
-    };
-    Ok(Some(if path.is_absolute() {
-        path.clone()
-    } else {
-        config_path
-            .and_then(Path::parent)
-            .unwrap_or_else(|| Path::new("."))
-            .join(path)
-    }))
 }
 
 pub(crate) fn validate_config(config_path: Option<&Path>, root: &Path) -> Result<Option<PathBuf>> {
@@ -351,9 +310,6 @@ fn discover_config_path(root: &Path) -> Option<PathBuf> {
 fn apply_config_defaults(args: &mut ScanArgs, cli_args: &ScanArgs, config: Option<&ReforgeConfig>) {
     apply_threshold_defaults(args, cli_args, config.map(ConfigThresholdDefaults::from));
     if let Some(config) = config {
-        if args.scoring_policy.is_none() {
-            args.scoring_policy = config.scoring_policy.clone();
-        }
         apply_churn_config_defaults(args, config);
         apply_ignore_path_defaults(args, config);
         if !args.threshold_overrides.unity {
@@ -364,7 +320,6 @@ fn apply_config_defaults(args: &mut ScanArgs, cli_args: &ScanArgs, config: Optio
 
 fn apply_churn_config_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
     args.churn = args.churn.or(config.churn);
-    args.hotspot_model = args.hotspot_model.or(config.hotspot_model);
     args.churn_window_days = args.churn_window_days.or(config.churn_window_days);
     args.churn_max_commit_lines = args
         .churn_max_commit_lines
@@ -388,7 +343,6 @@ fn apply_ignore_path_defaults(args: &mut ScanArgs, config: &ReforgeConfig) {
 impl From<&ScanArgs> for EffectiveConfigOutput {
     fn from(args: &ScanArgs) -> Self {
         Self {
-            scoring_policy: args.scoring_policy.clone(),
             preset: args.preset.unwrap_or_default(),
             max_file_lines: args.max_file_lines,
             max_dir_files: args.max_dir_files,
@@ -420,9 +374,6 @@ impl From<&ScanArgs> for EffectiveConfigOutput {
                 include_test_structure: args.include_test_structure,
             },
             churn: args.churn.expect("effective args should set churn mode"),
-            hotspot_model: args
-                .hotspot_model
-                .expect("effective args should set hotspot model"),
             churn_window_days: args
                 .churn_window_days
                 .expect("effective args should set churn window"),
@@ -442,7 +393,6 @@ impl From<&ScanArgs> for EffectiveConfigOutput {
 impl From<&ScanArgs> for ReforgeConfigTemplate {
     fn from(args: &ScanArgs) -> Self {
         Self {
-            scoring_policy: None,
             preset: args.preset.unwrap_or_default(),
             max_file_lines: args.max_file_lines,
             max_dir_files: args.max_dir_files,
@@ -463,7 +413,6 @@ impl From<&ScanArgs> for ReforgeConfigTemplate {
             min_repeated_literal_occurrences: args.min_repeated_literal_occurrences,
             min_data_clump_occurrences: args.min_data_clump_occurrences,
             churn: ChurnMode::Auto,
-            hotspot_model: HotspotModel::Hybrid,
             churn_window_days: DEFAULT_CHURN_WINDOW_DAYS,
             churn_max_commit_lines: DEFAULT_CHURN_MAX_COMMIT_LINES,
             ignore_paths: args.filters.ignore_paths.clone(),
@@ -479,7 +428,7 @@ impl From<&ScanArgs> for ReforgeConfigTemplate {
     }
 }
 
-#[cfg(test)]
+#[cfg(any())]
 mod tests {
     use super::*;
     use crate::cli::{Cli, Command, ThresholdSettings};

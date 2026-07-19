@@ -58,8 +58,7 @@ pub struct ScanArgs {
     #[arg(long)]
     pub config: Option<PathBuf>,
 
-    /// Accepted scoring policy v1 to apply. CLI paths are resolved from the current directory.
-    #[arg(long, value_name = "PATH")]
+    #[arg(skip)]
     pub scoring_policy: Option<PathBuf>,
 
     #[command(flatten)]
@@ -69,8 +68,7 @@ pub struct ScanArgs {
     #[arg(long, value_enum)]
     pub churn: Option<ChurnMode>,
 
-    /// Hotspot ranking model.
-    #[arg(long, value_enum)]
+    #[arg(skip)]
     pub hotspot_model: Option<HotspotModel>,
 
     /// Number of days of git history to include in churn metrics.
@@ -200,15 +198,18 @@ pub struct CiArgs {
     pub baseline: Option<PathBuf>,
 
     /// Which findings are considered when a baseline is present.
-    #[arg(long, value_enum, default_value_t = BaselineMode::NewOrWorse)]
+    #[arg(long, value_enum, default_value_t = BaselineMode::New)]
     pub baseline_mode: BaselineMode,
 
     /// Which baseline comparison findings to show in human output.
     #[arg(long, value_enum, default_value_t = BaselineShow::All)]
     pub show: BaselineShow,
 
-    /// Exit with a failure when selected unsuppressed findings meet or exceed this severity.
-    #[arg(long, value_enum)]
+    /// Exit with a failure when unsuppressed findings are new relative to a schema 21 baseline.
+    #[arg(long)]
+    pub fail_on_findings: bool,
+
+    #[arg(skip)]
     pub fail_on: Option<FailOnSeverity>,
 }
 
@@ -245,11 +246,9 @@ pub struct FindingControlArgs {
     #[arg(long = "exclude-detector", value_name = "KIND[,KIND...]")]
     pub exclude_detector: Option<String>,
 
-    /// Only report findings with priority at or above this value.
-    #[arg(long, value_name = "0-100")]
+    #[arg(skip)]
     pub min_priority: Option<u8>,
 
-    /// Only report findings at or above this severity.
-    #[arg(long, value_enum)]
+    #[arg(skip)]
     pub severity: Option<FindingSeverity>,
 }

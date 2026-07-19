@@ -44,7 +44,7 @@ export type RelatedLocation = {
 export type Finding = {
   id?: string;
   kind: string;
-  severity: Severity;
+  severity?: Severity;
   path: string;
   line?: number | null;
   metrics?: FindingMetric[];
@@ -71,8 +71,8 @@ export type Issue = {
   primary_finding_id: string;
   finding_ids: string[];
   kinds: string[];
-  priority: number;
-  severity: Severity;
+  priority?: number;
+  severity?: Severity;
 };
 
 export type DetectorManifestEntry = {
@@ -223,6 +223,7 @@ export type ScanReport = {
   raw_metrics?: RawMetrics;
   raw_metric_manifest?: RawMetricManifestEntry[];
   dependency_graph?: DependencyGraph;
+  agent_evidence?: Record<string, unknown>;
   unity_project?: UnityProject;
   hotspots?: Hotspot[];
   suppression_summary?: SuppressionSummary;
