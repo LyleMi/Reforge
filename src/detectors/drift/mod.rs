@@ -557,7 +557,7 @@ fn duplicate_type_shape_findings(
 
         let fields = shared_fields(&group);
         let representative = &group[0].occurrence;
-        findings.push(crate::scanner::finding(
+        findings.push(crate::scanner::Finding::from(
             FindingInput::new(
                 FindingKind::DuplicateTypeShape,
                 representative.path.clone(),
@@ -599,7 +599,7 @@ fn generic_bucket_findings(
             continue;
         }
 
-        findings.push(crate::scanner::finding(
+        findings.push(crate::scanner::Finding::from(
             FindingInput::new(
                 FindingKind::GenericBucketDrift,
                 directory.display_path.clone(),
@@ -637,7 +637,7 @@ fn generic_bucket_findings(
             continue;
         }
 
-        findings.push(crate::scanner::finding(
+        findings.push(crate::scanner::Finding::from(
             FindingInput::new(
                 FindingKind::GenericBucketDrift,
                 occurrence.path.clone(),
@@ -678,7 +678,7 @@ fn adapter_boundary_bypass_findings(
         }
 
         let representative = &group[0];
-        findings.push(crate::scanner::finding(
+        findings.push(crate::scanner::Finding::from(
             FindingInput::new(
                 FindingKind::AdapterBoundaryBypass,
                 representative.path.clone(),
@@ -736,7 +736,7 @@ fn groups_to_findings(
         }
 
         let representative = &group[0];
-        findings.push(crate::scanner::finding(
+        findings.push(crate::scanner::Finding::from(
             FindingInput::new(
                 spec.kind,
                 representative.path.clone(),

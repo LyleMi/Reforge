@@ -23,7 +23,7 @@ use crate::model::{
 #[cfg(test)]
 use crate::scoring::finalize_scoring;
 use crate::scoring::{
-    FindingInput, StaticRiskThresholds, cluster_findings, finalize_scoring_with_policy, finding,
+    FindingInput, StaticRiskThresholds, cluster_findings, finalize_scoring_with_policy,
     load_scoring_policy, rank_hotspots, summarize_raw_metrics,
 };
 use crate::similar_functions::{
@@ -987,7 +987,7 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
     });
 
     if line_count > options.max_file_lines {
-        scan.findings.push(finding(FindingInput::new(
+        scan.findings.push(Finding::from(FindingInput::new(
             FindingKind::LargeFile,
             display_path.clone(),
             Some(1),
@@ -1003,7 +1003,7 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
 
     for (index, line) in source.lines().enumerate() {
         if has_debt_marker(line) {
-            scan.findings.push(finding(FindingInput::new(
+            scan.findings.push(Finding::from(FindingInput::new(
                 FindingKind::DebtMarker,
                 display_path.clone(),
                 Some(index + 1),
@@ -1055,7 +1055,7 @@ fn scan_directories(
             source_files: *file_count,
         });
         if *file_count > max_dir_files {
-            findings.push(finding(FindingInput::new(
+            findings.push(Finding::from(FindingInput::new(
                 FindingKind::LargeDirectory,
                 display_path(directory),
                 None,

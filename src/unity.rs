@@ -11,7 +11,7 @@ use crate::model::{
     UnityAssemblyNode, UnityCoverageEntry, UnityMetricManifestEntry, UnityProjectReport,
     UnityProjectStatus, UnityRawMetric, UnityReferenceProblem,
 };
-use crate::scoring::{FindingInput, finding};
+use crate::scoring::FindingInput;
 
 const ZERO_GUID: &str = "00000000000000000000000000000000";
 const LIFECYCLE_METHODS: &[&str] = &[
@@ -885,7 +885,7 @@ impl UnityFindingInput {
 }
 
 fn unity_finding(input: UnityFindingInput) -> Finding {
-    finding(
+    Finding::from(
         FindingInput::new(
             input.kind,
             input.path,

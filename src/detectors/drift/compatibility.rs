@@ -59,7 +59,7 @@ pub(super) fn stale_compatibility_path_findings(
             continue;
         };
 
-        findings.push(crate::scanner::finding(
+        findings.push(crate::scanner::Finding::from(
             FindingInput::new(
                 FindingKind::StaleCompatibilityPath,
                 representative.path.clone(),

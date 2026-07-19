@@ -1001,7 +1001,7 @@ fn hotspot_static_risk_uses_effective_scan_thresholds() -> Result<()> {
 
 #[test]
 fn file_level_hotspot_only_weakly_influences_line_findings() {
-    let mut findings = vec![finding(FindingInput::new(
+    let mut findings = vec![Finding::from(FindingInput::new(
         FindingKind::RepeatedLiteral,
         "src/big.rs",
         Some(42),
@@ -1035,7 +1035,7 @@ fn file_level_hotspot_only_weakly_influences_line_findings() {
 
 #[test]
 fn function_hotspot_takes_precedence_over_file_hotspot_for_same_line_finding() {
-    let mut findings = vec![finding(FindingInput::new(
+    let mut findings = vec![Finding::from(FindingInput::new(
         FindingKind::LongFunction,
         "src/hot.rs",
         Some(10),

@@ -238,7 +238,7 @@ fn has_external_reference(
 }
 
 fn unused_function_finding(definition: FunctionDefinition) -> Finding {
-    crate::scanner::finding(
+    crate::scanner::Finding::from(
         FindingInput::new(
             FindingKind::UnusedFunction,
             definition.path,

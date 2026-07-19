@@ -419,7 +419,7 @@ mod tests {
 
     use crate::cli::{ChurnMode, ScanArgs};
     use crate::scan::scan_path;
-    use crate::scoring::{FindingInput, finding};
+    use crate::scoring::FindingInput;
 
     fn test_root(name: &str) -> PathBuf {
         let suffix = SystemTime::now()
@@ -651,7 +651,7 @@ reason = \"typo\"
     }
 
     fn test_finding(kind: FindingKind, severity: Severity, priority: u8) -> Finding {
-        let mut finding = finding(FindingInput::new(
+        let mut finding = Finding::from(FindingInput::new(
             kind,
             "src/main.rs",
             Some(1),

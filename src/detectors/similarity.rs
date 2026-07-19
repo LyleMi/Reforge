@@ -11,9 +11,7 @@ use crate::language::{
     NAME_FIELD, adapter_for_path, child_by_kind, has_rust_cfg_test_attribute,
     is_identifier_like_kind,
 };
-use crate::scanner::{
-    Finding, FindingInput, FindingKind, FindingMetric, RelatedLocation, scored_finding,
-};
+use crate::scanner::{Finding, FindingInput, FindingKind, FindingMetric, RelatedLocation};
 
 mod comparison;
 
@@ -737,7 +735,7 @@ fn similar_function_finding(
         })
         .collect::<Vec<_>>();
 
-    scored_finding(
+    Finding::from(
         FindingInput::new(
             FindingKind::SimilarFunctions,
             representative.path.clone(),

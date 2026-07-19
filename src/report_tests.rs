@@ -6,7 +6,7 @@ use crate::model::{
 use crate::scanner::{
     ChurnFileMetric, ChurnSummary, FileRawMetric, FindingInput, FindingMetric, MetricsSummary,
     RawMetrics, RelatedLocation, SCAN_REPORT_SCHEMA_VERSION, ScanStats, ScanSummary,
-    SuppressionSummary, finding, scored_finding, severity_for_priority,
+    SuppressionSummary, severity_for_priority,
 };
 
 fn report(findings: Vec<Finding>) -> ScanReport {
@@ -117,7 +117,7 @@ fn make_finding(
     metrics: Vec<FindingMetric>,
     related_locations: Vec<RelatedLocation>,
 ) -> Finding {
-    finding(
+    Finding::from(
         FindingInput::new(kind, path, line, message, metrics)
             .with_related_locations(related_locations),
     )
@@ -483,7 +483,7 @@ fn renders_json_report_schema_v16_with_measurement_contract_metadata() {
 
 #[test]
 fn caps_serialized_similar_function_locations() {
-    let scan_report = report(vec![scored_finding(
+    let scan_report = report(vec![Finding::from(
         FindingInput::new(
             FindingKind::SimilarFunctions,
             "src/a.rs",

@@ -43,6 +43,13 @@ impl FindingInput {
         message: impl Into<String>,
         metrics: Vec<FindingMetric>,
     ) -> Self {
+        let declared_metrics = input_metrics(kind);
+        assert!(
+            metrics
+                .iter()
+                .all(|metric| declared_metrics.contains(&metric.name)),
+            "finding {kind:?} emitted a metric outside its detector contract"
+        );
         Self {
             kind,
             path: path.into(),
@@ -66,59 +73,44 @@ impl FindingInput {
     }
 }
 
-pub fn finding(input: FindingInput) -> Finding {
-    build_finding(input)
-}
-
-pub fn scored_finding(input: FindingInput) -> Finding {
-    build_finding(input)
-}
-
-fn build_finding(input: FindingInput) -> Finding {
-    let declared_metrics = input_metrics(input.kind);
-    assert!(
-        input
-            .metrics
-            .iter()
-            .all(|metric| declared_metrics.contains(&metric.name)),
-        "finding {:?} emitted a metric outside its detector contract",
-        input.kind
-    );
-    let detection_reliability = input
-        .detection_reliability
-        .unwrap_or_else(|| detection_reliability(input.kind));
-    let interpretation_reliability = input
-        .interpretation_reliability
-        .unwrap_or_else(|| default_interpretation_reliability(input.kind));
-    let (construct, mechanism) = classification(input.kind);
-    let mut finding = Finding {
-        id: Default::default(),
-        kind: input.kind,
-        severity: Severity::Info,
-        path: input.path,
-        line: input.line,
-        metrics: input.metrics,
-        construct,
-        mechanism,
-        issue_id: None,
-        priority: 0,
-        detection_reliability,
-        interpretation_reliability,
-        priority_factors: priority_factors(PriorityFactorInput {
+impl From<FindingInput> for Finding {
+    fn from(input: FindingInput) -> Self {
+        let detection_reliability = input
+            .detection_reliability
+            .unwrap_or_else(|| detection_reliability(input.kind));
+        let interpretation_reliability = input
+            .interpretation_reliability
+            .unwrap_or_else(|| default_interpretation_reliability(input.kind));
+        let (construct, mechanism) = classification(input.kind);
+        let mut finding = Self {
+            id: Default::default(),
             kind: input.kind,
-            metrics: &[],
+            severity: Severity::Info,
+            path: input.path,
+            line: input.line,
+            metrics: input.metrics,
+            construct,
+            mechanism,
+            issue_id: None,
+            priority: 0,
             detection_reliability,
             interpretation_reliability,
-            related_locations: &input.related_locations,
-            change_pressure: 0.0,
-        }),
-        rank_explanation: String::new(),
-        message: input.message,
-        related_locations: input.related_locations,
-    };
-    refresh_finding_priority(&mut finding, 0.0);
-    finding.refresh_id();
-    finding
+            priority_factors: priority_factors(PriorityFactorInput {
+                kind: input.kind,
+                metrics: &[],
+                detection_reliability,
+                interpretation_reliability,
+                related_locations: &input.related_locations,
+                change_pressure: 0.0,
+            }),
+            rank_explanation: String::new(),
+            message: input.message,
+            related_locations: input.related_locations,
+        };
+        refresh_finding_priority(&mut finding, 0.0);
+        finding.refresh_id();
+        finding
+    }
 }
 
 pub fn severity_for_priority(priority: u8) -> Severity {
@@ -675,7 +667,7 @@ mod contract_tests {
     #[test]
     #[should_panic(expected = "outside its detector contract")]
     fn rejects_metrics_not_declared_by_detector() {
-        finding(FindingInput::new(
+        let _ = Finding::from(FindingInput::new(
             FindingKind::LargeFile,
             "src/lib.rs",
             Some(1),

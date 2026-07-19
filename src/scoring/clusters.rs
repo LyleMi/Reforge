@@ -138,12 +138,12 @@ fn issue_summary(family: &str, subject: &EvidenceSubject) -> String {
 #[cfg(test)]
 mod tests {
     use crate::model::{FindingKind, RelatedLocation};
-    use crate::scoring::{FindingInput, finding};
+    use crate::scoring::FindingInput;
 
     use super::*;
 
     fn sample(kind: FindingKind, line: usize, priority: u8) -> Finding {
-        let mut finding = finding(FindingInput::new(
+        let mut finding = Finding::from(FindingInput::new(
             kind,
             "src/lib.rs",
             Some(line),
@@ -155,7 +155,7 @@ mod tests {
     }
 
     fn group_sample(kind: FindingKind, path: &str, related_paths: &[&str]) -> Finding {
-        finding(
+        Finding::from(
             FindingInput::new(kind, path, Some(1), "", Vec::new()).with_related_locations(
                 related_paths
                     .iter()

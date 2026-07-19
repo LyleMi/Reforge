@@ -7,7 +7,7 @@ use clap::CommandFactory;
 
 use crate::cli::Cli;
 use crate::model::{Finding, FindingKind, FindingMetric, MetricId};
-use crate::scoring::{FindingInput, finding};
+use crate::scoring::FindingInput;
 
 const PROJECT_MARKERS: &[&str] = &[
     "README.md",
@@ -233,7 +233,7 @@ impl DocumentationInventory {
 
     fn missing_user_guide(&self) -> Option<Finding> {
         let Some(path) = &self.user_guide else {
-            return Some(finding(FindingInput::new(
+            return Some(Finding::from(FindingInput::new(
                 FindingKind::MissingUserGuide,
                 display_path(&self.root),
                 None,
@@ -252,7 +252,7 @@ impl DocumentationInventory {
             return None;
         }
 
-        Some(finding(FindingInput::new(
+        Some(Finding::from(FindingInput::new(
             FindingKind::MissingUserGuide,
             display_path(path),
             Some(1),
@@ -284,7 +284,7 @@ impl DocumentationInventory {
     }
 
     fn missing_doc_finding(&self, kind: FindingKind, message: &str, risk: usize) -> Finding {
-        finding(FindingInput::new(
+        Finding::from(FindingInput::new(
             kind,
             display_path(&self.root),
             None,
@@ -319,7 +319,7 @@ impl DocumentationInventory {
             return None;
         }
 
-        Some(finding(FindingInput::new(
+        Some(Finding::from(FindingInput::new(
             FindingKind::StaleCliDocumentation,
             self.user_guide
                 .as_ref()
@@ -357,7 +357,7 @@ impl DocumentationInventory {
             return None;
         }
 
-        Some(finding(FindingInput::new(
+        Some(Finding::from(FindingInput::new(
             FindingKind::StaleSchemaDocumentation,
             display_path(path),
             Some(1),

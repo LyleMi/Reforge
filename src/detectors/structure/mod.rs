@@ -335,7 +335,7 @@ fn push_function_threshold_finding(
 
     signals
         .findings
-        .push(crate::scanner::finding(FindingInput::new(
+        .push(crate::scanner::Finding::from(FindingInput::new(
             signal.kind(),
             file.display_path.clone(),
             Some(function.line),
@@ -433,7 +433,7 @@ fn scan_type_metrics(
         {
             signals
                 .findings
-                .push(crate::scanner::finding(FindingInput::new(
+                .push(crate::scanner::Finding::from(FindingInput::new(
                 FindingKind::LargeType,
                 file.display_path.clone(),
                 Some(type_metric.line),
@@ -471,7 +471,7 @@ fn scan_file_metrics(
     if imports > options.max_imports {
         signals
             .findings
-            .push(crate::scanner::finding(FindingInput::new(
+            .push(crate::scanner::Finding::from(FindingInput::new(
                 FindingKind::ImportHeavyFile,
                 file.display_path.clone(),
                 Some(1),
@@ -489,7 +489,7 @@ fn scan_file_metrics(
     if public_items > options.max_public_items {
         signals
             .findings
-            .push(crate::scanner::finding(FindingInput::new(
+            .push(crate::scanner::Finding::from(FindingInput::new(
                 FindingKind::LargePublicSurface,
                 file.display_path.clone(),
                 Some(1),
@@ -536,7 +536,7 @@ fn scan_function_proliferation(
 
     signals
         .findings
-        .push(crate::scanner::finding(FindingInput::new(
+        .push(crate::scanner::Finding::from(FindingInput::new(
             FindingKind::FunctionProliferation,
             file.display_path.clone(),
             Some(1),

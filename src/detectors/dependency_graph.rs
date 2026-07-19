@@ -5,7 +5,7 @@ use crate::model::{
     DependencyGraphEdge, DependencyGraphNode, DependencyGraphSnapshot, Finding, FindingKind,
     FindingMetric, MetricId, RelatedLocation,
 };
-use crate::scanner::{FindingInput, finding};
+use crate::scanner::FindingInput;
 
 use super::similarity::SourceFile;
 
@@ -127,7 +127,7 @@ fn dependency_cycle_findings(graph: &DependencyGraph) -> Vec<Finding> {
                 })
                 .collect::<Vec<_>>();
 
-            finding(
+            Finding::from(
                 FindingInput::new(
                     FindingKind::DependencyCycle,
                     primary_path,
@@ -230,7 +230,7 @@ fn dependency_hub_finding(
         .copied()
         .unwrap_or(0);
 
-    Some(finding(FindingInput::new(
+    Some(Finding::from(FindingInput::new(
         FindingKind::DependencyHub,
         node.path.clone(),
         Some(1),

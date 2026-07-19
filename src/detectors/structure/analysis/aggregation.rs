@@ -52,7 +52,7 @@ pub(in crate::detectors::structure) fn file_naming_drift_findings(
             continue;
         }
 
-        findings.push(crate::scanner::finding(
+        findings.push(crate::scanner::Finding::from(
             FindingInput::new(
                 FindingKind::FileNamingDrift,
                 directory.display_path.clone(),
@@ -276,7 +276,7 @@ pub(in crate::detectors::structure) fn directory_drift_findings(
     for (directory, concepts) in directories {
         let threshold = options.max_dir_files.max(4);
         if concepts.len() > threshold {
-            findings.push(crate::scanner::finding(FindingInput::new(
+            findings.push(crate::scanner::Finding::from(FindingInput::new(
                 FindingKind::DirectoryDrift,
                 directory.to_string_lossy().replace('\\', "/"),
                 None,
@@ -334,7 +334,7 @@ pub(in crate::detectors::structure) fn group_occurrences(
             "occurrences",
         )];
         let finding = if kind == FindingKind::RepeatedLiteral {
-            crate::scanner::scored_finding(
+            crate::scanner::Finding::from(
                 FindingInput::new(
                     kind,
                     representative.path.clone(),
@@ -346,7 +346,7 @@ pub(in crate::detectors::structure) fn group_occurrences(
                 .with_related_locations(related_locations),
             )
         } else {
-            crate::scanner::finding(
+            crate::scanner::Finding::from(
                 FindingInput::new(
                     kind,
                     representative.path.clone(),

@@ -577,7 +577,7 @@ pub(super) fn happy_path_test_findings(test_files: Vec<(usize, Vec<Occurrence>)>
         .into_iter()
         .filter_map(|(test_count, locations)| {
             let representative = locations.first()?;
-            Some(crate::scanner::finding(
+            Some(crate::scanner::Finding::from(
                 FindingInput::new(
                     FindingKind::HappyPathOnlyTests,
                     representative.path.clone(),
