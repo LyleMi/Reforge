@@ -5,7 +5,7 @@ agent="codex"
 skills_dir=""
 source_dir=""
 force=0
-install_cli=0
+install_cli=1
 
 usage() {
     cat <<'EOF'
@@ -16,7 +16,7 @@ Options:
   --skills-dir DIR        Directory that contains skill folders.
   --source DIR            Skill source folder. Defaults to skills/reforge-scan.
   --force                 Replace an existing reforge-scan skill.
-  --install-cli           Run cargo install --path . after installing the skill.
+  --skip-cli              Install the skill without installing the Reforge CLI.
   -h, --help              Show this help.
 EOF
 }
@@ -41,6 +41,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --install-cli)
             install_cli=1
+            shift
+            ;;
+        --skip-cli)
+            install_cli=0
             shift
             ;;
         -h|--help)
@@ -123,7 +127,7 @@ fi
 
 if [ "$install_cli" -eq 1 ]; then
     if ! command -v cargo >/dev/null 2>&1; then
-        echo "cargo is required for --install-cli" >&2
+        echo "cargo is required to install the Reforge CLI. Pass --skip-cli to install only the skill." >&2
         exit 1
     fi
     cargo install --path "$repo_root"

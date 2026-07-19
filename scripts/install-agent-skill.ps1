@@ -9,10 +9,17 @@ param(
 
     [switch]$Force,
 
-    [switch]$InstallCli
+    # Retained for compatibility; CLI installation is now the default.
+    [switch]$InstallCli,
+
+    [switch]$SkipCli
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($InstallCli -and $SkipCli) {
+    throw "-InstallCli and -SkipCli cannot be used together."
+}
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $scriptDir "..")).Path
@@ -90,7 +97,11 @@ else {
     Write-Host "Installed reforge-scan skill to $target"
 }
 
-if ($InstallCli) {
+if (-not $SkipCli) {
+    if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+        throw "cargo is required to install the Reforge CLI. Pass -SkipCli to install only the skill."
+    }
+
     & cargo install --path $repoRoot
     if ($LASTEXITCODE -ne 0) {
         throw "cargo install failed with exit code $LASTEXITCODE"

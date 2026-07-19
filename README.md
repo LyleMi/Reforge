@@ -115,6 +115,12 @@ scoped refactors from scan evidence.
 
 Install it for Codex on Windows:
 
+```batch
+.\scripts\install-agent-skill.bat
+```
+
+Or run the PowerShell script directly:
+
 ```powershell
 .\scripts\install-agent-skill.ps1
 ```
@@ -127,8 +133,8 @@ sh scripts/install-agent-skill.sh
 
 Update an existing install by passing `-Force` or `--force`:
 
-```powershell
-.\scripts\install-agent-skill.ps1 -Force
+```batch
+.\scripts\install-agent-skill.bat --force
 ```
 
 ```bash
@@ -138,16 +144,17 @@ sh scripts/install-agent-skill.sh --force
 For another agent that consumes the same skill folder shape, pass the directory
 that contains skill folders:
 
-```powershell
-.\scripts\install-agent-skill.ps1 -Agent generic -SkillsDir D:\path\to\agent\skills -Force
+```batch
+.\scripts\install-agent-skill.bat --agent generic --skills-dir D:\path\to\agent\skills --force
 ```
 
 ```bash
 sh scripts/install-agent-skill.sh --agent generic --skills-dir ~/.agent/skills --force
 ```
 
-The scripts install or update the skill only. Add `-InstallCli` or
-`--install-cli` when you also want to run `cargo install --path .`.
+The scripts install or update both the skill and the Reforge CLI. They run
+`cargo install --path .` from this checkout. Pass `-SkipCli` or `--skip-cli`
+to install only the skill.
 
 ## Documentation
 
