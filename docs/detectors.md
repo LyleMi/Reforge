@@ -27,8 +27,8 @@ before detector-specific analysis runs.
 
 `similar_functions` uses Tree-sitter to extract named functions and methods in
 Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks, Python, Go, Java, C#,
-Kotlin, PHP, and Ruby. C# extraction includes methods, constructors, and local
-functions.
+Kotlin, PHP, Ruby, Bash, and PowerShell. C# extraction includes methods,
+constructors, and local functions.
 Function bodies are normalized so identifiers become `ID`, strings become
 `STR`, and numbers become `NUM`.
 
@@ -80,8 +80,9 @@ one expands the module surface visible to another scope.
 Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks, Python, Go, and C#
 local functions. It reports private named free functions or C# local functions
 that have no same-name references outside their own function body. Java, C#
-methods, Kotlin, PHP, and Ruby are skipped for unused-function candidates until
-their reference and visibility rules can be modeled more precisely.
+methods, Kotlin, PHP, Ruby, Bash, and PowerShell are skipped for unused-function
+candidates until their reference and visibility rules can be modeled more
+precisely.
 
 The detector skips public or exported functions, methods, common entry-point
 names such as `main` and `init`, and test helper definitions by default.
@@ -95,6 +96,8 @@ graph. The detector resolves only imports that point to another scanned source
 file under the scan root, such as relative JavaScript/TypeScript/Vue imports,
 Rust `mod` declarations, Python relative imports, Ruby `require_relative`
 calls, and quoted C/C++ includes that resolve to scanned source files.
+Bash `source`/`.` and PowerShell dot-sourcing or `Import-Module` are not
+modeled in this version.
 
 - `dependency_cycle`: a resolved strongly connected component spans multiple
   source files. The finding reports cycle size, internal dependency edge count,

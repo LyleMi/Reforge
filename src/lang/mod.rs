@@ -33,6 +33,8 @@ pub(crate) enum LanguageFamily {
     Kotlin,
     Php,
     Ruby,
+    Bash,
+    PowerShell,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -94,6 +96,14 @@ pub(crate) fn adapter_for_path(path: &Path) -> Option<LanguageAdapter> {
         "rb" => Some(LanguageAdapter {
             family: LanguageFamily::Ruby,
             language: || tree_sitter_ruby::LANGUAGE.into(),
+        }),
+        "sh" | "bash" => Some(LanguageAdapter {
+            family: LanguageFamily::Bash,
+            language: || tree_sitter_bash::LANGUAGE.into(),
+        }),
+        "ps1" | "psm1" => Some(LanguageAdapter {
+            family: LanguageFamily::PowerShell,
+            language: || tree_sitter_powershell::LANGUAGE.into(),
         }),
         _ => None,
     }
@@ -250,6 +260,28 @@ mod tests {
         assert_eq!(
             adapter_for_path(Path::new("Component.vue")).map(|adapter| adapter.family),
             Some(LanguageFamily::JavaScriptTypeScript)
+        );
+    }
+
+    #[test]
+    fn recognizes_bash_and_powershell_script_extensions() {
+        for path in ["build.sh", "install.bash"] {
+            assert_eq!(
+                adapter_for_path(Path::new(path)).map(|adapter| adapter.family),
+                Some(LanguageFamily::Bash),
+                "{path}"
+            );
+        }
+        for path in ["deploy.ps1", "module.psm1"] {
+            assert_eq!(
+                adapter_for_path(Path::new(path)).map(|adapter| adapter.family),
+                Some(LanguageFamily::PowerShell),
+                "{path}"
+            );
+        }
+        assert_eq!(
+            adapter_for_path(Path::new("module.psd1")).map(|a| a.family),
+            None
         );
     }
 

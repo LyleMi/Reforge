@@ -447,6 +447,8 @@ fn language_label(path: &str) -> &'static str {
         Some("kt") => "kotlin",
         Some("php") => "php",
         Some("rb") => "ruby",
+        Some("sh" | "bash") => "bash",
+        Some("ps1" | "psm1") => "powershell",
         Some("c" | "cc" | "cpp") => "c_like",
         _ => "unknown",
     }

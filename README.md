@@ -25,7 +25,8 @@ safe.
 ## Highlights
 
 - Scans Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks, Python, Go,
-  Java, C#, Kotlin, PHP, and Ruby with Tree-sitter-backed analysis.
+  Java, C#, Kotlin, PHP, Ruby, Bash, and PowerShell with Tree-sitter-backed
+  analysis.
 - Reports human, single-file HTML, JSON, YAML, or SARIF output.
 - Separates raw observations, project percentiles, atomic `rf3-...` findings,
   and stable `ri3-...` issues.
@@ -114,6 +115,21 @@ to omit CLI installation, `--skip-agent` to omit the investigator, or
 ```bash
 sh scripts/install-agent-workflow.sh --skills-only --skills-dir ~/.agent/skills --force
 ```
+
+Install portable agent instructions and skills for another coding assistant:
+
+```bash
+sh scripts/install-agent-workflow.sh --agent claude --project-dir /path/to/project --skip-cli
+sh scripts/install-agent-workflow.sh --agent all --project-dir /path/to/project --skip-cli
+sh scripts/install-agent-workflow.sh --agent opencode --root-dir ~/.config/opencode --force
+```
+
+Supported `--agent` values are `codex`, `claude`, `gemini`, `opencode`,
+`codebuddy`, `cursor`, `generic`, and `all`. Without `--project-dir`, the script
+installs into the selected tool's user root/config directory; with
+`--project-dir`, it writes project-local files such as `CLAUDE.md`, `GEMINI.md`,
+`AGENTS.md`, `CODEBUDDY.md`, `.cursor/rules/reforge.mdc`, and matching skills
+directories where the target supports skills.
 
 The older `install-agent-skill.*` entry points remain compatible and install
 only `reforge-scan`. See [Agent Workflows](docs/agent-workflows.md) for commands,

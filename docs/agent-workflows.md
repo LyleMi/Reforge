@@ -71,6 +71,8 @@ No workflow command installs dependencies, changes thresholds, adds suppressions
 ```bash
 scripts/install-agent-workflow.sh
 scripts/install-agent-workflow.sh --skills-only --skip-cli
+scripts/install-agent-workflow.sh --agent claude --project-dir /path/to/project --skip-cli
+scripts/install-agent-workflow.sh --agent all --project-dir /path/to/project --skip-cli
 ```
 
-PowerShell and batch equivalents are `install-agent-workflow.ps1` and `install-agent-workflow.bat`. All installers support custom destinations, `--skip-agent`, `--skip-cli`, and atomic `--force` updates. The older `install-agent-skill.*` entry points install only `reforge-scan` through the compatibility path.
+PowerShell and batch equivalents are `install-agent-workflow.ps1` and `install-agent-workflow.bat`. All installers support custom destinations, `--skip-agent`, `--skip-cli`, and atomic `--force` updates. Use `--agent codex|claude|gemini|opencode|codebuddy|cursor|generic|all` to choose the target assistant. Without `--project-dir`, the installer uses that assistant's user root/config directory; with `--project-dir`, it writes project-local instruction files and skill directories where supported. Use `--root-dir` to override the inferred user root/config directory. The older `install-agent-skill.*` entry points install only `reforge-scan` through the compatibility path.

@@ -638,3 +638,76 @@ mod parameters;
 
 use analysis::*;
 use parameters::*;
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn source_file(path: &str, source: &str) -> SourceFile {
+        SourceFile {
+            path: PathBuf::from(path),
+            display_path: path.to_string(),
+            source: source.into(),
+        }
+    }
+
+    #[test]
+    fn collects_bash_function_metrics() -> Result<()> {
+        let source = r#"
+deploy_app() {
+  for target in "$@"; do
+    if [ -n "$target" ]; then
+      case "$target" in
+        prod) echo "deploy prod" ;;
+        *) echo "deploy other" ;;
+      esac
+    fi
+  done
+}
+"#;
+        let parsed = parse_source_files(&[source_file("scripts/deploy.sh", source)])?;
+        let metrics = collect_raw_structure_metrics(&parsed);
+
+        assert_eq!(metrics.len(), 1);
+        let function = &metrics[0].functions[0];
+        assert_eq!(function.name, "deploy_app");
+        assert_eq!(function.parameter_count, 0);
+        assert!(function.complexity >= 5, "{function:?}");
+        assert!(function.nesting_depth >= 3, "{function:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn collects_powershell_signature_and_param_block_metrics() -> Result<()> {
+        let source = r#"
+function Invoke-Deploy($Path, [switch]$Force) {
+  if ($Force) {
+    foreach ($item in Get-ChildItem $Path) {
+      Write-Output $item
+    }
+  }
+}
+
+function Test-Release {
+  param([string]$Name, $Count = $DefaultCount)
+  while ($Count -gt 0) {
+    $Count--
+  }
+}
+"#;
+        let parsed = parse_source_files(&[source_file("scripts/deploy.ps1", source)])?;
+        let metrics = collect_raw_structure_metrics(&parsed);
+        let functions = &metrics[0].functions;
+
+        assert_eq!(functions.len(), 2, "{functions:?}");
+        assert_eq!(functions[0].name, "Invoke-Deploy");
+        assert_eq!(functions[0].parameter_count, 2);
+        assert!(functions[0].complexity >= 3, "{:?}", functions[0]);
+        assert!(functions[0].nesting_depth >= 2, "{:?}", functions[0]);
+        assert_eq!(functions[1].name, "Test-Release");
+        assert_eq!(functions[1].parameter_count, 2);
+        Ok(())
+    }
+}

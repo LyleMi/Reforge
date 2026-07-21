@@ -26,3 +26,15 @@ kind = "similar_functions"
 path = "src/scan/finding_control.rs"
 line = 460
 reason = "Suppression tests intentionally repeat fixture construction patterns."
+
+[[suppressions]]
+kind = "complex_function"
+path = "scripts/install-agent-workflow.ps1"
+line = 127
+reason = "Installer script intentionally centralizes portable install branching for distribution compatibility."
+
+[[suppressions]]
+kind = "complex_function"
+path = "scripts/install-agent-workflow.sh"
+line = 177
+reason = "Installer script intentionally centralizes portable install branching for distribution compatibility."

@@ -88,6 +88,7 @@ pub(super) fn is_test_case_line(line: &str, family: LanguageFamily) -> bool {
             line.starts_with("public function test") || line.starts_with("function test")
         }
         LanguageFamily::Ruby => line.starts_with("def test_") || line.starts_with("it "),
+        LanguageFamily::Bash | LanguageFamily::PowerShell => false,
     }
 }
 
@@ -101,7 +102,9 @@ pub(super) fn test_case_name(line: &str, family: LanguageFamily) -> Option<Strin
         | LanguageFamily::CSharp
         | LanguageFamily::Kotlin
         | LanguageFamily::Php
-        | LanguageFamily::Ruby => line
+        | LanguageFamily::Ruby
+        | LanguageFamily::Bash
+        | LanguageFamily::PowerShell => line
             .split(['(', '{'])
             .next()
             .map(str::trim)

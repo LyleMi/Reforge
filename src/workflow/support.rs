@@ -103,6 +103,7 @@ fn validate_paths<'a>(root: &Path, paths: impl Iterator<Item = &'a str>) -> Resu
 
 fn validate_relative_path(root: &Path, path: &str) -> Result<PathBuf> {
     ensure!(!path.trim().is_empty(), "artifact path must not be empty");
+    let root = root.canonicalize()?;
     let candidate = Path::new(path);
     ensure!(
         !candidate.is_absolute(),
@@ -127,13 +128,13 @@ fn validate_relative_path(root: &Path, path: &str) -> Result<PathBuf> {
         }
         let ancestor = parent.canonicalize()?;
         ensure!(
-            ancestor.starts_with(root),
+            ancestor.starts_with(&root),
             "artifact path escapes through a symlink: {path}"
         );
         joined
     };
     ensure!(
-        resolved.starts_with(root),
+        resolved.starts_with(&root),
         "artifact path escapes target root: {path}"
     );
     Ok(resolved)

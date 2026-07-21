@@ -347,6 +347,8 @@ fn extract_added_language_function_parts<'tree>(
         LanguageFamily::Kotlin => kotlin_function_parts(node, extraction.source),
         LanguageFamily::Php => php_function_parts(node, extraction.source),
         LanguageFamily::Ruby => ruby_method_parts(node, extraction.source),
+        LanguageFamily::Bash => bash_function_parts(node, extraction.source),
+        LanguageFamily::PowerShell => powershell_function_parts(node, extraction.source),
         _ => None,
     }
 }
@@ -433,6 +435,30 @@ fn ruby_method_parts<'tree>(
         .ok()?;
     let body = node.child_by_field_name(BODY_FIELD)?;
     Some((name.to_string(), FunctionCategory::Method, body))
+}
+
+fn bash_function_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    if node.kind() != FUNCTION_DEFINITION {
+        return None;
+    }
+    named_parts(node, source, FunctionCategory::Function)
+}
+
+fn powershell_function_parts<'tree>(
+    node: Node<'tree>,
+    source: &str,
+) -> Option<(String, FunctionCategory, Node<'tree>)> {
+    if node.kind() != "function_statement" {
+        return None;
+    }
+    let name = child_by_kind(node, "function_name")?
+        .utf8_text(source.as_bytes())
+        .ok()?;
+    let body = child_by_kind(node, "script_block")?;
+    Some((name.to_string(), FunctionCategory::Function, body))
 }
 
 fn has_ancestor_kind(mut node: Node<'_>, kind: &str) -> bool {
@@ -759,3 +785,7 @@ fn similar_function_finding(
 #[cfg(test)]
 #[path = "../similar_functions_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../script_similarity_tests.rs"]
+mod script_tests;

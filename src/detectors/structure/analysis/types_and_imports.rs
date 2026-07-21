@@ -117,6 +117,7 @@ pub(super) fn is_type_member(node: Node<'_>, family: LanguageFamily) -> bool {
         | LanguageFamily::Kotlin
         | LanguageFamily::Php
         | LanguageFamily::Ruby => added_language_type_member(kind, family),
+        LanguageFamily::Bash | LanguageFamily::PowerShell => false,
     }
 }
 

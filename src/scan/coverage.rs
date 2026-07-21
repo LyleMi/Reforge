@@ -456,6 +456,10 @@ fn detected_language(path: &Path) -> Option<String> {
         ("kt", "kotlin"),
         ("php", "php"),
         ("rb", "ruby"),
+        ("sh", "bash"),
+        ("bash", "bash"),
+        ("ps1", "powershell"),
+        ("psm1", "powershell"),
         ("c", "c"),
         ("h", "c"),
         ("cc", "cpp"),
@@ -469,4 +473,35 @@ fn detected_language(path: &Path) -> Option<String> {
     EXTENSION_LANGUAGES
         .iter()
         .find_map(|(candidate, language)| (*candidate == extension).then(|| (*language).into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use super::*;
+
+    fn source_file(path: &str) -> SourceFile {
+        SourceFile {
+            path: PathBuf::from(path),
+            display_path: path.to_string(),
+            source: "".into(),
+        }
+    }
+
+    #[test]
+    fn detects_bash_and_powershell_coverage_languages() {
+        let files = vec![
+            source_file("scripts/build.sh"),
+            source_file("scripts/install.bash"),
+            source_file("scripts/deploy.ps1"),
+            source_file("scripts/module.psm1"),
+        ];
+
+        let languages = coverage_languages(&files, false);
+
+        assert!(languages.contains("bash"));
+        assert!(languages.contains("powershell"));
+        assert_eq!(detected_language(Path::new("module.psd1")), None);
+    }
 }

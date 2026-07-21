@@ -59,7 +59,9 @@ fn function_parts<'tree>(
         | LanguageFamily::CSharp
         | LanguageFamily::Kotlin
         | LanguageFamily::Php
-        | LanguageFamily::Ruby => added_language_function_parts(node, traversal),
+        | LanguageFamily::Ruby
+        | LanguageFamily::Bash
+        | LanguageFamily::PowerShell => added_language_function_parts(node, traversal),
         _ => None,
     }
 }
@@ -79,6 +81,8 @@ fn added_language_function_parts<'tree>(
         LanguageFamily::Kotlin => kotlin_function_parts(node, traversal),
         LanguageFamily::Php => php_function_parts(node, traversal),
         LanguageFamily::Ruby => ruby_function_parts(node, traversal),
+        LanguageFamily::Bash => bash_function_parts(node, traversal),
+        LanguageFamily::PowerShell => powershell_function_parts(node, traversal),
         _ => None,
     }
 }
@@ -149,6 +153,44 @@ fn ruby_function_parts<'tree>(
     )
 }
 
+fn bash_function_parts<'tree>(
+    node: Node<'tree>,
+    traversal: StructureTraversal<'_>,
+) -> Option<FunctionParts<'tree>> {
+    if node.kind() != FUNCTION_DEFINITION {
+        return None;
+    }
+    named_function_parts(
+        node,
+        traversal.source,
+        None,
+        node.child_by_field_name(BODY_FIELD)?,
+    )
+}
+
+fn powershell_function_parts<'tree>(
+    node: Node<'tree>,
+    traversal: StructureTraversal<'_>,
+) -> Option<FunctionParts<'tree>> {
+    if node.kind() != "function_statement" {
+        return None;
+    }
+    Some(FunctionParts {
+        name: child_by_kind(node, "function_name")?
+            .utf8_text(traversal.source.as_bytes())
+            .ok()?
+            .to_string(),
+        parameters: child_by_kind(node, "function_parameter_declaration")
+            .or_else(|| powershell_script_block_param_block(node)),
+        body: child_by_kind(node, "script_block")?,
+    })
+}
+
+fn powershell_script_block_param_block<'tree>(node: Node<'tree>) -> Option<Node<'tree>> {
+    let script_block = child_by_kind(node, "script_block")?;
+    child_by_kind(script_block, "param_block")
+}
+
 fn named_function_parts<'tree>(
     node: Node<'tree>,
     source: &str,
@@ -212,6 +254,8 @@ fn is_decision_node(node: Node<'_>, traversal: StructureTraversal<'_>) -> bool {
             | "match_expression"
             | "switch_statement"
             | "case_clause"
+            | "case_item"
+            | "elif_clause"
             | "catch_clause"
             | "except_clause"
             | "conditional_expression"
@@ -223,6 +267,9 @@ fn is_decision_node(node: Node<'_>, traversal: StructureTraversal<'_>) -> bool {
             | "case"
             | "when"
             | "rescue"
+            | "foreach_statement"
+            | "do_statement"
+            | "case_statement"
     ) {
         return true;
     }
@@ -255,6 +302,8 @@ fn is_nesting_node(node: Node<'_>, family: LanguageFamily) -> bool {
             | "match_expression"
             | "switch_statement"
             | "case_clause"
+            | "case_item"
+            | "elif_clause"
             | "catch_clause"
             | "except_clause"
             | "try_statement"
@@ -265,5 +314,8 @@ fn is_nesting_node(node: Node<'_>, family: LanguageFamily) -> bool {
             | "case"
             | "when"
             | "rescue"
+            | "foreach_statement"
+            | "do_statement"
+            | "case_statement"
     ) || (family == LanguageFamily::Python && kind == "elif_clause")
 }

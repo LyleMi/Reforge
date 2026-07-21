@@ -80,5 +80,5 @@ cargo run -- scan . --output-file reforge-report.html --progress never
 
 Tree-sitter structural and similar-function analysis covers Rust, JavaScript,
 TypeScript/TSX, Vue SFC script blocks, Python, Go, Java, C#, Kotlin, PHP, and
-Ruby. Basic source-tree metrics also include supported C and C++ source
-extensions.
+Ruby, plus Bash (`.sh`, `.bash`) and PowerShell (`.ps1`, `.psm1`) scripts.
+Basic source-tree metrics also include supported C and C++ source extensions.

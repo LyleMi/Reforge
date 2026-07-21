@@ -96,7 +96,10 @@ facts and proposed agent orchestration.
 
 Tree-sitter support is routed through language adapters. Structural and
 similarity analysis currently covers Rust, JavaScript, TypeScript/TSX, Vue SFC
-script blocks, Python, Go, Java, C#, Kotlin, PHP, and Ruby.
+script blocks, Python, Go, Java, C#, Kotlin, PHP, Ruby, Bash, and PowerShell.
+Bash and PowerShell are structure/similarity-only in the first version; the
+dependency graph and unused-function detectors intentionally avoid script call
+semantics.
 
 Files with parse failures can still contribute language-neutral file,
 directory, debt-marker, dependency, and documentation evidence. Coverage
@@ -166,7 +169,9 @@ To add a language:
 
 1. Add the Tree-sitter dependency and language adapter.
 2. Define function, type, import, public-item, complexity, and test constructs.
-3. Update supported-language manifest data and coverage expectations.
+3. Update supported-language manifest data and coverage expectations. Keep
+   detectors out of the language manifest when the language has only partial
+   semantic support.
 4. Add parsing, metric, detector, dependency-resolution, and failure tests.
 
 To change report shape:

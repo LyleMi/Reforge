@@ -360,6 +360,8 @@ fn supported_languages(kind: FindingKind) -> &'static [&'static str] {
         "kotlin",
         "php",
         "ruby",
+        "bash",
+        "powershell",
     ];
     const UNUSED: &[&str] = &[
         "rust",
@@ -476,6 +478,31 @@ mod tests {
             inputs.dedup();
 
             assert_eq!(inputs.len(), entry.input_metrics.len(), "{:?}", entry.kind);
+        }
+    }
+
+    #[test]
+    fn script_languages_are_parsed_detector_scope_only() {
+        let manifest = detector_manifest();
+        let long_function = manifest
+            .iter()
+            .find(|entry| entry.kind == FindingKind::LongFunction)
+            .unwrap();
+        assert!(long_function.supported_languages.contains(&"bash".to_string()));
+        assert!(
+            long_function
+                .supported_languages
+                .contains(&"powershell".to_string())
+        );
+
+        for kind in [
+            FindingKind::UnusedFunction,
+            FindingKind::DependencyCycle,
+            FindingKind::DependencyHub,
+        ] {
+            let entry = manifest.iter().find(|entry| entry.kind == kind).unwrap();
+            assert!(!entry.supported_languages.contains(&"bash".to_string()));
+            assert!(!entry.supported_languages.contains(&"powershell".to_string()));
         }
     }
 }

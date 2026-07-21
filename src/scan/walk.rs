@@ -284,6 +284,10 @@ fn is_supported_source(path: &Path) -> bool {
                 | "vue"
                 | "mts"
                 | "cts"
+                | "sh"
+                | "bash"
+                | "ps1"
+                | "psm1"
         )
     )
 }

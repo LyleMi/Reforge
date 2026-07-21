@@ -179,7 +179,9 @@ fn candidate_name_node<'tree>(
         LanguageFamily::Java
         | LanguageFamily::Kotlin
         | LanguageFamily::Php
-        | LanguageFamily::Ruby => None,
+        | LanguageFamily::Ruby
+        | LanguageFamily::Bash
+        | LanguageFamily::PowerShell => None,
         _ => None,
     }
 }
@@ -212,7 +214,9 @@ fn is_public_or_exported_function(
         LanguageFamily::Java
         | LanguageFamily::Kotlin
         | LanguageFamily::Php
-        | LanguageFamily::Ruby => true,
+        | LanguageFamily::Ruby
+        | LanguageFamily::Bash
+        | LanguageFamily::PowerShell => true,
     }
 }
 

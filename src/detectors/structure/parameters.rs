@@ -33,6 +33,56 @@ pub(super) fn parameter_names(
             &["simple_parameter", "variadic_parameter"],
         ),
         LanguageFamily::Ruby => ruby_parameter_names(parameters, source),
+        LanguageFamily::Bash => Vec::new(),
+        LanguageFamily::PowerShell => powershell_parameter_names(parameters, source),
+    }
+}
+
+fn powershell_parameter_names(parameters: Node<'_>, source: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    PowerShellParameterCollector {
+        source,
+        names: &mut names,
+    }
+    .collect(parameters);
+    names
+}
+
+struct PowerShellParameterCollector<'source, 'names> {
+    source: &'source str,
+    names: &'names mut Vec<String>,
+}
+
+impl PowerShellParameterCollector<'_, '_> {
+    fn collect(&mut self, node: Node<'_>) {
+        match node.kind() {
+            "script_parameter" => self.collect_script_parameter(node),
+            "variable" | "variable_name" => collect_parameter_name(node, self.source, self.names),
+            _ => {
+                let mut cursor = node.walk();
+                for child in node.named_children(&mut cursor) {
+                    self.collect(child);
+                }
+            }
+        }
+    }
+
+    fn collect_script_parameter(&mut self, node: Node<'_>) {
+        if let Some(name) = node.child_by_field_name(NAME_FIELD) {
+            collect_parameter_name(name, self.source, self.names);
+            return;
+        }
+
+        let before = self.names.len();
+        let mut cursor = node.walk();
+        for child in node.named_children(&mut cursor) {
+            if !matches!(child.kind(), "attribute_list" | "script_parameter_default") {
+                self.collect(child);
+            }
+        }
+        if self.names.len() == before {
+            self.names.push("value".to_string());
+        }
     }
 }
 

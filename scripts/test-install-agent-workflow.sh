@@ -19,6 +19,35 @@ fi
 test -f "$test_root/plugin/.codex-plugin/plugin.json"
 test ! -e "$test_root/plugin/.codex/agents/reforge-investigator.toml"
 
+"$script_dir/install-agent-workflow.sh" --agent claude --project-dir "$test_root/claude-project" --skip-cli
+test -f "$test_root/claude-project/CLAUDE.md"
+test -f "$test_root/claude-project/.claude/skills/reforge-scan/SKILL.md"
+
+"$script_dir/install-agent-workflow.sh" --agent gemini --project-dir "$test_root/gemini-project" --skip-cli
+test -f "$test_root/gemini-project/GEMINI.md"
+
+"$script_dir/install-agent-workflow.sh" --agent opencode --project-dir "$test_root/opencode-project" --skip-cli
+test -f "$test_root/opencode-project/AGENTS.md"
+test -f "$test_root/opencode-project/.opencode/skills/reforge-plan/SKILL.md"
+
+"$script_dir/install-agent-workflow.sh" --agent codebuddy --project-dir "$test_root/codebuddy-project" --skip-cli
+test -f "$test_root/codebuddy-project/CODEBUDDY.md"
+test -f "$test_root/codebuddy-project/.codebuddy/skills/reforge-verify/SKILL.md"
+
+"$script_dir/install-agent-workflow.sh" --agent cursor --project-dir "$test_root/cursor-project" --skip-cli
+test -f "$test_root/cursor-project/.cursor/rules/reforge.mdc"
+
+"$script_dir/install-agent-workflow.sh" --agent all --project-dir "$test_root/all-project" --skip-cli
+test -f "$test_root/all-project/CLAUDE.md"
+test -f "$test_root/all-project/GEMINI.md"
+test -f "$test_root/all-project/AGENTS.md"
+test -f "$test_root/all-project/CODEBUDDY.md"
+test -f "$test_root/all-project/.cursor/rules/reforge.mdc"
+test -f "$test_root/all-project/.claude/skills/reforge-scan/SKILL.md"
+test -f "$test_root/all-project/.opencode/skills/reforge-scan/SKILL.md"
+test -f "$test_root/all-project/.codebuddy/skills/reforge-scan/SKILL.md"
+test -f "$test_root/all-project/.agents/skills/reforge-scan/SKILL.md"
+
 "$script_dir/install-agent-skill.sh" --skills-dir "$test_root/legacy" --skip-cli
 test -f "$test_root/legacy/reforge-scan/SKILL.md"
 
