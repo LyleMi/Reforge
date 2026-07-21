@@ -236,6 +236,27 @@ impl ReportRenderContext<'_, '_, '_> {
         self.render_summary_row("Source files", self.report.stats.source_files_scanned);
         self.render_summary_row("Directories", self.report.stats.directories_scanned);
         self.render_summary_row("Function candidates", self.report.stats.function_candidates);
+        self.render_summary_row("Engine", &self.report.provenance.engine.version);
+        self.render_summary_row(
+            "Build revision",
+            self.report
+                .provenance
+                .engine
+                .build_revision
+                .as_deref()
+                .unwrap_or("unavailable"),
+        );
+        self.render_summary_row(
+            "Source revision",
+            self.report
+                .provenance
+                .source
+                .git_revision
+                .as_deref()
+                .unwrap_or("non-Git"),
+        );
+        self.render_summary_row("Config hash", &self.report.provenance.configuration.hash);
+        self.render_summary_row("Policy hash", &self.report.provenance.detector_policy_hash);
     }
 
     fn render_baseline_diff(&mut self) {
@@ -250,6 +271,19 @@ impl ReportRenderContext<'_, '_, '_> {
         self.render_summary_row("New", diff.summary.new);
         self.render_summary_row("Same", diff.summary.same);
         self.render_summary_row("Resolved", diff.summary.resolved);
+        if let Some(comparison) = &self.report.baseline_comparison {
+            self.render_summary_row("Changed findings", comparison.findings.changed.len());
+            self.render_summary_row("Changed issues", comparison.issues.changed.len());
+            self.render_summary_row("Lineage candidates", comparison.lineage_candidates.len());
+            self.render_summary_row(
+                "Change origin",
+                if comparison.provenance_change_dimensions.is_empty() {
+                    "unknown".to_string()
+                } else {
+                    comparison.provenance_change_dimensions.join(", ")
+                },
+            );
+        }
         self.render_summary_row(
             "Showing",
             format!(

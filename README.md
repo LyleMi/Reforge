@@ -36,7 +36,7 @@ safe.
 - Optionally proves bounded Rust assignment/call/return witnesses against
   repository-owned adapter policies; unsupported edges remain coverage facts.
 - Projects dependency closure, unresolved local edges, evidence dispersion,
-  and direct/reachable tests through schema 22 `agent_evidence`.
+  and direct/reachable tests through schema 23 `agent_evidence`.
 - Collects git churn in repositories by default with graceful fallback when
   history is unavailable.
 - Skips common generated, dependency, hidden, and git-ignored paths by default.
@@ -144,7 +144,7 @@ Read the [published documentation](https://lylemi.github.io/Reforge/) or open
 the [current self-scan sample](https://lylemi.github.io/Reforge/sample/). Source
 documentation includes the [user guide](docs/user-guide.md),
 [configuration reference](docs/configuration.md),
-[schema 22 report contract](docs/report-schema.md),
+[schema 23 report contract](docs/report-schema.md),
 [metrics and evidence model](docs/metrics-model.md),
 [detector reference](docs/detectors.md),
 [HTML report app](docs/report-app.md), and
@@ -152,7 +152,7 @@ documentation includes the [user guide](docs/user-guide.md),
 
 ## Report Model
 
-Schema 22 contains these major layers:
+Schema 23 contains these major layers:
 
 - `raw_metrics`, `metrics_summary`, `raw_metric_manifest`, and
   `raw_metric_coverage`: observations and their definitions/availability.
@@ -226,11 +226,13 @@ cargo run -- scan . --output sarif --output-file reforge-report.sarif --progress
 ```
 
 Use `cargo run -- scan --help` for the complete current option set.
+Use `cargo run -- --version` to print the package version and the build Git
+revision when one was captured.
 
 ## CI Gates and Baselines
 
-Schema 22 gates compare stable finding IDs. A blocking gate requires a current
-schema 22 JSON or YAML baseline:
+Schema 23 gates compare stable finding IDs. A blocking gate requires a current
+schema 23 JSON or YAML baseline:
 
 ```powershell
 cargo run -- scan . --baseline baseline.json --baseline-mode new --fail-on-findings --output json --progress never
@@ -244,7 +246,9 @@ cargo run -- scan . --baseline baseline.json --show new --output human --progres
 ```
 
 Reforge writes the requested report before returning a failing exit status.
-Older schemas are rejected and must be regenerated. Schema 22 has no
+Older schemas are rejected and must be regenerated. Engine, detector-policy,
+or effective-config provenance mismatches fail after report output unless
+`--accept-baseline-provenance-change` is supplied. Schema 23 has no
 `new-or-worse` mode because it does not assign priority or severity.
 
 ## Git Churn
@@ -255,7 +259,7 @@ Outside a repository it records an unavailable reason and continues. Use
 
 The configured time window and maximum added-plus-deleted lines per commit
 bound the observation. Binary rows, paths outside the scan root, and oversized
-commits are ignored. Churn remains raw context in schema 22; it is not combined
+commits are ignored. Churn remains raw context in schema 23; it is not combined
 into a hotspot or priority score.
 
 ## Configuration

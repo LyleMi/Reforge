@@ -2,6 +2,7 @@ mod baseline;
 mod cli;
 mod detectors;
 mod evidence_analysis;
+mod fingerprint;
 mod lang;
 mod model;
 mod output;
@@ -182,7 +183,7 @@ fn run_scan(args: ScanArgs) -> Result<()> {
     let stderr_is_tty = std::io::stderr().is_terminal();
     let settings = output_settings(&args);
     if args.ci.fail_on_findings && args.ci.baseline.is_none() {
-        bail!("--fail-on-findings requires --baseline with a schema 22 Reforge report");
+        bail!("--fail-on-findings requires --baseline with a schema 23 Reforge report");
     }
     let baseline_report = args
         .ci
@@ -190,14 +191,24 @@ fn run_scan(args: ScanArgs) -> Result<()> {
         .as_ref()
         .map(|path| baseline::load_baseline(path))
         .transpose()?;
-    let report = scan_with_progress(&args, stderr_is_tty)?;
+    let mut report = scan_with_progress(&args, stderr_is_tty)?;
+    if let Some(baseline) = &baseline_report {
+        report.baseline_comparison = Some(baseline::compare_reports(
+            &report,
+            baseline,
+            args.ci.baseline.as_deref(),
+        )?);
+    }
     let baseline_diff = baseline_report
         .as_ref()
-        .map(|baseline| baseline::diff_issues(&report.issues, baseline, args.ci.show));
+        .map(|_| baseline::diff_issues(&report, args.ci.show));
     let gate_failures = if args.ci.fail_on_findings {
-        baseline::new_unsuppressed_findings(&report.findings, baseline_report.as_ref())
+        baseline::gate_count(
+            &report,
+            matches!(args.ci.baseline_mode, crate::cli::BaselineMode::All),
+        )
     } else {
-        Vec::new()
+        0
     };
 
     if args.output_file.is_some() {
@@ -206,10 +217,22 @@ fn run_scan(args: ScanArgs) -> Result<()> {
         print_report(&report, baseline_diff.as_ref(), settings)?;
     }
 
-    if !gate_failures.is_empty() {
+    if report
+        .baseline_comparison
+        .as_ref()
+        .is_some_and(|comparison| comparison.provenance_changed)
+        && !args.ci.accept_baseline_provenance_change
+    {
         bail!(
-            "scan failed: {} unsuppressed findings are new relative to the baseline",
-            gate_failures.len()
+            "baseline provenance differs in engine, detector policy, or effective configuration; report was written, pass --accept-baseline-provenance-change to continue"
+        );
+    }
+
+    if gate_failures > 0 {
+        bail!(
+            "scan failed: {} unsuppressed findings failed the {:?} baseline gate",
+            gate_failures,
+            args.ci.baseline_mode
         );
     }
 
@@ -347,9 +370,22 @@ where
 
 #[cfg(test)]
 mod tests {
+    use clap::CommandFactory;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+
+    #[test]
+    fn version_includes_build_revision_when_available() {
+        let error = Cli::command()
+            .try_get_matches_from(["reforge", "--version"])
+            .expect_err("--version should short-circuit clap parsing");
+        let rendered = error.to_string();
+        assert!(rendered.contains(env!("CARGO_PKG_VERSION")));
+        if let Some(revision) = crate::fingerprint::provenance::build_revision() {
+            assert!(rendered.contains(revision));
+        }
+    }
 
     #[test]
     fn creates_missing_output_file_parent_directories() -> Result<()> {

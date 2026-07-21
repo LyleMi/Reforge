@@ -28,7 +28,7 @@ output path before writing the report.
 The report path is:
 
 1. Rust scanner collects source metrics and findings.
-2. Scanner assembles a schema 22 `ScanReport`.
+2. Scanner assembles a schema 23 `ScanReport`.
 3. HTML output serializes the `ScanReport` as JSON.
 4. Reforge writes an HTML shell containing that JSON payload.
 5. The shell inlines the compiled React bundle and stylesheet.

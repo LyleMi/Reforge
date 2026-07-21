@@ -51,6 +51,37 @@ fn caller() {
 }
 
 #[test]
+fn counts_only_recognized_rust_serde_callback_paths_as_references() -> Result<()> {
+    let source = r#"
+fn write_value<S>(value: &String, serializer: S) -> Result<S::Ok, S::Error> where S: serde::Serializer { serializer.serialize_str(value) }
+fn read_value<'de, D>(deserializer: D) -> Result<String, D::Error> where D: serde::Deserializer<'de> { String::deserialize(deserializer) }
+fn ignored_string() {}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Payload {
+    #[serde(serialize_with = "crate::write_value", deserialize_with = "read_value")]
+    value: String,
+    note: &'static str,
+}
+
+const NOTE: &str = "ignored_string";
+"#;
+    let findings = scan_unused_functions(&[source_file("src/lib.rs", source)], &options())?;
+    let names = unused_names(&findings);
+    assert!(
+        names
+            .iter()
+            .all(|name| !name.contains("write_value") && !name.contains("read_value")),
+        "{findings:#?}"
+    );
+    assert!(
+        names.iter().any(|name| name.contains("ignored_string")),
+        "{findings:#?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn reports_recursive_function_when_only_self_referenced() -> Result<()> {
     let source = r#"
 fn recursive(value: usize) -> usize {

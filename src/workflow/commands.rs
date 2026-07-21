@@ -288,6 +288,47 @@ fn rescan(args: WorkflowRunArgs) -> Result<()> {
         .filter(|issue| selected_issues.contains(&issue.id))
         .flat_map(|issue| issue.finding_ids.iter().cloned())
         .collect::<BTreeSet<_>>();
+    let outcomes = classify_selected_evidence(&original, &current, &selected_findings);
+    let limitations = selected_coverage_limitations(&current, &outcomes.unobservable_kinds);
+    let comparison = crate::baseline::compare_reports(&current, &original, None)?;
+    let (selected_issues_removed, selected_issues_unobservable) = selected_issue_outcomes(
+        &original,
+        &current,
+        &selection,
+        &selected_issues,
+        &outcomes.unobservable,
+    );
+    let artifact = RescanArtifact {
+        artifact_schema_version: ARTIFACT_SCHEMA_VERSION,
+        original_report_fingerprint: context.run.report_fingerprint.clone(),
+        rescan_report_fingerprint: fingerprint_json(&serde_json::to_value(&current)?),
+        selected_evidence_removed: outcomes.removed,
+        selected_evidence_still_present: outcomes.still_present,
+        new_evidence: outcomes.new_evidence,
+        unobservable: outcomes.unobservable,
+        coverage_limitations: limitations,
+        selected_issues_removed,
+        selected_issues_unobservable,
+        lineage_candidates: comparison.lineage_candidates.into_iter().filter(|candidate| candidate.entity == crate::model::LineageEntity::Issue).collect(),
+        rescanned_at_epoch_ms: epoch_ms(),
+    };
+    atomic_write_json(&context.dir.join("rescan.json"), &artifact, false)?;
+    Ok(())
+}
+
+struct EvidenceOutcomes {
+    removed: Vec<EvidenceId>,
+    still_present: Vec<EvidenceId>,
+    new_evidence: Vec<EvidenceId>,
+    unobservable: Vec<EvidenceId>,
+    unobservable_kinds: BTreeSet<FindingKind>,
+}
+
+fn classify_selected_evidence(
+    original: &ScanReport,
+    current: &ScanReport,
+    selected: &BTreeSet<EvidenceId>,
+) -> EvidenceOutcomes {
     let current_ids = current
         .findings
         .iter()
@@ -298,46 +339,110 @@ fn rescan(args: WorkflowRunArgs) -> Result<()> {
         .iter()
         .map(|finding| finding.id.clone())
         .collect::<BTreeSet<_>>();
-    let unobservable_kinds = unobservable_selected_kinds(&original, &current, &selected_findings);
-    let mut removed = Vec::new();
-    let mut still = Vec::new();
-    let mut unobservable = Vec::new();
-    for id in &selected_findings {
+    let unobservable_kinds = unobservable_selected_kinds(original, current, selected);
+    let mut outcomes = EvidenceOutcomes {
+        new_evidence: current_ids.difference(&original_ids).cloned().collect(),
+        removed: Vec::new(),
+        still_present: Vec::new(),
+        unobservable: Vec::new(),
+        unobservable_kinds,
+    };
+    for id in selected {
         if current_ids.contains(id) {
-            still.push(id.clone());
-        } else if original
-            .findings
-            .iter()
-            .find(|finding| &finding.id == id)
-            .is_some_and(|finding| unobservable_kinds.contains(&finding.kind))
-        {
-            unobservable.push(id.clone());
+            outcomes.still_present.push(id.clone());
+        } else if original.findings.iter().any(|finding| {
+            &finding.id == id && outcomes.unobservable_kinds.contains(&finding.kind)
+        }) {
+            outcomes.unobservable.push(id.clone());
         } else {
-            removed.push(id.clone());
+            outcomes.removed.push(id.clone());
         }
     }
-    let mut new_evidence = current_ids
-        .difference(&original_ids)
+    outcomes.removed.sort();
+    outcomes.still_present.sort();
+    outcomes.unobservable.sort();
+    outcomes.new_evidence.sort();
+    outcomes
+}
+
+fn selected_issue_outcomes(
+    original: &ScanReport,
+    current: &ScanReport,
+    selection: &SelectionArtifact,
+    selected: &BTreeSet<IssueKey>,
+    unobservable_findings: &[EvidenceId],
+) -> (Vec<IssueKey>, Vec<IssueKey>) {
+    let current_ids = current
+        .issues
+        .iter()
+        .map(|issue| issue.id.clone())
+        .collect::<BTreeSet<_>>();
+    let mut removed = selection
+        .issue_ids
+        .iter()
+        .filter(|id| !current_ids.contains(*id))
         .cloned()
         .collect::<Vec<_>>();
+    let unobservable_ids = unobservable_findings.iter().collect::<BTreeSet<_>>();
+    let mut unobservable = original
+        .issues
+        .iter()
+        .filter(|issue| {
+            selected.contains(&issue.id)
+                && issue
+                    .finding_ids
+                    .iter()
+                    .any(|id| unobservable_ids.contains(id))
+        })
+        .map(|issue| issue.id.clone())
+        .collect::<Vec<_>>();
     removed.sort();
-    still.sort();
     unobservable.sort();
-    new_evidence.sort();
-    let limitations = selected_coverage_limitations(&current, &unobservable_kinds);
-    let artifact = RescanArtifact {
+    (removed, unobservable)
+}
+
+fn confirm_lineage(args: WorkflowConfirmLineageArgs) -> Result<()> {
+    let context = load_context(&args.run)?;
+    let path = context.dir.join("lineage.json");
+    ensure!(!path.exists(), "lineage.json already exists; workflow artifacts are immutable");
+    ensure!(!args.candidates.is_empty() || !args.remediated.is_empty(), "provide at least one --candidate or --remediated issue");
+    let rescan: RescanArtifact = read_json(&context.dir.join("rescan.json"))?;
+    validate_schema_version(rescan.artifact_schema_version, "rescan.json")?;
+    let candidate_map = rescan.lineage_candidates.iter().map(|candidate| (candidate.id.as_str(), candidate)).collect::<BTreeMap<_, _>>();
+    let mut seen_candidates = BTreeSet::new();
+    let mut seen_previous = BTreeSet::new();
+    let mut seen_successors = BTreeSet::new();
+    let mut records = Vec::new();
+    for id in &args.candidates {
+        ensure!(seen_candidates.insert(id.as_str()), "duplicate lineage candidate {id}");
+        let candidate = candidate_map.get(id.as_str()).with_context(|| format!("lineage candidate {id} is not present in rescan.json"))?;
+        ensure!(seen_previous.insert(candidate.previous_id.as_str()), "issue {} has more than one lineage disposition", candidate.previous_id);
+        ensure!(seen_successors.insert(candidate.current_id.as_str()), "successor issue {} is used by more than one lineage record", candidate.current_id);
+        records.push(LineageRecord {
+            kind: LineageRecordKind::Supersedes,
+            previous_issue_id: candidate.previous_id.clone().into(),
+            successor_issue_id: Some(candidate.current_id.clone().into()),
+            candidate_id: Some(candidate.id.clone()),
+        });
+    }
+    let removed = rescan.selected_issues_removed.iter().map(|id| id.as_str()).collect::<BTreeSet<_>>();
+    let unobservable = rescan.selected_issues_unobservable.iter().map(|id| id.as_str()).collect::<BTreeSet<_>>();
+    for id in &args.remediated {
+        ensure!(id.starts_with("ri3-"), "invalid remediated issue Stable ID {id}");
+        ensure!(removed.contains(id.as_str()), "remediated issue {id} was not selected and observably removed");
+        ensure!(!unobservable.contains(id.as_str()), "remediated issue {id} is unobservable in the rescan");
+        ensure!(seen_previous.insert(id.as_str()), "issue {id} has more than one lineage disposition");
+        records.push(LineageRecord { kind: LineageRecordKind::Remediated, previous_issue_id: id.clone().into(), successor_issue_id: None, candidate_id: None });
+    }
+    records.sort_by(|left, right| left.previous_issue_id.cmp(&right.previous_issue_id));
+    let artifact = LineageArtifact {
         artifact_schema_version: ARTIFACT_SCHEMA_VERSION,
-        original_report_fingerprint: context.run.report_fingerprint.clone(),
-        rescan_report_fingerprint: fingerprint_json(&serde_json::to_value(&current)?),
-        selected_evidence_removed: removed,
-        selected_evidence_still_present: still,
-        new_evidence,
-        unobservable,
-        coverage_limitations: limitations,
-        rescanned_at_epoch_ms: epoch_ms(),
+        original_report_fingerprint: rescan.original_report_fingerprint,
+        rescan_report_fingerprint: rescan.rescan_report_fingerprint,
+        records,
+        confirmed_at_epoch_ms: epoch_ms(),
     };
-    atomic_write_json(&context.dir.join("rescan.json"), &artifact, false)?;
-    Ok(())
+    atomic_write_json(&path, &artifact, false)
 }
 
 fn finish(args: WorkflowRunArgs) -> Result<()> {
@@ -354,6 +459,7 @@ fn finish(args: WorkflowRunArgs) -> Result<()> {
     let application: ApplicationArtifact = read_json(&context.dir.join("application.json"))?;
     let plan: PlanArtifact = read_json(&context.dir.join("plan.json"))?;
     let rescan: RescanArtifact = read_json(&context.dir.join("rescan.json"))?;
+    validate_optional_lineage(&context, &rescan)?;
     validate_approval(&context, &approval)?;
     ensure!(
         application.plan_fingerprint == approval.plan_fingerprint,

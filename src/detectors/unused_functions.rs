@@ -84,6 +84,17 @@ fn collect_unused_function_inputs(
     definitions: &mut Vec<FunctionDefinition>,
     references: &mut BTreeMap<String, Vec<IdentifierReference>>,
 ) {
+    if context.family == LanguageFamily::Rust && node.kind() == "attribute_item" {
+        for name in rust_serde_callback_names(node, context.source) {
+            references
+                .entry(name)
+                .or_default()
+                .push(IdentifierReference {
+                    path: context.file.display_path.clone(),
+                    byte: node.start_byte(),
+                });
+        }
+    }
     if let Some(name) = identifier_text(node, context.source) {
         references
             .entry(name)
@@ -105,6 +116,49 @@ fn collect_unused_function_inputs(
     for child in node.children(&mut cursor) {
         collect_unused_function_inputs(child, context, definitions, references);
     }
+}
+
+fn rust_serde_callback_names(node: Node<'_>, source: &str) -> Vec<String> {
+    let Ok(attribute) = node.utf8_text(source.as_bytes()) else {
+        return Vec::new();
+    };
+    if !attribute.contains("serde") {
+        return Vec::new();
+    }
+    const KEYS: [&str; 5] = [
+        "serialize_with",
+        "deserialize_with",
+        "default",
+        "skip_serializing_if",
+        "getter",
+    ];
+    let mut names = Vec::new();
+    for key in KEYS {
+        let mut remaining = attribute;
+        while let Some(index) = remaining.find(key) {
+            remaining = &remaining[index + key.len()..];
+            let Some(equals) = remaining.find('=') else {
+                break;
+            };
+            let value = remaining[equals + 1..].trim_start();
+            let Some(value) = value.strip_prefix('"') else {
+                continue;
+            };
+            let Some(end) = value.find('"') else { break };
+            let path = &value[..end];
+            if let Some(name) = path
+                .rsplit("::")
+                .next()
+                .filter(|name| is_reference_name(name))
+            {
+                names.push(name.to_string());
+            }
+            remaining = &value[end + 1..];
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
 }
 
 fn identifier_text(node: Node<'_>, source: &str) -> Option<String> {

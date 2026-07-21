@@ -226,6 +226,33 @@ fn detects_fixture_factory_drift_in_tests() {
 }
 
 #[test]
+fn shared_fixture_factory_definition_with_import_only_callers_does_not_drift() {
+    let files = vec![
+        source_file(
+            "tests/support/user_fixture.ts",
+            "export function makeUserFixture() { return { id: 'shared' }; }",
+        ),
+        source_file(
+            "tests/user_a.test.ts",
+            "import { makeUserFixture } from './support/user_fixture'; test('a', () => makeUserFixture());",
+        ),
+        source_file(
+            "tests/user_b.test.ts",
+            "import { makeUserFixture } from './support/user_fixture'; test('b', () => makeUserFixture());",
+        ),
+    ];
+
+    let findings = scan_concept_drift(&files, &options());
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::FixtureFactoryDrift),
+        "{findings:#?}"
+    );
+}
+
+#[test]
 fn detects_generic_bucket_directories() {
     let files = vec![
         source_file(
@@ -392,6 +419,41 @@ fn skips_adapter_boundary_bypasses_in_support_scripts() {
         source_file(
             "scripts/export-fixtures.ts",
             "export function exportFixtures() { return fs.writeFileSync('fixtures.json', '{}'); }",
+        ),
+    ];
+
+    let findings = scan_concept_drift(&files, &options());
+
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::AdapterBoundaryBypass),
+        "{findings:#?}"
+    );
+}
+
+#[test]
+fn skips_differential_and_oracle_operational_harnesses() {
+    let files = vec![
+        source_file(
+            "src/shared/file-utils.ts",
+            "export function readFile(path: string) { return path; }",
+        ),
+        source_file(
+            "tools/differential.sh",
+            "function compare_outputs() { fs.readFileSync('actual.json'); }",
+        ),
+        source_file(
+            "benches/oracle.ps1",
+            "function Invoke-Oracle { fs.readFileSync('expected.json'); }",
+        ),
+        source_file(
+            "benchmarks/differential.ts",
+            "export function differentialRun() { return fs.readFileSync('result.json'); }",
+        ),
+        source_file(
+            "scripts/oracle.py",
+            "def oracle_result(): return fs.readFileSync('golden.json')",
         ),
     ];
 

@@ -2,7 +2,7 @@
 
 Reforge is a single Rust CLI crate. The scan pipeline observes source trees,
 collects raw metrics, runs detectors, groups atomic findings into decision
-units, projects coverage and agent context, and renders schema 22 reports.
+units, projects coverage and agent context, and renders schema 23 reports.
 
 ## Module Boundaries
 
@@ -14,7 +14,7 @@ units, projects coverage and agent context, and renders schema 22 reports.
   finding controls, coverage projection, agent evidence, and final
   `ScanReport` assembly.
 - `src/lang/`: Tree-sitter language adapters and shared syntax classification.
-- `src/model/`: schema 22 report data, finding/issue identity, coverage,
+- `src/model/`: schema 23 report data, finding/issue identity, coverage,
   evidence subjects, raw metrics, dependency data, and Unity report data.
 - `src/detectors/`: structural, similarity, unused-function, dependency,
   concept-drift, documentation, and detector-owned exact Rust data-flow
@@ -23,7 +23,7 @@ units, projects coverage and agent context, and renders schema 22 reports.
   clustering without a ranking model.
 - `src/workflow.rs`: strict resumable artifacts, approval snapshots, direct
   checks, rescans, and workflow state transitions.
-- `src/baseline.rs`: schema 22 baseline validation, stable-ID diffing,
+- `src/baseline.rs`: schema 23 baseline validation, stable-ID diffing,
   `--show` selection, and new unsuppressed finding selection.
 - `src/unity.rs` and `src/unity/`: Unity project planning, text asset/GUID
   indexing, asmdef analysis, and Unity-aware C# signals.
@@ -63,13 +63,14 @@ crate.
     execution receipts, and raw metric coverage.
 13. Render human, HTML, JSON, YAML, or SARIF output to stdout or
     `--output-file`.
-14. When a schema 22 baseline is present, compute issue display diffs. If
-    `--fail-on-findings` is enabled, fail after writing the report when current
-    unsuppressed finding IDs are absent from the baseline.
+14. When a schema 23 baseline is present, embed finding and issue
+    added/removed/changed/unchanged diffs, provenance attribution, and lineage
+    candidates in the report. Fail closed after output on unaccepted
+    engine/policy/config drift, then apply the selected finding gate.
 
 ## Data Contract
 
-`ScanArgs` is the resolved execution input. `scan_report` produces a schema 22
+`ScanArgs` is the resolved execution input. `scan_report` produces a schema 23
 `ScanReport`. The serialized layers are:
 
 - observations: `stats`, `raw_metrics`, `metrics_summary`,
@@ -102,7 +103,7 @@ heap aliases, fields, methods, dynamic dispatch, external crates, runtime
 middleware, persistence, queues, or service hops. Unsupported constructs add
 coverage reasons and cannot appear in a conservative finding witness.
 
-Schema 22 does not serialize priority, severity, hotspot ranking, scoring
+Schema 23 does not serialize priority, severity, hotspot ranking, scoring
 policy, or reliability scores. Those legacy model and CLI fields are not kept
 in the Rust implementation. Consumers choose work using the evidence,
 coverage, project goals, and their own policy.
@@ -132,11 +133,12 @@ locations. Issue IDs use issue family and canonical subject. They intentionally
 exclude messages, metric values, and traversal order so the same evidence can
 survive harmless rendering or ordering changes.
 
-Schema 22 baselines select `new` or `all` evidence. They do not compare
-severity or priority because those values are not part of the serialized
-contract. `--fail-on-findings` requires a baseline and gates only new current
-unsuppressed finding IDs. Human display diffs operate on issue IDs and can show
-new, same, and resolved decision units.
+Schema 23 baselines expose finding and issue added, removed, changed, and
+unchanged states. Same-ID semantic changes list their changed fields. Each
+change is attributed to engine, configuration, source, mixed, or unknown
+provenance, and removed/added pairs may produce deterministic lineage
+candidates. `--baseline-mode new` gates added findings; `all` gates every
+current finding. Human and HTML views render the embedded comparison model.
 
 ## Progress and Output
 
@@ -154,7 +156,7 @@ only to human output.
 `--output html` and `.html`/`.htm` output-file extensions produce one offline
 artifact. The packaging flow is:
 
-1. The Rust scanner builds a schema 22 `ScanReport`.
+1. The Rust scanner builds a schema 23 `ScanReport`.
 2. HTML output serializes the report as JSON into an HTML shell.
 3. The shell inlines the compiled React bundle and CSS.
 4. The browser renders locally without a server or network dependency.

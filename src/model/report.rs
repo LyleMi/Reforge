@@ -230,6 +230,8 @@ impl SuppressionSummary {
 #[serde(deny_unknown_fields)]
 pub struct ScanReport {
     pub schema_version: u8,
+    pub provenance: ReportProvenance,
+    pub baseline_comparison: Option<BaselineComparison>,
     pub summary: ScanSummary,
     pub stats: ScanStats,
     pub metrics_summary: MetricsSummary,

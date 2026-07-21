@@ -1,7 +1,7 @@
 # Metrics and Evidence Model
 
 Reforge separates observations, detector evidence, issue decision units, and
-coverage. Schema 22 does not emit a quality score, priority, severity, hotspot
+coverage. Schema 23 does not emit a quality score, priority, severity, hotspot
 rank, defect probability, or refactor-readiness score.
 
 ## Raw Metrics
@@ -83,14 +83,15 @@ vocabulary and [Detector Reference](detectors.md) for detector mappings.
 ## Coverage and Execution Receipts
 
 An absent finding is meaningful only when the corresponding analysis could run.
-Schema 22 therefore records:
+Schema 23 therefore records:
 
 - `coverage_manifest`: expected mechanism/entity-scope cells and their runtime
   status;
 - `coverage_summary`: detected languages, analyzed entities, parse failures,
   unresolved dependency edges, and unobservable reasons;
 - `detector_execution`: one receipt per detector, including completed
-  zero-finding runs;
+  zero-finding runs, with staged/unit-qualified observations, pre-threshold
+  groups, raw emission, CLI-filter, suppression, and final counts;
 - `raw_metric_coverage`: whether each canonical raw metric was observed,
   unavailable, unsupported, or not applicable.
 - `flow_analysis`: exact/unresolved Rust edge counts, bounded-path truncation,
@@ -128,7 +129,7 @@ otherwise. `--churn on` requires history; `--churn off` skips it. The window and
 maximum commit-size settings determine which history contributes to raw churn
 metrics.
 
-Churn is context for maintainers and downstream consumers. Schema 22 does not
+Churn is context for maintainers and downstream consumers. Schema 23 does not
 combine it with structural observations into a hotspot or finding score.
 Disabled or unavailable churn is recorded as unavailable coverage, never as
 observed zero change pressure.

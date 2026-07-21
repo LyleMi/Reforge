@@ -2,6 +2,11 @@
 
 This checklist is for maintainers preparing a Reforge release.
 
+Schema 23 is a hard compatibility break for reports and baselines: only schema
+23 baselines are accepted. Workflow artifacts likewise move to v2 and cannot
+reuse v1 run directories. The `rf3-*` finding and `ri3-*` issue Stable ID
+algorithms are unchanged.
+
 ## Pre-Release Checks
 
 Confirm the crate metadata in `Cargo.toml`:

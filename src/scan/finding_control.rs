@@ -11,31 +11,46 @@ use super::config::ConfigSuppression;
 
 const DIRECTIVE_PREFIX: &str = "reforge:";
 
+#[derive(Debug, Default)]
+pub(super) struct FindingControlTelemetry {
+    pub suppression_summary: SuppressionSummary,
+    pub cli_filtered_by_kind: BTreeMap<FindingKind, usize>,
+    pub suppressed_by_kind: BTreeMap<FindingKind, usize>,
+}
+
 pub(super) fn apply_finding_controls(
     findings: &mut Vec<Finding>,
     root: &Path,
     args: &ScanArgs,
     config_suppressions: &[ConfigSuppression],
-) -> Result<SuppressionSummary> {
+) -> Result<FindingControlTelemetry> {
     let filters = FindingFilters::from_args(&args.finding_controls)?;
     let suppressions = Suppressions::load(root, findings, config_suppressions)?;
-    let mut summary = SuppressionSummary::default();
+    let mut telemetry = FindingControlTelemetry::default();
     let mut retained = Vec::with_capacity(findings.len());
 
     for finding in findings.drain(..) {
         if !filters.matches(&finding) {
+            *telemetry
+                .cli_filtered_by_kind
+                .entry(finding.kind)
+                .or_insert(0) += 1;
             continue;
         }
 
         if suppressions.matches(&finding) {
-            summary.record(&finding);
+            telemetry.suppression_summary.record(&finding);
+            *telemetry
+                .suppressed_by_kind
+                .entry(finding.kind)
+                .or_insert(0) += 1;
         } else {
             retained.push(finding);
         }
     }
 
     *findings = retained;
-    Ok(summary)
+    Ok(telemetry)
 }
 
 #[derive(Debug, Default)]

@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use crate::cli::{
     Cli, Command, ScanArgs, WorkflowArgs, WorkflowCheckArgs, WorkflowCheckKind, WorkflowCommand,
-    WorkflowRunArgs, WorkflowSelectArgs, WorkflowStartArgs,
+    WorkflowConfirmLineageArgs, WorkflowRunArgs, WorkflowSelectArgs, WorkflowStartArgs,
 };
 use crate::model::{
     DetectorExecutionStatus, EvidenceId, FindingKind, IssueKey, SCAN_REPORT_SCHEMA_VERSION,
@@ -23,7 +23,7 @@ use crate::model::{
 };
 use crate::scan::{self, NoopProgress};
 
-const ARTIFACT_SCHEMA_VERSION: u8 = 1;
+const ARTIFACT_SCHEMA_VERSION: u8 = 2;
 const OUTPUT_SUMMARY_LIMIT: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -227,7 +227,36 @@ struct RescanArtifact {
     new_evidence: Vec<EvidenceId>,
     unobservable: Vec<EvidenceId>,
     coverage_limitations: Vec<String>,
+    selected_issues_removed: Vec<IssueKey>,
+    selected_issues_unobservable: Vec<IssueKey>,
+    lineage_candidates: Vec<crate::model::LineageCandidate>,
     rescanned_at_epoch_ms: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum LineageRecordKind {
+    Supersedes,
+    Remediated,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LineageRecord {
+    kind: LineageRecordKind,
+    previous_issue_id: IssueKey,
+    successor_issue_id: Option<IssueKey>,
+    candidate_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LineageArtifact {
+    artifact_schema_version: u8,
+    original_report_fingerprint: String,
+    rescan_report_fingerprint: String,
+    records: Vec<LineageRecord>,
+    confirmed_at_epoch_ms: u128,
 }
 
 #[derive(Debug)]
@@ -248,6 +277,7 @@ pub(crate) fn run(args: WorkflowArgs) -> Result<()> {
         WorkflowCommand::MarkApplied(args) => mark_applied(args),
         WorkflowCommand::Check(args) => check(args),
         WorkflowCommand::Rescan(args) => rescan(args),
+        WorkflowCommand::ConfirmLineage(args) => confirm_lineage(args),
         WorkflowCommand::Finish(args) => finish(args),
     }
 }

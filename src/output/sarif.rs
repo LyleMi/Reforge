@@ -33,7 +33,13 @@ fn sarif_log(report: &ScanReport) -> Value {
             "tool": {
                 "driver": {
                     "name": "Reforge",
+                    "version": report.provenance.engine.version,
                     "informationUri": "https://github.com/openai/reforge",
+                    "properties": {
+                        "buildRevision": report.provenance.engine.build_revision,
+                        "detectorPolicyHash": report.provenance.detector_policy_hash,
+                        "configurationHash": report.provenance.configuration.hash
+                    },
                     "rules": rules.into_iter().map(|(_, rule)| rule).collect::<Vec<_>>()
                 }
             },
@@ -43,6 +49,10 @@ fn sarif_log(report: &ScanReport) -> Value {
                 .collect::<Vec<_>>(),
             "properties": {
                 "reforgeSchemaVersion": report.schema_version,
+                "engineVersion": report.provenance.engine.version,
+                "buildRevision": report.provenance.engine.build_revision,
+                "detectorPolicyHash": report.provenance.detector_policy_hash,
+                "configurationHash": report.provenance.configuration.hash,
                 "coverage": {
                     "cells": report.coverage_manifest,
                     "summary": report.coverage_summary

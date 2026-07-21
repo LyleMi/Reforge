@@ -199,9 +199,13 @@ pub struct CiArgs {
     #[arg(long, value_enum, default_value_t = BaselineShow::All)]
     pub show: BaselineShow,
 
-    /// Exit with a failure when unsuppressed findings are new relative to a schema 22 baseline.
+    /// Exit with a failure when unsuppressed findings match the selected schema 23 baseline mode.
     #[arg(long)]
     pub fail_on_findings: bool,
+
+    /// Accept engine, detector-policy, or effective-configuration provenance changes.
+    #[arg(long)]
+    pub accept_baseline_provenance_change: bool,
 }
 
 #[derive(Debug, Clone, Default, Args)]

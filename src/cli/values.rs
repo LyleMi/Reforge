@@ -207,6 +207,7 @@ impl Default for CiArgs {
             baseline_mode: BaselineMode::New,
             show: BaselineShow::All,
             fail_on_findings: false,
+            accept_baseline_provenance_change: false,
         }
     }
 }

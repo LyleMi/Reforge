@@ -43,7 +43,7 @@ use churn::collect_churn_metrics;
 pub(crate) use config::{
     CONFIG_FILE_NAME, default_config_toml, effective_config_output, validate_config,
 };
-use config::{ConfigSuppression, effective_scan_config};
+use config::{ConfigSuppression, effective_scan_config, provenance_config_snapshot};
 use finding_control::apply_finding_controls;
 use progress::ProgressEvent;
 pub(crate) use progress::{NoopProgress, ProgressSink, StderrProgress};
@@ -77,6 +77,7 @@ struct SourceScan {
     unresolved_dependency_edges: usize,
     unresolved_dependency_edges_by_file: BTreeMap<String, usize>,
     flow_analysis: FlowAnalysisSummary,
+    emitted_by_kind: BTreeMap<FindingKind, usize>,
 }
 
 #[derive(Debug, Default)]
@@ -101,6 +102,8 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     let started_at = Instant::now();
     let root = resolve_scan_root(args)?;
     let effective = effective_scan_config(args, &root)?;
+    let provenance =
+        crate::fingerprint::provenance::collect(&root, provenance_config_snapshot(&effective)?)?;
     let effective_args = effective.args;
     let (mut scan, unity_scan, churn_summary) =
         collect_scan_observations(&root, &effective_args, &effective.data_flow, progress)?;
@@ -108,6 +111,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     scan.findings
         .retain(|finding| evidence_role(finding.kind) != EvidenceRole::CompositeSummary);
     finalize_metric_context(&mut scan.findings, &scan.raw_metrics);
+    scan.emitted_by_kind = counts_by_kind(&scan.findings);
     let post_score_controls = apply_post_score_finding_controls(
         &mut scan,
         &root,
@@ -118,7 +122,13 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     let agent_evidence = build_agent_evidence(&scan, &issues);
     let manifest = detector_manifest();
     let (coverage_manifest, coverage_summary, detector_execution, raw_metric_coverage) =
-        project_scan_coverage(&scan, &manifest, &churn_summary, unity_scan.report.status);
+        project_scan_coverage(
+            &scan,
+            &manifest,
+            &churn_summary,
+            &unity_scan.report,
+            &post_score_controls,
+        );
 
     let summary = build_scan_summary(ScanSummaryInput {
         scan: &scan,
@@ -132,6 +142,8 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
 
     Ok(ScanReport {
         schema_version: SCAN_REPORT_SCHEMA_VERSION,
+        provenance,
+        baseline_comparison: None,
         summary,
         stats: scan.stats,
         metrics_summary,
@@ -156,7 +168,8 @@ fn project_scan_coverage(
     scan: &SourceScan,
     manifest: &[crate::model::DetectorManifestEntry],
     churn: &crate::model::ChurnSummary,
-    unity_status: crate::model::UnityProjectStatus,
+    unity_report: &crate::model::UnityProjectReport,
+    controls: &PostScoreControls,
 ) -> (
     Vec<CoverageManifestEntry>,
     CoverageSummary,
@@ -170,12 +183,19 @@ fn project_scan_coverage(
         function_count: scan.raw_metrics.functions.len(),
         type_count: scan.raw_metrics.types.len(),
         findings: &scan.findings,
+        emitted_by_kind: &scan.emitted_by_kind,
+        cli_filtered_by_kind: &controls.cli_filtered_by_kind,
+        suppressed_by_kind: &controls.suppressed_by_kind,
+        dependency_nodes: scan.dependency_graph.nodes.len(),
+        dependency_edges: scan.dependency_graph.edges.len(),
+        unity_assets: unity_report.stats.assets,
+        unity_assemblies: unity_report.stats.assemblies,
         parse_failures: &scan.parse_failures,
         unresolved_dependency_edges: scan.unresolved_dependency_edges,
         flow_analysis: &scan.flow_analysis,
         churn,
         unity_observed: matches!(
-            unity_status,
+            unity_report.status,
             crate::model::UnityProjectStatus::Observed
                 | crate::model::UnityProjectStatus::PartiallyObserved
         ),
@@ -264,6 +284,8 @@ fn run_scan_signals(
 struct PostScoreControls {
     similar_function_group_count: usize,
     suppression_summary: SuppressionSummary,
+    cli_filtered_by_kind: BTreeMap<FindingKind, usize>,
+    suppressed_by_kind: BTreeMap<FindingKind, usize>,
 }
 
 fn apply_post_score_finding_controls(
@@ -272,7 +294,7 @@ fn apply_post_score_finding_controls(
     args: &ScanArgs,
     suppressions: &[ConfigSuppression],
 ) -> Result<PostScoreControls> {
-    let suppression_summary = apply_finding_controls(&mut scan.findings, root, args, suppressions)?;
+    let telemetry = apply_finding_controls(&mut scan.findings, root, args, suppressions)?;
     let similar_function_group_count = scan
         .findings
         .iter()
@@ -280,8 +302,18 @@ fn apply_post_score_finding_controls(
         .count();
     Ok(PostScoreControls {
         similar_function_group_count,
-        suppression_summary,
+        suppression_summary: telemetry.suppression_summary,
+        cli_filtered_by_kind: telemetry.cli_filtered_by_kind,
+        suppressed_by_kind: telemetry.suppressed_by_kind,
     })
+}
+
+fn counts_by_kind(findings: &[Finding]) -> BTreeMap<FindingKind, usize> {
+    let mut counts = BTreeMap::new();
+    for finding in findings {
+        *counts.entry(finding.kind).or_insert(0) += 1;
+    }
+    counts
 }
 
 fn merge_structure_raw_metrics(raw_metrics: &mut RawMetrics, parsed_sources: &[ParsedSourceFile]) {

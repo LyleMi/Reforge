@@ -67,6 +67,31 @@ fn reports_exact_local_and_interprocedural_bypass_witness() {
 }
 
 #[test]
+fn resolves_crate_root_callers_and_sinks_in_lib_and_main() {
+    for root_file in ["lib.rs", "main.rs"] {
+        let files = vec![
+            parsed(
+                &format!("/project/src/{root_file}"),
+                "pub fn route(input: String) { crate::transport::send(input); }",
+            ),
+            parsed(
+                "/project/src/transport.rs",
+                "pub fn send(value: String) { let _accepted = value; }",
+            ),
+        ];
+        let mut config = policy(4);
+        config.boundaries[0].protected_paths = vec![format!("src/{root_file}")];
+
+        let scan = scan_data_flow(Path::new(PROJECT_ROOT), &files, &[], &config).unwrap();
+
+        assert_eq!(scan.findings.len(), 1, "crate root {root_file}");
+        let witness = scan.findings[0].flow_witness.as_ref().unwrap();
+        assert_eq!(witness.source.function, "crate::route");
+        assert_eq!(witness.sink.function, "crate::transport::send");
+    }
+}
+
+#[test]
 fn accepts_a_path_that_crosses_the_declared_adapter() {
     let files = vec![
         parsed(

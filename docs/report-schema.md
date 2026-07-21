@@ -1,12 +1,13 @@
 # Report Schema
 
-Schema 22 separates atomic evidence (`findings`) from decision units (`issues`),
-retains agent context, and adds opt-in exact Rust data-flow coverage and witness
-contracts. It does not serialize a priority, severity, hotspot, scoring-policy,
+Schema 23 adds reproducible scan provenance, explainable same-version baseline
+diffs, structured detector execution receipts, and deterministic remediation
+lineage candidates while preserving the `rf3-*` and `ri3-*` Stable ID
+algorithms. It does not serialize a priority, severity, hotspot, scoring-policy,
 or readiness model.
 
-JSON and YAML reports use schema version `22`. Older reports and baselines,
-including v20, are rejected and must be regenerated. The same Rust data model
+JSON and YAML reports use schema version `23`. Schema 22 and earlier baselines
+are rejected and must be regenerated. The same Rust data model
 is serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 whose results represent issue decision units.
 
@@ -14,7 +15,9 @@ whose results represent issue decision units.
 
 ```json
 {
-  "schema_version": 22,
+  "schema_version": 23,
+  "provenance": {},
+  "baseline_comparison": null,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
@@ -37,9 +40,18 @@ whose results represent issue decision units.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `22`.
+- `schema_version`: report schema version. Current value is `23`.
+- `provenance`: engine version/build revision, target Git revision/dirty state,
+  canonical effective configuration plus its `sha256-*` hash, and the
+  versioned detector-policy hash.
+- `baseline_comparison`: `null` without `--baseline`; otherwise an owned
+  finding/issue diff containing `added`, `removed`, `changed`,
+  `unchanged_count`, change origin, changed fields, and lineage candidates.
 - `coverage_manifest`: normative 7 mechanisms × 6 entity scopes matrix with expectation, runtime status, detectors, entity count, and unobservable reasons.
-- `detector_execution`: one execution receipt per detector, including completed zero-finding runs.
+- `detector_execution`: one execution receipt per detector, including completed
+  zero-finding runs. Each receipt records staged/unit-qualified observations,
+  pre-threshold candidate groups, raw emitted count, CLI-filter removals,
+  suppression removals, final count, and unobservable reasons.
 - `raw_metric_coverage`: observation state for all 18 canonical raw metrics. Disabled churn is `unavailable`, never observed zero pressure.
 - `summary`: scan totals, duration, and churn status.
 - `stats`: source files, directories, and function candidates counted.
@@ -303,6 +315,21 @@ Each entry contains `kind`, `construct`, `mechanism`, `action`, `entity_scope`,
 `issue_family`, `evidence_role`, and `constituent_kinds`. Consumers can
 distinguish unsupported analysis from an observed absence of findings.
 
+## `detector_execution`
+
+Each detector receipt contains `kind`, `status`, `observations`,
+`candidate_groups_before_threshold`, `raw_emitted`, `cli_filtered`,
+`suppression_removed`, `final_findings`, `unobservable_count`, and
+`unobservable_reasons`. Every observation has an explicit `stage`, `unit`, and
+`count`. The emitted counts obey:
+
+```text
+raw_emitted = cli_filtered + suppression_removed + final_findings
+```
+
+Zero final findings therefore do not erase evidence that a detector analyzed
+nonzero inputs.
+
 ## `raw_metric_manifest`
 
 Each entry contains a stable dotted `name`, `entity_scope`, `unit`, `scale`,
@@ -337,11 +364,17 @@ failures.
 
 `--output sarif` and `.sarif` output files emit SARIF version `2.1.0`.
 The SARIF log contains one run with Reforge as the tool driver. Rules are keyed
-by issue `family`, and each issue result contains:
+by issue `family`.
+
+The driver and run properties include engine version, optional build revision,
+detector-policy hash, and effective-configuration hash. Baseline item lists are
+not embedded in SARIF.
+
+Each issue result contains:
 
 - `ruleId`: issue family.
 - `ruleIndex`: index into the run's rule table.
-- `level`: `note`; schema 22 does not assign severity.
+- `level`: `note`; schema 23 does not assign severity.
 - `message.text`: issue summary.
 - `locations[].physicalLocation`: primary path and line.
 - `partialFingerprints.reforgeIssueId`: stable issue `id`.
@@ -402,13 +435,15 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `22` adds `flow_analysis`, typed optional `flow_witness` evidence,
+version `23` adds provenance, embedded baseline comparison, structured
+execution receipts, and lineage candidates. Schema version `22` added
+`flow_analysis`, typed optional `flow_witness` evidence,
 `adapter_flow_bypass`, six `flow.*` finding metrics, and witness-aware SARIF
 locations. Schema version `21` added `agent_evidence`, removed serialized
 priority, severity, hotspots, scoring policy, and reliability fields, changed
 baseline gating to stable-ID selection, and changed SARIF output to issue
 decision units.
-In particular, schema 22 no longer emits `detection_reliability`,
+In particular, schema 21 no longer emits `detection_reliability`,
 `interpretation_reliability`, `priority_factors`, or `rank_explanation` on
 findings; consumers must not infer replacements for those removed fields.
 Baselines from older schemas are rejected and should be regenerated. Schema

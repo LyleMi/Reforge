@@ -3,6 +3,7 @@ use super::*;
 #[derive(Debug, Parser)]
 #[command(name = "reforge")]
 #[command(about = "Detect refactoring signals across a codebase")]
+#[command(version = env!("CARGO_PKG_VERSION"), long_version = env!("REFORGE_LONG_VERSION"))]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -46,6 +47,8 @@ pub enum WorkflowCommand {
     Check(WorkflowCheckArgs),
     /// Repeat the original effective scan and compare evidence IDs.
     Rescan(WorkflowRunArgs),
+    /// Confirm proposed issue lineage or explicitly record selected issues as remediated.
+    ConfirmLineage(WorkflowConfirmLineageArgs),
     /// Finish as verified, failed, or needs_input from recorded evidence.
     Finish(WorkflowRunArgs),
 }
@@ -71,13 +74,27 @@ pub struct WorkflowSelectArgs {
     /// Workflow run directory containing run.json.
     pub run: PathBuf,
 
-    /// Stable schema 22 issue ID. Repeat to select multiple issues.
+    /// Stable schema 23 issue ID. Repeat to select multiple issues.
     #[arg(long = "issue", required = true)]
     pub issues: Vec<String>,
 
     /// User-visible outcome for the selected work.
     #[arg(long)]
     pub goal: String,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct WorkflowConfirmLineageArgs {
+    /// Workflow run directory containing rescan.json.
+    pub run: PathBuf,
+
+    /// Lineage candidate ID from rescan.json. Repeat to confirm multiple candidates.
+    #[arg(long = "candidate")]
+    pub candidates: Vec<String>,
+
+    /// Selected issue that disappeared without an observable successor.
+    #[arg(long = "remediated")]
+    pub remediated: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]

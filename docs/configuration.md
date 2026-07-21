@@ -283,7 +283,7 @@ For a new policy, begin with `balanced`, keep `--churn auto` for exploratory
 audits, and use `--churn off` when comparing reproducible source-only reports.
 Review findings with maintainers across several representative repositories,
 then validate proposed changes on a holdout repository. For CI, capture a
-schema 22 baseline and use `--baseline-mode new --fail-on-findings` so
+schema 23 baseline and use `--baseline-mode new --fail-on-findings` so
 unchanged legacy evidence remains visible without blocking every change.
 
 ## Ignored Paths

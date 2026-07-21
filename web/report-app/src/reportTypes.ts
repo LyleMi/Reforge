@@ -15,7 +15,8 @@ export type AgentTestReachability = { direct_test_files: string[]; reachable_tes
 export type FileAgentEvidence = AgentTestReachability & { path: string; coverage_status: string; context_closure_files: number; context_closure_loc: number; unresolved_local_dependencies: number };
 export type IssueAgentEvidence = AgentTestReachability & { issue_id: string; coverage_status: string; evidence_dispersion: { evidence_files: string[]; evidence_directories: string[]; evidence_languages: string[] }; context_closure_files: number; context_closure_loc: number; unresolved_local_dependencies: number };
 export type CoverageCell = { mechanism: string; entity_scope: string; expectation: string; status: string; reason: string; detectors: string[]; completed_detectors: string[]; entity_count: number; unobservable_reasons: string[] };
-export type DetectorExecutionReceipt = { kind: string; status: string; analyzed_entities: number; candidate_groups: number; unobservable_count: number; unobservable_reasons: string[] };
+export type DetectorObservation = { stage: string; unit: string; count: number };
+export type DetectorExecutionReceipt = { kind: string; status: string; observations: DetectorObservation[]; candidate_groups_before_threshold: number; raw_emitted: number; cli_filtered: number; suppression_removed: number; final_findings: number; unobservable_count: number; unobservable_reasons: string[] };
 export type RawMetricCoverage = { metric: string; status: string; entity_count: number; reason: string; unobservable_reasons: string[] };
 export type DetectorManifestEntry = { kind: string; construct: string; mechanism: string; action: string; entity_scope: string; approach: string; supported_languages: string[]; precision_risk: string; input_metrics: string[]; issue_family: string; evidence_role: string; constituent_kinds: string[] };
 export type RawMetricManifestEntry = { name: string; entity_scope: string; unit: string; scale: string; direction: string; description: string };
@@ -32,6 +33,8 @@ type FlowAnalysis = { status: string; functions_analyzed: number; exact_edges: n
 
 export type ScanReport = {
   schema_version: number;
+  provenance: ReportProvenance;
+  baseline_comparison?: BaselineComparison | null;
   summary: ScanSummary;
   stats: ScanStats;
   metrics_summary: Record<string, Record<string, Percentiles>>;
@@ -50,3 +53,5 @@ export type ScanReport = {
   detector_manifest: DetectorManifestEntry[];
   findings: Finding[];
 };
+import type { BaselineComparison, ReportProvenance } from "./baselineTypes";
+export type { BaselineComparison, DifferenceSet, LineageCandidate, ReportProvenance } from "./baselineTypes";

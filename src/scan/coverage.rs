@@ -5,6 +5,13 @@ struct CoverageProjectionInput<'a> {
     function_count: usize,
     type_count: usize,
     findings: &'a [Finding],
+    emitted_by_kind: &'a BTreeMap<FindingKind, usize>,
+    cli_filtered_by_kind: &'a BTreeMap<FindingKind, usize>,
+    suppressed_by_kind: &'a BTreeMap<FindingKind, usize>,
+    dependency_nodes: usize,
+    dependency_edges: usize,
+    unity_assets: usize,
+    unity_assemblies: usize,
     parse_failures: &'a [ParseFailure],
     unresolved_dependency_edges: usize,
     flow_analysis: &'a crate::model::FlowAnalysisSummary,
@@ -104,8 +111,12 @@ fn detector_execution_receipt(
         return DetectorExecutionReceipt {
             kind: entry.kind,
             status: DetectorExecutionStatus::NotApplicable,
-            analyzed_entities: 0,
-            candidate_groups: 0,
+            observations: Vec::new(),
+            candidate_groups_before_threshold: 0,
+            raw_emitted: 0,
+            cli_filtered: 0,
+            suppression_removed: 0,
+            final_findings: 0,
             unobservable_count: 0,
             unobservable_reasons: vec!["data-flow mode is off".into()],
         };
@@ -120,8 +131,14 @@ fn detector_execution_receipt(
         } else {
             DetectorExecutionStatus::NotApplicable
         },
-        analyzed_entities: analyzed_entity_count(entry, context, applicable),
-        candidate_groups: finding_group_count(entry, context),
+        observations: detector_observations(entry, context, applicable),
+        candidate_groups_before_threshold: if entry.entity_scope == crate::model::EntityScope::FindingGroup {
+            context.input.emitted_by_kind.get(&entry.kind).copied().unwrap_or(0)
+        } else { 0 },
+        raw_emitted: context.input.emitted_by_kind.get(&entry.kind).copied().unwrap_or(0),
+        cli_filtered: context.input.cli_filtered_by_kind.get(&entry.kind).copied().unwrap_or(0),
+        suppression_removed: context.input.suppressed_by_kind.get(&entry.kind).copied().unwrap_or(0),
+        final_findings: context.input.findings.iter().filter(|finding| finding.kind == entry.kind).count(),
         unobservable_count: if applicable && parse_sensitive {
             context.input.parse_failures.len() + unresolved
         } else {
@@ -135,6 +152,92 @@ fn detector_execution_receipt(
             unresolved,
         ),
     }
+}
+
+fn detector_observations(
+    entry: &crate::model::DetectorManifestEntry,
+    context: &CoverageContext<'_, '_>,
+    applicable: bool,
+) -> Vec<crate::model::DetectorObservation> {
+    if !applicable {
+        return Vec::new();
+    }
+    if entry.kind == FindingKind::AdapterFlowBypass {
+        return vec![
+            crate::model::DetectorObservation {
+                stage: "flow_analysis".into(),
+                unit: "flow_function".into(),
+                count: context.input.flow_analysis.functions_analyzed,
+            },
+            crate::model::DetectorObservation {
+                stage: "path_composition".into(),
+                unit: "flow_path".into(),
+                count: context.input.flow_analysis.exact_edges,
+            },
+        ];
+    }
+    if is_unity_detector(entry.kind) {
+        return vec![
+            crate::model::DetectorObservation {
+                stage: "unity_inventory".into(),
+                unit: "unity_asset".into(),
+                count: context.input.unity_assets,
+            },
+            crate::model::DetectorObservation {
+                stage: "unity_inventory".into(),
+                unit: "unity_assembly".into(),
+                count: context.input.unity_assemblies,
+            },
+        ];
+    }
+    if entry.approach == crate::model::DetectionApproach::GraphAnalysis {
+        return vec![
+            crate::model::DetectorObservation {
+                stage: "graph_analysis".into(),
+                unit: "dependency_node".into(),
+                count: context.input.dependency_nodes,
+            },
+            crate::model::DetectorObservation {
+                stage: "graph_analysis".into(),
+                unit: "dependency_edge".into(),
+                count: context.input.dependency_edges,
+            },
+        ];
+    }
+    let count = analyzed_entity_count(entry, context, applicable);
+    let unit = match entry.entity_scope {
+        crate::model::EntityScope::Repository => "repository",
+        crate::model::EntityScope::Directory => "directory",
+        crate::model::EntityScope::File => "file",
+        crate::model::EntityScope::Function => "function",
+        crate::model::EntityScope::Type => "type",
+        crate::model::EntityScope::FindingGroup => "finding_group",
+    };
+    vec![crate::model::DetectorObservation { stage: "detector_input".into(), unit: unit.into(), count }]
+}
+
+fn is_unity_detector(kind: FindingKind) -> bool {
+    matches!(
+        kind,
+        FindingKind::UnityAssemblyCycle
+            | FindingKind::UnityAssemblyHub
+            | FindingKind::UnityUnresolvedAssemblyReference
+            | FindingKind::UnityRuntimeEditorDependency
+            | FindingKind::UnityDuplicateGuid
+            | FindingKind::UnityMissingMeta
+            | FindingKind::UnityOrphanMeta
+            | FindingKind::UnityBrokenAssetReference
+            | FindingKind::UnityMissingScript
+            | FindingKind::UnityNonTextSerialization
+            | FindingKind::UnitySceneBuildDrift
+            | FindingKind::UnityLargeScene
+            | FindingKind::UnityLargePrefab
+            | FindingKind::UnitySerializedFieldBloat
+            | FindingKind::UnityLifecycleOverload
+            | FindingKind::UnityExpensiveFrameCall
+            | FindingKind::UnityEditorApiInRuntime
+            | FindingKind::UnityUnbalancedEventSubscription
+    )
 }
 
 fn analyzed_entity_count(
@@ -162,10 +265,10 @@ fn finding_group_count(
     if entry.entity_scope == crate::model::EntityScope::FindingGroup {
         context
             .input
-            .findings
-            .iter()
-            .filter(|finding| finding.kind == entry.kind)
-            .count()
+            .emitted_by_kind
+            .get(&entry.kind)
+            .copied()
+            .unwrap_or(0)
     } else {
         0
     }
@@ -609,9 +712,19 @@ sink-symbols = ["crate::transport::send"]
         args.finding_controls.only = Some("adapter_flow_bypass".into());
         let mut progress = NoopProgress;
         let report = scan_report(&args, &mut progress)?;
-        assert_eq!(report.schema_version, 22);
+        assert_eq!(report.schema_version, 23);
         assert_eq!(report.findings.len(), 1);
         assert!(report.findings[0].flow_witness.is_some());
+        assert!(report.detector_execution.iter().all(|receipt| {
+            receipt.raw_emitted
+                == receipt.cli_filtered
+                    + receipt.suppression_removed
+                    + receipt.final_findings
+        }));
+        assert!(report.detector_execution.iter().any(|receipt| {
+            receipt.final_findings == 0
+                && receipt.observations.iter().any(|observation| observation.count > 0)
+        }));
 
         let json = serde_json::to_string(&report)?;
         let decoded: ScanReport = serde_json::from_str(&json)?;
@@ -633,7 +746,7 @@ sink-symbols = ["crate::transport::send"]
         let mut html = Vec::new();
         crate::output::write_html_report(&mut html, &report)?;
         let html = String::from_utf8(html)?;
-        assert!(html.contains("&quot;schema_version&quot;:22") || html.contains("\"schema_version\":22"));
+        assert!(html.contains("&quot;schema_version&quot;:23") || html.contains("\"schema_version\":23"));
 
         std::fs::remove_dir_all(root)?;
         Ok(())

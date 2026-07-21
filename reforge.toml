@@ -43,3 +43,13 @@ reason = "Installer script intentionally centralizes portable install branching 
 kind = "similar_functions"
 path = "src/detectors/data_flow/tests.rs"
 reason = "Data-flow contract fixtures intentionally repeat the same policy/source/sink shape across semantic variants."
+
+[[suppressions]]
+kind = "dependency_hub"
+path = "src/main.rs"
+reason = "The binary crate root intentionally wires the CLI, scan, workflow, and output ownership boundaries."
+
+[[suppressions]]
+kind = "dependency_hub"
+path = "src/model/mod.rs"
+reason = "The model facade intentionally re-exports the independent schema domains consumed across the crate."

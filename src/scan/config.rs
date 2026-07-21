@@ -98,7 +98,8 @@ struct UnityConfig {
     max_lifecycle_methods: Option<usize>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub(super) struct ConfigSuppression {
     pub kind: Option<String>,
     pub path: String,
@@ -312,6 +313,46 @@ pub(crate) fn effective_config_output(
     let mut output = EffectiveConfigOutput::from(&effective.args);
     output.data_flow = effective.data_flow;
     Ok(output)
+}
+
+pub(super) fn provenance_config_snapshot(
+    effective: &EffectiveScanConfig,
+) -> Result<serde_json::Value> {
+    let mut value = serde_json::to_value(EffectiveConfigOutput::from(&effective.args))?;
+    let object = value
+        .as_object_mut()
+        .expect("effective config output should serialize as an object");
+    object.insert(
+        "data-flow".into(),
+        serde_json::to_value(&effective.data_flow)?,
+    );
+    object.insert(
+        "finding-controls".into(),
+        serde_json::json!({
+            "only": effective.args.finding_controls.only,
+            "exclude-detector": effective.args.finding_controls.exclude_detector,
+        }),
+    );
+    object.insert(
+        "suppressions".into(),
+        serde_json::to_value(&effective.suppressions)?,
+    );
+    object.insert(
+        "suppression-matching".into(),
+        serde_json::json!({
+            "inline-directive-prefix": "reforge:",
+            "config-rules": effective.suppressions,
+            "path-separator": "/",
+        }),
+    );
+    object.insert(
+        "default-excluded-directories".into(),
+        serde_json::json!({
+            "active": !effective.args.filters.include_generated,
+            "paths": super::DEFAULT_EXCLUDED_DIRS,
+        }),
+    );
+    Ok(value)
 }
 
 pub(crate) fn default_config_toml() -> Result<String> {

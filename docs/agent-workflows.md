@@ -1,6 +1,6 @@
 # Agent Workflows
 
-Reforge ships a deterministic, resumable workflow around schema 22 evidence. The scanner does not assign quality, priority, severity, readiness, or hotspot scores. Selection and refactoring judgment remain review decisions.
+Reforge ships a deterministic, resumable workflow around schema 23 evidence. The scanner does not assign quality, priority, severity, readiness, or hotspot scores. Selection and refactoring judgment remain review decisions.
 
 ## Commands and phases
 
@@ -20,22 +20,31 @@ reforge workflow approve .reforge/runs/run-...
 reforge workflow mark-applied .reforge/runs/run-...
 reforge workflow check .reforge/runs/run-... --kind test -- cargo test
 reforge workflow rescan .reforge/runs/run-...
+reforge workflow confirm-lineage .reforge/runs/run-... --candidate rl1-...
+reforge workflow confirm-lineage .reforge/runs/run-... --remediated ri3-...
 reforge workflow finish .reforge/runs/run-...
 ```
 
-`start` runs a complete schema 22 scan and stores the effective scan command and report, config, and source fingerprints. The default run directory is `.reforge/runs/run-<epoch>-<report-hash>/`; `--run-dir` selects an exact external or project-local directory.
+`start` runs a complete schema 23 scan and stores the effective scan command and report, config, and source fingerprints. The default run directory is `.reforge/runs/run-<epoch>-<report-hash>/`; `--run-dir` selects an exact external or project-local directory.
 
 `select` accepts only issue IDs present in `scan.json`. `advance` validates one immutable investigation per selected issue, then validates `plan.json`. `status` and `validate` never mutate artifacts.
 
 `approve` is the only approval entry point. It freezes the canonical plan hash, target-relative write set, and a hash snapshot of the workspace. Invoking the apply skill is not approval. `mark-applied` compares the approved snapshot with the current workspace and rejects every changed file outside the write set.
 
-`check` executes its program directly without a shell. It records arguments, exit status, duration, timeout state, and a short redacted output summary. It does not persist full command output. `rescan` reuses the stored effective scan command and classifies selected evidence as removed, still present, or unobservable, plus evidence that is new relative to the original report.
+`check` executes its program directly without a shell. It records arguments,
+exit status, duration, timeout state, and a short redacted output summary. It
+does not persist full command output. `rescan` reuses the stored effective scan
+command, classifies selected evidence, and stores deterministic issue lineage
+candidates. `confirm-lineage` writes immutable `lineage.json`: a candidate
+creates a `supersedes` record, while `--remediated` records an observably
+disappeared selected issue without a successor. Automatic candidates never
+change Stable IDs or gate results.
 
 `finish` requires unchanged approval scope, every required check to pass, a required test check, and a completed observable rescan. A failed check produces `failed`. Missing tests or degraded selected evidence produces `needs_input`.
 
 ## Artifacts
 
-All workflow JSON uses artifact schema v1, rejects unknown fields, and is written through a temporary sibling followed by rename.
+All workflow JSON uses artifact schema v2, rejects unknown fields, and is written through a temporary sibling followed by rename.
 
 ```text
 run.json
@@ -46,6 +55,7 @@ plan.json
 approval.json
 application.json
 rescan.json
+lineage.json (optional)
 verification.json
 ```
 

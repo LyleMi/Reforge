@@ -282,10 +282,16 @@ ignored so large mechanical changes do not dominate results.
 ## CI Gates and Baselines
 
 Use `--fail-on-findings` with `--baseline <PATH>` to make a scan exit nonzero
-when unsuppressed evidence IDs are absent from a prior schema 22 JSON or YAML
+when unsuppressed evidence IDs are absent from a prior schema 23 JSON or YAML
 report. Reforge writes the requested report before returning the failing exit
-status. The gate requires a baseline because v22 does not assign severity,
+status. The gate requires a baseline because v23 does not assign severity,
 priority, or a readiness score.
+
+Schema 23 compares engine/build/policy, effective configuration, and source
+provenance independently. Engine, policy, or configuration mismatches write the
+requested report and then fail closed before the finding gate. Pass
+`--accept-baseline-provenance-change` to acknowledge that mismatch and continue
+to the selected finding gate. Source revision changes are normal baseline input.
 
 `--baseline-mode` controls the selected findings:
 
@@ -309,6 +315,7 @@ cargo run -- scan . --baseline baseline.json --show new --output human --progres
 Usage:
 
 ```text
+reforge --version
 reforge init [PATH] [--force]
 reforge config validate [PATH] [--config CONFIG]
 reforge config show [PATH] [--config CONFIG] [--output human|json|yaml]
@@ -356,10 +363,11 @@ git churn.
 | `--min-data-clump-occurrences` | `4` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a specific configuration file. |
-| `--baseline` | none | Read a prior schema 22 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 23 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new` | Select `new` or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new` or `all` current findings in human baseline reports. |
 | `--fail-on-findings` | false | Exit nonzero when unsuppressed finding IDs are new relative to the baseline. |
+| `--accept-baseline-provenance-change` | false | Acknowledge engine, policy, or effective-config mismatch before applying the finding gate. |
 | `--churn` | `auto` | Use `auto`, `on`, or `off` for git churn metrics. |
 | `--churn-window-days` | `180` | Days of git history to include. |
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
@@ -368,6 +376,7 @@ git churn.
 | `--progress` | `auto` | Use `auto`, `always`, or `never` for progress output. |
 | `--color` | `auto` | Use `auto`, `always`, or `never` for human-output color. |
 | `--help` | none | Print generated help. |
+| `--version` | none | Print the Cargo package version and build Git revision when available. |
 
 ## Examples
 

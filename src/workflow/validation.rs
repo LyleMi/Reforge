@@ -282,6 +282,38 @@ fn validate_report_fingerprint(run: &RunArtifact, report: &ScanReport) -> Result
     Ok(())
 }
 
+fn validate_optional_lineage(context: &RunContext, rescan: &RescanArtifact) -> Result<()> {
+    let path = context.dir.join("lineage.json");
+    if !path.exists() {
+        return Ok(());
+    }
+    let lineage: LineageArtifact = read_json(&path)?;
+    validate_schema_version(lineage.artifact_schema_version, "lineage.json")?;
+    ensure!(lineage.original_report_fingerprint == rescan.original_report_fingerprint, "lineage.json original report fingerprint is stale");
+    ensure!(lineage.rescan_report_fingerprint == rescan.rescan_report_fingerprint, "lineage.json rescan report fingerprint is stale");
+    let candidates = rescan.lineage_candidates.iter().map(|candidate| (candidate.id.as_str(), candidate)).collect::<BTreeMap<_, _>>();
+    let removed = rescan.selected_issues_removed.iter().map(|id| id.as_str()).collect::<BTreeSet<_>>();
+    let unobservable = rescan.selected_issues_unobservable.iter().map(|id| id.as_str()).collect::<BTreeSet<_>>();
+    let mut previous = BTreeSet::new();
+    let mut successors = BTreeSet::new();
+    for record in &lineage.records {
+        ensure!(previous.insert(record.previous_issue_id.as_str()), "lineage.json contains duplicate issue dispositions");
+        match record.kind {
+            LineageRecordKind::Supersedes => {
+                let id = record.candidate_id.as_deref().context("supersedes lineage record is missing candidate_id")?;
+                let candidate = candidates.get(id).context("lineage.json confirms a candidate absent from rescan.json")?;
+                ensure!(candidate.previous_id == record.previous_issue_id.as_str() && record.successor_issue_id.as_ref().is_some_and(|successor| successor.as_str() == candidate.current_id), "lineage.json candidate endpoints do not match rescan.json");
+                ensure!(successors.insert(candidate.current_id.as_str()), "lineage.json reuses a successor issue");
+            }
+            LineageRecordKind::Remediated => {
+                ensure!(record.successor_issue_id.is_none() && record.candidate_id.is_none(), "remediated lineage records cannot have a successor or candidate");
+                ensure!(removed.contains(record.previous_issue_id.as_str()) && !unobservable.contains(record.previous_issue_id.as_str()), "remediated issue was not observably removed");
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_config_fingerprint(context: &RunContext, args: &ScanArgs) -> Result<()> {
     let root = args.path.canonicalize()?;
     let effective = scan::effective_config_output(args, &root)?;

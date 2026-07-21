@@ -40,11 +40,24 @@ pub enum DetectorExecutionStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DetectorObservation {
+    pub stage: String,
+    pub unit: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DetectorExecutionReceipt {
     pub kind: FindingKind,
     pub status: DetectorExecutionStatus,
-    pub analyzed_entities: usize,
-    pub candidate_groups: usize,
+    pub observations: Vec<DetectorObservation>,
+    pub candidate_groups_before_threshold: usize,
+    pub raw_emitted: usize,
+    pub cli_filtered: usize,
+    pub suppression_removed: usize,
+    pub final_findings: usize,
     pub unobservable_count: usize,
     pub unobservable_reasons: Vec<String>,
 }

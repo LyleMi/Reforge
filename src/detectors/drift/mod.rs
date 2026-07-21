@@ -162,7 +162,21 @@ fn is_operational_entrypoint_source(file_words: &[String]) -> bool {
     file_words.iter().any(|word| {
         matches!(
             word.as_str(),
-            "bin" | "cli" | "cmd" | "command" | "commands" | "script" | "scripts"
+            "bin"
+                | "cli"
+                | "cmd"
+                | "command"
+                | "commands"
+                | "script"
+                | "scripts"
+                | "tool"
+                | "tools"
+                | "bench"
+                | "benches"
+                | "benchmark"
+                | "benchmarks"
+                | "differential"
+                | "oracle"
         )
     })
 }
