@@ -12,8 +12,37 @@ param(
     [ValidateSet("codex", "claude", "gemini", "opencode", "codebuddy", "cursor", "generic", "all")][string]$Agent = "codex",
     [string]$ProjectDir,
     [string]$RootDir,
-    [switch]$InstallCli
+    [switch]$InstallCli,
+    [Alias("h", "-help")][switch]$Help
 )
+
+function Show-Usage {
+    @'
+Usage: scripts\install-agent-workflow.ps1 [options]
+
+  -Mode plugin|skills-only      Installation mode (default: plugin).
+  -PluginDir DIR                Exact plugin destination.
+  -SkillsDir DIR                Exact skills parent directory.
+  -AgentDir DIR                 Exact custom-agent parent directory.
+  -SkipAgent                    Do not install the investigator agent.
+  -SkipCli                      Do not install the Reforge CLI.
+  -InstallCli                   Install the Reforge CLI (default).
+  -Force                        Atomically replace an existing installation.
+  -OnlyScan                     Install only reforge-scan (compatibility mode).
+  -Source DIR                   Custom reforge-scan source (compatibility mode).
+  -Agent NAME                   Target agent: codex, claude, gemini, opencode,
+                                codebuddy, cursor, generic, or all.
+  -ProjectDir DIR               Install project-local files into DIR.
+  -RootDir DIR                  Override the selected agent's global root/config dir.
+  -Help, -h, --help             Print this help and exit.
+'@
+}
+
+if ($Help) {
+    Show-Usage
+    exit 0
+}
+
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path

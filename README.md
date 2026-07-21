@@ -100,6 +100,7 @@ Or use PowerShell directly:
 
 ```powershell
 .\scripts\install-agent-workflow.ps1
+.\scripts\install-agent-workflow.ps1 --help
 ```
 
 On macOS or Linux:

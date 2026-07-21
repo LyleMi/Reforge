@@ -30,11 +30,11 @@ reason = "Suppression tests intentionally repeat fixture construction patterns."
 [[suppressions]]
 kind = "complex_function"
 path = "scripts/install-agent-workflow.ps1"
-line = 127
+line = 156
 reason = "Installer script intentionally centralizes portable install branching for distribution compatibility."
 
 [[suppressions]]
 kind = "complex_function"
 path = "scripts/install-agent-workflow.sh"
-line = 177
+line = 179
 reason = "Installer script intentionally centralizes portable install branching for distribution compatibility."

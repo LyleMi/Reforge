@@ -83,7 +83,24 @@ if exist "%backup%" rmdir /S /Q "%backup%"
 echo Installed %target_path%
 exit /b 0
 :help
-echo Usage: scripts\install-agent-workflow.bat [--plugin^|--skills-only] [--agent codex^|claude^|gemini^|opencode^|codebuddy^|cursor^|generic^|all] [--project-dir DIR] [--root-dir DIR] [--force] [--skip-cli] [--skip-agent]
+echo Usage: scripts\install-agent-workflow.bat [options]
+echo.
+echo   --plugin                    Install the standard plugin ^(default^).
+echo   --skills-only               Install skills without the plugin manifest.
+echo   --plugin-dir DIR            Exact plugin destination.
+echo   --skills-dir DIR            Exact skills parent directory.
+echo   --agent-dir DIR             Exact custom-agent parent directory.
+echo   --skip-agent                Do not install the investigator agent.
+echo   --skip-cli                  Do not install the Reforge CLI.
+echo   --install-cli               Install the Reforge CLI ^(default^).
+echo   --force                     Atomically replace an existing installation.
+echo   --only-scan                 Install only reforge-scan ^(compatibility mode^).
+echo   --source DIR                Custom reforge-scan source ^(compatibility mode^).
+echo   --agent NAME                Target agent: codex, claude, gemini, opencode,
+echo                               codebuddy, cursor, generic, or all.
+echo   --project-dir DIR           Install project-local files into DIR.
+echo   --root-dir DIR              Override the selected agent's global root/config dir.
+echo   -h, --help                  Print this help and exit.
 exit /b 0
 :portable
 set "ps=powershell.exe"

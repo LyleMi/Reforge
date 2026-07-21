@@ -76,3 +76,6 @@ scripts/install-agent-workflow.sh --agent all --project-dir /path/to/project --s
 ```
 
 PowerShell and batch equivalents are `install-agent-workflow.ps1` and `install-agent-workflow.bat`. All installers support custom destinations, `--skip-agent`, `--skip-cli`, and atomic `--force` updates. Use `--agent codex|claude|gemini|opencode|codebuddy|cursor|generic|all` to choose the target assistant. Without `--project-dir`, the installer uses that assistant's user root/config directory; with `--project-dir`, it writes project-local instruction files and skill directories where supported. Use `--root-dir` to override the inferred user root/config directory. The older `install-agent-skill.*` entry points install only `reforge-scan` through the compatibility path.
+
+Run any installer with `-h` or `--help` to list its available options without
+performing installation or validating destination paths.

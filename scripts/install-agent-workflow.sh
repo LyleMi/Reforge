@@ -25,6 +25,7 @@ Usage: scripts/install-agent-workflow.sh [options]
   --agent-dir DIR             Exact custom-agent parent directory.
   --skip-agent                Do not install the investigator agent.
   --skip-cli                  Do not install the Reforge CLI.
+  --install-cli               Install the Reforge CLI (default).
   --force                     Atomically replace an existing installation.
   --only-scan                 Install only reforge-scan (compatibility mode).
   --source DIR                Custom reforge-scan source (compatibility mode).
@@ -32,6 +33,7 @@ Usage: scripts/install-agent-workflow.sh [options]
                               codebuddy, cursor, generic, or all.
   --project-dir DIR           Install project-local files into DIR.
   --root-dir DIR              Override the selected agent's global root/config dir.
+  -h, --help                  Print this help and exit.
 EOF
 }
 
