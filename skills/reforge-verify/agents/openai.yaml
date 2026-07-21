@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reforge Verify"
+  short_description: "Run checks and compare Reforge evidence"
+  default_prompt: "Use $reforge-verify to run declared checks, rescan, and finish this Reforge workflow."

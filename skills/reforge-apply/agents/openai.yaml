@@ -1,0 +1,6 @@
+interface:
+  display_name: "Reforge Apply"
+  short_description: "Apply an explicitly approved Reforge plan"
+  default_prompt: "Use $reforge-apply to apply the already approved Reforge workflow plan within its write set."
+policy:
+  allow_implicit_invocation: false

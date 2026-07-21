@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reforge Plan"
+  short_description: "Investigate evidence and draft a safe plan"
+  default_prompt: "Use $reforge-plan to investigate selected Reforge issues and produce a validated read-only plan."
