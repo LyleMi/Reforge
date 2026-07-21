@@ -1,0 +1,45 @@
+topic: "Cross-module abnormal data flow as a Reforge refactoring signal"
+items:
+  - name: "Boundary policy escape"
+    category: "Architectural intent"
+    description: >-
+      Data crosses module or layer boundaries through direct calls, sinks, or
+      routes that bypass an intended adapter, validator, sanitizer, authorizer,
+      or redaction boundary. Determine when this is maintainability evidence
+      rather than only a security or correctness finding.
+  - name: "Ownership leakage and feature envy"
+    category: "Responsibility placement"
+    description: >-
+      A function or module reads, traverses, transforms, or reconstructs data
+      owned by another module more than it works with its own state. Validate
+      links to Feature Envy, Broken Modularization, Move Method/Move Field, and
+      change localization.
+  - name: "Pass-through chains and data clumps"
+    category: "Data journey shape"
+    description: >-
+      Values or repeated parameter groups are forwarded mostly unchanged
+      through several functions or modules, producing Middle Man, Message
+      Chain, primitive obsession, or misplaced orchestration signals.
+  - name: "Representation churn and schema diffusion"
+    category: "Data modeling"
+    description: >-
+      The same business fact or payload shape is repeatedly destructured,
+      rebuilt, mapped, serialized, renamed, or converted between near-equivalent
+      types across modules, suggesting duplicate models or unclear ownership.
+  - name: "Mutable state fan-out and cyclic journeys"
+    category: "State coupling"
+    description: >-
+      Shared or imported state is written by several modules, or a value leaves
+      a module and later returns after multiple transformations. Validate whether
+      write dispersion, round trips, or flow cycles predict change propagation.
+  - name: "Reforge feasibility and validation design"
+    category: "Product integration"
+    description: >-
+      Compare a Tree-sitter-derived lightweight flow graph with semantic engines
+      such as CodeQL, Semgrep, and Joern; define language tiers, coverage
+      receipts, performance limits, benchmark construction, and an incremental
+      Reforge MVP that preserves explainability and conservative reporting.
+execution:
+  batch_size: 3
+  items_per_agent: 1
+  output_dir: "./results"

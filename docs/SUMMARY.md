@@ -20,5 +20,7 @@
 
 - [Architecture](architecture.md)
 - [Agent Workflow Research](agent-workflows.md)
+- [Data-flow Signal Research](research/data-flow-signals/report.md)
+- [Data-flow Execution Plan (Temporary)](research/data-flow-signals/execution-plan.md)
 - [Contributing](contributing.md)
 - [Release](release.md)

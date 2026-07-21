@@ -73,6 +73,10 @@ cargo run -- scan . --output-file reforge-report.html --progress never
 - [Agent Workflow Research](agent-workflows.md): review the current agent
   integration boundary, reference-workflow findings, and phased implementation
   plan for safe, resumable refactoring assistance.
+- [Data-flow Signal Research](research/data-flow-signals/report.md): review the
+  evidence, false-positive boundaries, and candidate cross-module flow signals.
+- [Data-flow Execution Plan](research/data-flow-signals/execution-plan.md):
+  inspect the temporary, gated implementation RFC before any source work begins.
 - [Contributing](contributing.md): set up local development and validate changes.
 - [Release](release.md): prepare and package a release.
 

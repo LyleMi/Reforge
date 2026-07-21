@@ -1,0 +1,129 @@
+field_categories:
+  - category: "Conclusion"
+    fields:
+      - name: item_name
+        description: "Research item name."
+        detail_level: brief
+        required: true
+      - name: thesis
+        description: "Concise conclusion about whether and how the item is a useful refactoring signal."
+        detail_level: moderate
+        required: true
+      - name: refactoring_relevance
+        description: "Why the observation implies a plausible behavior-preserving structural change."
+        detail_level: detailed
+        required: true
+      - name: evidence_strength
+        description: "Overall evidence rating with an explicit rationale: strong, moderate, weak, or speculative."
+        detail_level: moderate
+        required: true
+  - category: "Evidence"
+    fields:
+      - name: foundational_sources
+        description: "Seminal primary sources, with title, year, claim, and URL or DOI."
+        detail_level: detailed
+        required: true
+      - name: empirical_sources
+        description: "Empirical studies, including evaluated systems, labels, and relevant results."
+        detail_level: detailed
+        required: true
+      - name: industrial_precedents
+        description: "Current tools or official documentation demonstrating related analysis in practice."
+        detail_level: detailed
+        required: true
+      - name: conflicting_evidence
+        description: "Negative, weak, or conflicting results and what they limit."
+        detail_level: detailed
+        required: true
+  - category: "Detectability"
+    fields:
+      - name: observable_pattern
+        description: "Source-observable pattern stated without assuming design intent."
+        detail_level: detailed
+        required: true
+      - name: graph_model
+        description: "Required nodes, edges, labels, summaries, and module aggregation."
+        detail_level: detailed
+        required: true
+      - name: analysis_requirements
+        description: "Required name resolution, call graph, CFG, def-use, points-to, field sensitivity, context sensitivity, or library models."
+        detail_level: detailed
+        required: true
+      - name: tree_sitter_feasibility
+        description: "What can be derived reliably, conservatively, or not at all from Reforge's Tree-sitter syntax trees."
+        detail_level: detailed
+        required: true
+      - name: language_constraints
+        description: "Language-specific precision and coverage limits across Reforge's supported languages."
+        detail_level: detailed
+        required: true
+      - name: complexity_cost
+        description: "Expected runtime, memory, and implementation complexity."
+        detail_level: moderate
+        required: true
+  - category: "Signal Quality"
+    fields:
+      - name: false_positives
+        description: "Legitimate code patterns likely to resemble the candidate signal."
+        detail_level: detailed
+        required: true
+      - name: precision_boosters
+        description: "Independent corroborating evidence that should be required or displayed."
+        detail_level: detailed
+        required: true
+      - name: legitimate_exceptions
+        description: "Architectures where the pattern is expected or beneficial."
+        detail_level: detailed
+        required: true
+      - name: confidence_tier
+        description: "Suggested conservative, heuristic, or experimental detector tier."
+        detail_level: brief
+        required: true
+  - category: "Reforge Integration"
+    fields:
+      - name: existing_capabilities
+        description: "Specific Reforge observations and detectors that can supply or corroborate the signal."
+        detail_level: detailed
+        required: true
+      - name: proposed_metrics
+        description: "Explainable raw or finding metrics with definitions and units."
+        detail_level: detailed
+        required: true
+      - name: proposed_finding_kinds
+        description: "Candidate finding names, issue family, mechanism, action, scope, and precision risk."
+        detail_level: detailed
+        required: true
+      - name: explanation_path
+        description: "Minimum path evidence and related locations needed for a maintainer to inspect the claim."
+        detail_level: detailed
+        required: true
+      - name: coverage_contract
+        description: "Observed, partial, unsupported, and unresolved cases that must be explicit in reports."
+        detail_level: detailed
+        required: true
+      - name: mvp_scope
+        description: "Smallest useful implementation and what must be deferred."
+        detail_level: detailed
+        required: true
+  - category: "Validation"
+    fields:
+      - name: fixtures
+        description: "Positive, negative, and metamorphic fixture cases."
+        detail_level: detailed
+        required: true
+      - name: corpus_strategy
+        description: "Representative repositories and holdout design."
+        detail_level: detailed
+        required: true
+      - name: oracle_and_labels
+        description: "How maintainers label instrumentation, detection, actionability, and outcome independently."
+        detail_level: detailed
+        required: true
+      - name: success_criteria
+        description: "Measurable precision, coverage, stability, performance, and usefulness acceptance criteria."
+        detail_level: detailed
+        required: true
+      - name: open_questions
+        description: "Unresolved research or product decisions."
+        detail_level: detailed
+        required: true

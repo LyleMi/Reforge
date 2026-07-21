@@ -1,0 +1,259 @@
+{
+  "item_name": "Boundary policy escape",
+  "thesis": "Boundary policy escape is a useful architectural refactoring signal only when the repository provides independent evidence that a particular adapter, validator, sanitizer, authorizer, or redaction component is the intended crossing point. A single source-to-sink path that lacks a policy step is primarily a security or correctness warning; repeated or newly introduced paths that route equivalent data around an established boundary are maintainability evidence because policy knowledge and change responsibility have become dispersed.",
+  "refactoring_relevance": "The behavior-preserving structural opportunity is to route callers through the existing port or adapter, extract a shared boundary interface, or move equivalent validation/redaction logic into one owned crossing point without changing accepted inputs or outputs. This reduces the number of places that must change when protocols, schemas, authorization rules, privacy policy, logging format, or infrastructure libraries evolve. If the proposed repair adds a check, rejects previously accepted data, changes authorization, or redacts previously emitted fields, it is not refactoring alone and must be reported as a security/correctness change. Reforge should therefore describe the structural escape and possible consolidation, not claim that adding a missing policy preserves behavior.",
+  "evidence_strength": "Moderate. Architecture-conformance research strongly supports implementation-to-intent discrepancies as erosion evidence, and industrial tools demonstrate that source-sink-barrier paths and architectural access constraints are computable. Empirical studies connect architecture violations and structural anti-patterns to maintenance work, and code-review studies show that developers commonly address violation symptoms by refactoring or removal. However, [uncertain] no located empirical study isolates bypass of validators, authorizers, sanitizers, or redactors as a maintainability predictor independent of its security/correctness effect.",
+  "foundational_sources": [
+    {
+      "title": "Software Reflexion Models: Bridging the Gap Between Source and High-Level Models",
+      "year": 1995,
+      "claim": "An engineer-supplied high-level model can be mapped to source and compared with the implementation to expose convergences, divergences, and absences; applications included a 250 KLOC NetBSD subsystem and experimental reengineering of Microsoft Excel.",
+      "url": "https://www.cs.ubc.ca/~murphy/papers/rm/fse95.html"
+    },
+    {
+      "title": "Discovery of Architectural Layers and Measurement of Layering Violations in Source Code",
+      "year": 2009,
+      "claim": "Layer organization can be discovered semi-automatically and non-conformance to layered design principles can be quantified, establishing forbidden cross-layer dependencies as measurable architecture evidence.",
+      "url": "https://doi.org/10.1016/j.jss.2009.10.023"
+    },
+    {
+      "title": "P/Taint: Unified Points-to and Taint Analysis",
+      "year": 2017,
+      "claim": "Taint and points-to analysis can share a formal implementation basis, including explicit treatment of sanitization, supporting source-to-sink reachability as a program-analysis primitive.",
+      "url": "https://doi.org/10.1145/3133926"
+    }
+  ],
+  "empirical_sources": [
+    {
+      "title": "Understanding Software Architecture Erosion: A Systematic Mapping Study",
+      "year": 2022,
+      "systems_or_labels": "Systematic mapping of 73 architecture-erosion studies.",
+      "relevant_result": "Architecture erosion manifests through architectural violations and structural issues and creates software-quality and evolution problems; the authors also call for more industrial empirical studies.",
+      "url": "https://arxiv.org/abs/2112.10934"
+    },
+    {
+      "title": "Warnings: Violation Symptoms Indicating Architecture Erosion",
+      "year": 2023,
+      "systems_or_labels": "Architecture-related code-review comments from four open-source projects, manually classified for violation symptoms and responses.",
+      "relevant_result": "Developers discussed pattern and design-principle violations, and refactoring or code removal accounted for 90% of responses to identified violation symptoms.",
+      "url": "https://doi.org/10.1016/j.infsof.2023.107313"
+    },
+    {
+      "title": "Understanding Architectural Complexity, Maintenance Burden, and Developer Sentiment -- A Large-Scale Study",
+      "year": 2023,
+      "systems_or_labels": "More than 1,200 C++ and Java projects at Google, maintenance activity, structural measures, and 7,200 developer survey responses.",
+      "relevant_result": "Higher propagation cost and more structural anti-pattern instances were significantly associated with more lines changed for bug fixing rather than feature work.",
+      "url": "https://research.google/pubs/understanding-architectural-complexity-maintenance-burden-and-developer-sentiment-a-large-scale-study/"
+    },
+    {
+      "title": "Direct boundary-policy-escape maintainability evidence",
+      "year": "[uncertain] not established",
+      "systems_or_labels": "No isolated corpus label found for equivalent data paths bypassing an established validator, authorizer, sanitizer, or redactor.",
+      "relevant_result": "The maintainability thesis is an inference from architecture-conformance and data-flow research, not a demonstrated causal result for this exact signal.",
+      "url": null
+    }
+  ],
+  "industrial_precedents": [
+    {
+      "tool": "CodeQL",
+      "practice": "Global data-flow configurations define sources, sinks, and barriers/sanitizers and compute paths across calls and fields that do not pass through a barrier; its call graph distinguishes declared from possible concrete callees.",
+      "url": "https://codeql.github.com/docs/codeql-language-guides/codeql-library-for-go/"
+    },
+    {
+      "tool": "Semgrep",
+      "practice": "Taint rules specify sources, sinks, propagators, and sanitizers. Official documentation explicitly distinguishes per-function, per-file, and interfile coverage and states that unmodeled propagators cannot be inferred by intraprocedural analysis.",
+      "url": "https://docs.semgrep.dev/writing-rules/glossary"
+    },
+    {
+      "tool": "ArchUnit",
+      "practice": "Architecture tests express allowed package access, layered architecture, and onion/ports-and-adapters constraints using method-call, constructor-call, and field-access dependencies.",
+      "url": "https://www.archunit.org/userguide/html/000_Index.html"
+    },
+    {
+      "tool": "OWASP Benchmark",
+      "practice": "Ground-truth true and false test cases plus TPR and FPR scoring demonstrate that flow-analysis capability must be validated explicitly; OWASP warns that its microcases are simpler than real applications.",
+      "url": "https://owasp.org/www-project-benchmark/"
+    }
+  ],
+  "conflicting_evidence": "Architecture rules require intent: a direct dependency or sink call can be deliberately allowed, and ports-and-adapters introduce navigation and indirection costs. Taint reachability proves only a possible value path, not that a particular project intended a named component to dominate that path. Sanitizers may be partial, conditional, order-sensitive, policy-specific, or duplicated intentionally for defense in depth. Static call graphs, alias analysis, dynamic dispatch, reflection, framework injection, serialization, persistence, queues, callbacks, and generated routing create both false paths and missed paths. OWASP notes that benchmark programs are substantially simpler than real applications, while Semgrep documents that intraprocedural analysis needs explicit propagator models. These limitations rule out treating an inferred missing barrier as an automatic refactoring recommendation.",
+  "observable_pattern": "Without assuming design intent, observe: (1) a value originating at a parameter, deserializer, environment/config read, persistence read, request/event boundary, or sensitive-data constructor; (2) a path through assignments, fields, returns, calls, callbacks, or route registration to an external or cross-module sink; (3) zero occurrences on that path of a candidate boundary function or module; and (4) one or more comparable source-to-sink paths in the same repository that do pass through that candidate boundary. Stronger observations are multiple bypass paths from distinct modules, direct imports of infrastructure clients from otherwise inner modules, repeated local policy-like code, or a recently growing bypass count. The source observation is a path difference; calling it a violation requires declared configuration or corroborated repository convention.",
+  "graph_model": {
+    "nodes": [
+      "expression and storage locations",
+      "function parameters and returns",
+      "fields and object properties",
+      "call sites and resolved callees",
+      "route or event registrations",
+      "source, sink, boundary, module, and layer nodes"
+    ],
+    "edges": [
+      "assignment and def-use",
+      "argument-to-parameter",
+      "return-to-call-result",
+      "field read/write and alias",
+      "call and callback registration",
+      "import/dependency",
+      "route-to-handler",
+      "module containment"
+    ],
+    "labels_and_summaries": "Attach data kind, policy kind, boundary role, source/sink category, sanitizer transform or guard semantics, call confidence, and coverage status. Store function summaries mapping tainted/formal inputs to outputs, sinks, guards, and returned policy state. Aggregate paths by source module, sink module, policy kind, required boundary, actual first crossing edge, and path equivalence class.",
+    "decision": "A declared-policy finding exists when a source-to-sink path avoids every allowed boundary node. An inferred-convention observation compares avoiding paths with repository paths that consistently pass through the same boundary and must remain heuristic. Dominance is useful for validators/authorizers that must execute on every feasible route; simple reachability is insufficient."
+  },
+  "analysis_requirements": "An authoritative detector needs parsing and symbol/name resolution; an interprocedural call graph; CFG and dominance/guard reasoning; def-use/SSA-like flow; field-sensitive and at least allocation-site points-to reasoning; conservative dynamic-dispatch resolution; function summaries; context sensitivity sufficient to distinguish wrapper calls; and models for framework sources, sinks, callbacks, route registration, serializers, storage, queues, and library sanitizers. Policy-specific validation needs path sensitivity and a lattice richer than binary taint because validation, authorization, sanitization, and redaction are not interchangeable. A lower-cost architectural detector can instead use resolved imports/calls plus an explicit policy file defining modules, forbidden dependencies, and required boundary symbols, but must report dependency bypass rather than value-flow bypass.",
+  "tree_sitter_feasibility": "Tree-sitter can reliably locate declarations, imports, direct calls, member calls, route-registration syntax, assignments, returns, and path/name annotations in successfully parsed files. Reforge can conservatively build intra-function syntactic def-use for simple local variables and direct-call evidence, and can reuse its file dependency graph to show cross-module crossings. Tree-sitter alone cannot reliably resolve overloads, aliases, virtual/interface targets, higher-order calls, reflection, DI containers, heap aliases, field identity, framework-generated routes, or whether a custom function truly sanitizes/authorizes/redacts. The existing line-pattern adapter-boundary detector can cheaply corroborate an escape but cannot prove that the same value crossed the boundary or that a policy step was absent. Therefore an MVP must use explicit configured boundary/sink symbols or report only syntax-level candidates with partial coverage.",
+  "language_constraints": {
+    "Rust": "Direct calls, modules, Result-based validation, and many trait calls are syntactically visible, but trait-object dispatch, macros, re-exports, proc-macro routing, lifetimes, and interior mutability limit syntax-only precision.",
+    "JavaScript_TypeScript_Vue": "Dynamic properties, callbacks, promises, re-exports, framework routers, middleware order, decorators, and untyped JavaScript make interfile flow difficult; TypeScript type information is unavailable from Tree-sitter alone. Vue template-to-script flow requires additional modeling.",
+    "Python_Ruby_PHP": "Monkey patching, dynamic attributes, metaprogramming, decorators, framework magic, and dynamic imports make call and field resolution incomplete.",
+    "Go": "Interfaces, goroutines, channels, method values, and middleware chains need whole-program/type-aware models; direct package calls are comparatively tractable.",
+    "Java_CSharp_Kotlin": "Overloading, inheritance/interfaces, annotations, reflection, DI, ORM persistence, coroutines/tasks, and framework middleware require type and framework models; compiled metadata would improve precision.",
+    "C_Cpp": "Headers, macros, preprocessing, function pointers, templates, aliasing, and manual memory operations make source-only call and points-to analysis expensive and configuration-dependent.",
+    "Bash_PowerShell": "Dynamic command construction, pipelines, dot sourcing, environment mutation, and external processes make value flow largely unsupported; Reforge already limits scripts to structure/similarity for some analyses."
+  },
+  "complexity_cost": "Tier 1, explicit forbidden import/direct-call rules, is near linear in syntax nodes and resolved dependency edges and has low memory cost. Tier 2, intraprocedural def-use plus direct-call summaries, is roughly linear in AST/CFG size per function and moderate to implement across language adapters. Tier 3, whole-program context-, field-, and points-to-sensitive flow can approach cubic worst-case behavior, requires large graph storage and extensive library/framework models, and is a major multi-language subsystem. Path enumeration must be bounded and summarized to avoid exponential output.",
+  "false_positives": [
+    "Defense in depth intentionally repeats authorization or sanitization at several trust boundaries.",
+    "An entry point performs equivalent validation inline or relies on a stronger typed constructor, schema decoder, database constraint, or framework middleware.",
+    "A direct infrastructure call occurs in composition roots, migrations, probes, diagnostics, bootstrap code, tests, scripts, adapters, or generated code.",
+    "Different sinks require different encodings or redaction policies; passing through a similarly named sanitizer would be wrong.",
+    "Read-only data, constants, already-normalized domain values, or public/non-sensitive fields do not require the candidate boundary.",
+    "A boundary wrapper exists for convenience rather than as mandatory architecture.",
+    "Static analysis misses a guard, callback middleware, alias, framework interceptor, or runtime policy enforcement.",
+    "A possible call-graph edge is infeasible in the relevant configuration or execution context."
+  ],
+  "precision_boosters": [
+    "An explicit reforge.toml policy names source/sink categories, allowed crossing modules, and required symbols or annotations.",
+    "Architecture tests, CODEOWNERS, ADRs, module visibility, lint rules, or existing annotations independently declare the boundary.",
+    "At least three bypass occurrences in at least two non-boundary production modules, or one newly introduced bypass against an otherwise universal convention.",
+    "Comparable paths of the same data/policy kind overwhelmingly traverse the candidate boundary.",
+    "The bypassing module imports a concrete infrastructure client while neighboring modules depend on the port/interface.",
+    "Repeated local validation/redaction/authorization code or parallel wrapper implementations indicate dispersed policy ownership.",
+    "Dependency hub/cycle, high fan-out, churn, debt markers, or shadowed abstraction evidence overlaps the bypass locations.",
+    "A bounded source-to-sink witness shows the first module crossing, omitted boundary, sink, and one conforming comparison path.",
+    "Test fixtures demonstrate that routing through the boundary preserves current behavior."
+  ],
+  "legitimate_exceptions": [
+    "Small scripts, one-shot migrations, build tools, and composition roots where abstraction cost exceeds expected change cost.",
+    "Pipes-and-filters or event-driven systems where policy is intentionally enforced by infrastructure outside the source-visible path.",
+    "Microservices where gateways, service meshes, brokers, database policies, or platform middleware own the boundary.",
+    "Generated clients, serializers, ORM layers, and framework convention code.",
+    "Performance-critical paths with an approved direct fast path and equivalent invariant checks.",
+    "Multiple bounded contexts that intentionally own different adapters or policy implementations.",
+    "Defense-in-depth architectures with deliberately repeated checks or redaction."
+  ],
+  "confidence_tier": "Experimental for inferred policy; conservative only when an explicit project policy names boundaries, sources/sinks, and allowed exceptions.",
+  "existing_capabilities": "Reforge already emits adapter_boundary_bypass when a path-named HTTP, config, filesystem, or logging boundary exists and at least four line-pattern direct calls occur across at least three files outside boundary files. It skips tests and operational entry-point paths for this check. Current patterns cover APIs such as fetch/axios/requests/reqwest, environment reads, filesystem calls, and console/print/log calls. Reforge also has resolved source-file dependency edges, fan-in/fan-out, transitive context closures, unresolved-edge counts, parse/coverage receipts, related locations, git churn metrics, config-key drift, repeated literals/error patterns, parallel implementation, shadowed abstraction, dependency cycle/hub, and stable finding identity. These can corroborate a boundary escape, but the current adapter detector is line/name based and does not establish same-value flow, dominance, sanitizer semantics, authorization, or redaction.",
+  "proposed_metrics": [
+    {
+      "name": "boundary_escape_path_count",
+      "definition": "Distinct summarized source-to-sink paths that avoid all required boundary nodes.",
+      "unit": "paths"
+    },
+    {
+      "name": "escaping_module_count",
+      "definition": "Distinct non-exempt source modules containing the first crossing edge of an escape path.",
+      "unit": "modules"
+    },
+    {
+      "name": "boundary_conformance_ratio",
+      "definition": "Comparable observed paths that traverse an allowed boundary divided by all comparable observed paths.",
+      "unit": "ratio"
+    },
+    {
+      "name": "unresolved_path_segment_count",
+      "definition": "Calls, imports, callbacks, or framework transitions on candidate paths that could not be resolved.",
+      "unit": "segments"
+    },
+    {
+      "name": "direct_concrete_dependency_count",
+      "definition": "Imports or calls from protected modules to configured infrastructure implementations instead of allowed ports.",
+      "unit": "dependencies"
+    },
+    {
+      "name": "duplicate_policy_site_count",
+      "definition": "Distinct sites performing similar validator, sanitizer, authorization, or redaction operations outside the owned boundary.",
+      "unit": "sites"
+    },
+    {
+      "name": "escape_churn",
+      "definition": "Recent weighted added plus deleted lines for files containing escape evidence, using Reforge's configured churn window.",
+      "unit": "weighted lines"
+    }
+  ],
+  "proposed_finding_kinds": [
+    {
+      "name": "declared_boundary_policy_escape",
+      "issue_family": "modularity",
+      "mechanism": "dependency_propagation",
+      "action": "reduce_dependency_coupling",
+      "scope": "finding_group",
+      "precision_risk": "Low to moderate when policy and path coverage are explicit; never claim a security vulnerability."
+    },
+    {
+      "name": "inferred_boundary_policy_drift",
+      "issue_family": "modularity",
+      "mechanism": "responsibility_dispersion",
+      "action": "consolidate boundary handling",
+      "scope": "finding_group",
+      "precision_risk": "High because intent and semantic equivalence are inferred; keep experimental and require multiple corroborators."
+    },
+    {
+      "name": "direct_boundary_dependency_bypass",
+      "issue_family": "modularity",
+      "mechanism": "dependency_propagation",
+      "action": "reduce_dependency_coupling",
+      "scope": "file or finding_group",
+      "precision_risk": "Moderate; this is an extension or specialization of existing adapter_boundary_bypass and does not require value-flow claims."
+    }
+  ],
+  "explanation_path": "Show one shortest or lowest-uncertainty witness: source location and category; value/argument identity; each assignment, call, field, route, and module crossing; the first forbidden direct dependency or crossing; sink location and category; and an explicit statement that no configured boundary node appears on the modeled path. Also show the required boundary declaration and its source (configuration, architecture test, annotation, or inferred convention), one conforming comparison path for heuristic findings, all duplicate-policy locations, overlapping dependency/churn findings, and unresolved/truncated segments. Related locations must include the candidate boundary implementation, every grouped escape origin, and relevant tests. Do not imply runtime exploitability or behavioral equivalence from static reachability.",
+  "coverage_contract": {
+    "observed": "All files and supported constructs on the displayed path parsed; direct symbols/imports resolved; configured source, sink, and boundary models applied; no unresolved segment lies between source and sink.",
+    "partial": "Some calls, fields, imports, callbacks, aliases, framework transitions, generated code, or external libraries are unmodeled; findings may be shown but absence is not meaningful.",
+    "unsupported": "Reflection-heavy, runtime-generated, cross-process, persistence-mediated, queue-mediated, macro/generated, shell pipeline, or language constructs without models; do not evaluate policy escape.",
+    "unresolved": "Report exact unresolved call/import/route segments, parse failures, skipped paths, excluded generated code, and whether path output was truncated.",
+    "negative_result_rule": "Report 'no observed escape under configured models', never 'all data passes the policy boundary', unless the supported closed-world contract is explicitly satisfied."
+  },
+  "mvp_scope": "Add a policy-driven, dependency/call-level extension rather than general taint analysis. Let reforge.toml define protected module globs, concrete sink/import patterns, allowed adapter or boundary globs, and exemptions. Use existing file discovery, Tree-sitter call/import extraction, resolved dependency graph, coverage receipts, related locations, and churn. Emit direct_boundary_dependency_bypass only for resolvable production files, grouping repeated crossings and showing the intended boundary plus direct edge. Optionally add simple intraprocedural local-variable flow for direct calls in Rust, JavaScript/TypeScript, Python, Go, Java, and C#. Defer interprocedural heap flow, sanitizer semantics, authorization guard dominance, redaction-field tracking, framework middleware, persistence/queue flow, automatic intent inference, and cross-service analysis.",
+  "fixtures": {
+    "positive": [
+      "A controller sends a request body directly to a repository sink while all peer controllers call the configured validator adapter.",
+      "Three domain modules import a concrete HTTP client around an existing gateway port.",
+      "A route calls a sink on one branch without the configured authorizer, while the authorizer dominates all conforming routes.",
+      "Sensitive DTO fields reach a configured logger directly while peer paths traverse a redactor."
+    ],
+    "negative": [
+      "Every path crosses the configured boundary, including through a wrapper summary.",
+      "A composition root wires a concrete adapter under an explicit exemption.",
+      "Two bounded contexts use separately configured validators for different schemas.",
+      "Framework middleware enforces authorization and a supplied model makes that transition observed.",
+      "A value is public or constructed as an already-validated type and its policy category does not require the boundary."
+    ],
+    "metamorphic": [
+      "Rename files and symbols while preserving explicit policy identifiers: result and finding identity should remain stable modulo locations.",
+      "Extract a direct call into an unmodeled wrapper: coverage must degrade rather than silently clear the finding.",
+      "Route the same call through the configured boundary without changing transformations: escape count decreases by one.",
+      "Add dead or infeasible bypass code: a path-sensitive implementation should not add a finding; a path-insensitive MVP must label its limitation.",
+      "Move a fixture from production to a recognized test/script exemption: it should no longer contribute to production grouping.",
+      "Add an unrelated sanitizer of a different policy kind: the escape must remain."
+    ]
+  },
+  "corpus_strategy": "Build a stratified corpus with (a) repositories that declare ArchUnit or equivalent architecture rules, ADRs, module visibility, or custom lint policies; (b) mature web/service projects in each supported language with validators, middleware, repositories, gateways, and logging/redaction wrappers; (c) security benchmark cases for flow-engine capability, explicitly separated from maintainability labels; and (d) Reforge's own repository for regression of the existing adapter_boundary_bypass behavior. Mine commits and review discussions that introduce, reject, or consolidate direct infrastructure/policy calls. Split by repository, organization, framework, and policy family so near-duplicate patterns do not cross train/holdout boundaries. Reserve whole frameworks and at least one language family as holdouts, and evaluate explicit-policy and inferred-policy modes separately.",
+  "oracle_and_labels": "Provide maintainers with the displayed path, configured or inferred boundary evidence, comparison paths, and coverage gaps, but hide detector confidence during first-pass labeling. Independently label: instrumentation correctness (source/sink/boundary category), path feasibility, policy applicability, intended architectural crossing, legitimate exception, maintainability concern, refactoring actionability, and whether the smallest remedy preserves behavior. A security reviewer may separately label vulnerability/correctness impact; that label must not substitute for maintainability intent. Use two maintainers or an architect plus maintainer, measure agreement per dimension, adjudicate disagreements, and follow accepted changes to record whether callers were routed, policy duplicated, exception documented, or no action taken.",
+  "success_criteria": "[uncertain] Initial acceptance targets should be calibrated rather than treated as established standards: at least 0.80 precision for explicit-policy findings and at least 0.60 precision for experimental inferred-policy findings on maintainer-confirmed architectural concern; at least 0.70 of true explicit direct-call/import escapes found within supported constructs; zero unsupported-path negative claims; 100% of findings include policy provenance, a bounded witness, coverage status, and related locations; deterministic JSON and stable grouping under file traversal order; under 20% wall-time and memory overhead for the dependency-level MVP on the existing calibration corpus; and at least 60% of confirmed findings rated actionable, with security-only findings not counted as maintainability true positives.",
+  "open_questions": [
+    "Should Reforge require an explicit boundary policy for findings and expose inferred conventions only as raw observations?",
+    "How should policy kinds compose when validation, authorization, sanitization, normalization, and redaction must occur in a particular order?",
+    "Is the first product increment an extension of adapter_boundary_bypass or a separate declared_boundary_policy_escape kind?",
+    "Which language and framework models provide enough value before whole-program type information is available?",
+    "Can conforming-path prevalence infer intent without merely codifying an accidental majority pattern?",
+    "How should approved exceptions be versioned, owned, expired, and distinguished from suppressions?",
+    "Should churn and repeated escapes affect only displayed evidence or detector gating, given Reforge's policy of not emitting severity or priority?",
+    "How can refactoring equivalence be verified when centralizing a policy operation may change exception order, error messages, or observability?"
+  ],
+  "uncertain": [
+    "evidence_strength",
+    "empirical_sources",
+    "success_criteria"
+  ]
+}

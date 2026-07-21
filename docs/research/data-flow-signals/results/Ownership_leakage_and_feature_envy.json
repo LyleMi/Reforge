@@ -1,0 +1,197 @@
+{
+  "item_name": "Ownership leakage and feature envy",
+  "thesis": "Ownership leakage is a useful but non-conclusive refactoring signal when a function accesses, traverses, or transforms data belonging to one foreign type or module substantially more than data belonging to its lexical owner. The strongest interpretation is the classic Feature Envy / misplaced-responsibility case; broader module-level aggregation can also expose Broken Modularization. The detector should recommend inspection and a candidate destination, not automatically prescribe Move Method or Move Field.",
+  "refactoring_relevance": "The observation has a direct behavior-preserving restructuring hypothesis: move all or an extracted portion of the behavior closer to the data it predominantly uses, or move a field only when ownership and change evidence show that the field itself belongs with the consuming abstraction. Fowler's Feature Envy treatment and the JDeodorant literature connect concentrated foreign access to Move Method. Broken Modularization generalizes the same responsibility-placement problem to data or methods split across abstractions and admits Move Method or Move Field. The intended benefit is to replace repeated cross-boundary knowledge with a local operation, reducing inter-module knowledge and localizing future changes. A move is not justified when the source function is legitimate orchestration, a query/report over intentionally passive data, a Visitor/Strategy implementation, serialization/mapping code, or when the target would acquire an incoherent responsibility.",
+  "evidence_strength": "moderate. The conceptual link, operational metrics, behavior-preserving Move Method mechanics, and multiple research/industrial precedents are strong. Empirical evidence also shows that history and static structure are complementary. However, expert evaluations of Move Method recommenders report low precision in realistic systems, smell definitions and tools disagree, and the direct extension from object-oriented fields to cross-language module-owned data is not yet validated for Reforge. Therefore the proposed Reforge detector should remain experimental and require corroboration.",
+  "foundational_sources": [
+    {
+      "title": "Refactoring: Improving the Design of Existing Code",
+      "year": 1999,
+      "claim": "Introduced Feature Envy as behavior that is more interested in another class's data and associates it principally with Move Method, sometimes after Extract Method.",
+      "url": "https://martinfowler.com/books/refactoring.html"
+    },
+    {
+      "title": "Detection Strategies: Metrics-Based Rules for Detecting Design Flaws",
+      "year": 2004,
+      "claim": "Established metrics-based detection strategies. The later canonical Feature Envy strategy operationalizes foreign data access through ATFD, LAA, and FDP rather than a raw coupling count.",
+      "url": "https://doi.org/10.1109/ICSM.2004.1357820"
+    },
+    {
+      "title": "Identification of Move Method Refactoring Opportunities",
+      "year": 2009,
+      "claim": "Formalized candidate target classes from accessed members and combined detection with refactoring preconditions intended to preserve behavior; this work underlies JDeodorant's Feature Envy analysis.",
+      "url": "https://doi.org/10.1109/TSE.2009.1"
+    },
+    {
+      "title": "Refactoring for Software Design Smells: Managing Technical Debt",
+      "year": 2014,
+      "claim": "Defines Broken Modularization as data and/or methods that should be localized in one abstraction being separated across abstractions, connecting responsibility dispersion to Move Method and Move Field treatments.",
+      "url": "https://www.sciencedirect.com/book/9780128013977/refactoring-for-software-design-smells"
+    }
+  ],
+  "empirical_sources": [
+    {
+      "title": "Mining Version Histories for Detecting Code Smells",
+      "year": 2015,
+      "systems_and_labels": "Eight systems with manually validated smell instances; Feature Envy was found in five systems, totaling 42 affected methods.",
+      "relevant_results": "HIST detected 34 instances (81% recall) with 71% precision, versus JDeodorant's 25 instances (60% recall) and 68% precision. After applying JDeodorant move preconditions, HIST obtained 74% recall and precision. Only 39% of correct Feature Envy instances overlapped; 41% were unique to history and 20% unique to JDeodorant, supporting combined static and co-change evidence.",
+      "url": "https://doi.org/10.1109/TSE.2014.2372760"
+    },
+    {
+      "title": "JMove: A novel heuristic and tool to detect move method refactoring opportunities",
+      "year": 2018,
+      "systems_and_labels": "195 synthesized Move Method opportunities in ten open-source systems, plus expert assessment in two industrial-strength systems.",
+      "relevant_results": "JMove precision ranged from 21% to 32% and median recall from 21% to 60%; JDeodorant precision ranged from 5% to 15%. In one expert-evaluated system without misplaced methods, JDeodorant and inCode produced 43 and 50 false recommendations; in another, JMove precision was 24% versus 6% and 5%. This strongly limits any uncorroborated detector.",
+      "url": "https://doi.org/10.1016/j.jss.2017.11.038"
+    },
+    {
+      "title": "Finding needles in a haystack: Leveraging co-change dependencies to recommend refactorings",
+      "year": 2019,
+      "systems_and_labels": "Evaluation of Draco against REsolution, JDeodorant, and JMove using fine-grained historical dependencies and developer-oriented assessment.",
+      "relevant_results": "Fine-grained entities that frequently change together across classes supported feasible Move Method and Move Field recommendations and revealed design improvements, while the authors also report developer resistance to recommendations that challenge the existing design. It supports change localization as corroboration, not as proof.",
+      "url": "https://doi.org/10.1016/j.jss.2019.110420"
+    },
+    {
+      "title": "Comparing and experimenting machine learning techniques for code smell detection",
+      "year": 2016,
+      "systems_and_labels": "74 systems and 1,986 manually validated examples across Data Class, Large Class, Feature Envy, and Long Method.",
+      "relevant_results": "Cross-validation accuracy exceeded 96% for some algorithms, but performance varied on the full imbalanced dataset; the study emphasizes subjective smell interpretation and incompatible tool results. Accuracy alone is therefore insufficient for a rare detector finding.",
+      "url": "https://doi.org/10.1007/s10664-015-9378-4"
+    }
+  ],
+  "industrial_precedents": [
+    {
+      "tool": "JDeodorant",
+      "practice": "An Eclipse research plug-in identifies Feature Envy by finding executable Move Method opportunities and checking semantic preconditions, demonstrating a stronger contract than merely counting foreign accesses.",
+      "url": "https://users.encs.concordia.ca/~nikolaos/jdeodorant/files_JDeodorant/ICSM_2007.pdf"
+    },
+    {
+      "tool": "Designite",
+      "practice": "The current C#/Java product documents both Feature Envy and Broken Modularization as detectable design smells and reports causes as refactoring clues.",
+      "url": "https://www.designite-tools.com/docs/features_cs_new.html"
+    },
+    {
+      "tool": "IntelliJ IDEA",
+      "practice": "Its official Move refactoring documentation explicitly gives a method or field used more in another class than in its own as a motivating case, and limits instance-method targets to parameter or field types while checking conflicts and updating usages.",
+      "url": "https://www.jetbrains.com/help/idea/move-refactorings.html"
+    }
+  ],
+  "conflicting_evidence": "The signal has substantial limits. JMove's expert evaluation found realistic precision as low as 5-32% for structural recommenders and dozens of false suggestions in a system with no misplaced methods. Comparative tool studies report context-dependent precision/recall because Feature Envy's informal definition admits different operationalizations. History-only analysis misses new or rarely changed code, while static analysis misses latent evolutionary coupling; HIST observed only 39% overlap between correct historical and JDeodorant results. Co-change itself may reflect commits, tests, cross-cutting requirements, or tangled changes rather than shared ownership. Access to a foreign data carrier may be intentionally external in Visitor, Strategy, functional core/imperative shell, report/query, serializer, mapper, adapter, anti-corruption-layer, and ECS/data-oriented designs. These findings limit the signal to a review aid and argue against automatic moves or universal thresholds.",
+  "observable_pattern": "For each named function or method, observe syntactically resolvable reads, writes, method calls, destructuring, pattern matching, constructor/reconstruction operations, and chained member traversals. Classify each referenced member/type/module as local, foreign, library/external, or unresolved without inferring intent. A candidate exists when (1) foreign member references materially exceed local member references or local access ratio is low; (2) most foreign references concentrate on one target owner rather than many providers; and preferably (3) the function reconstructs or transforms that owner's representation, repeatedly accesses its members, or co-changes more with the target than its lexical owner. Module aggregation should report several source functions reaching into the same foreign owner or a split cluster of mutually dependent data and behavior. Raw import count or parameter use alone is not Feature Envy.",
+  "graph_model": {
+    "nodes": [
+      "module/file",
+      "type or data declaration",
+      "function/method",
+      "field/property/member",
+      "parameter/local value",
+      "optional commit/change-set"
+    ],
+    "edges": [
+      "declares/lexically-owns",
+      "imports/references-type",
+      "reads-member",
+      "writes-member",
+      "calls-method",
+      "constructs/reconstructs",
+      "passes/returns",
+      "co-changes-with"
+    ],
+    "labels_and_summaries": "Edges need source locations, read/write/call kind, direct versus accessor-mediated status, resolution status, and confidence. Function summaries need distinct local members, distinct foreign members, access occurrences, distinct foreign providers, dominant provider, chains, writes, and unresolved accesses. Aggregate function-to-owner weights into module-to-owner matrices, retaining individual paths so a large module cannot hide a single envious function.",
+    "candidate_path": "lexical module -> function -> access/call/construct edge -> member or type -> declaring type/module; optionally function -> commit <- target member/method for historical corroboration"
+  },
+  "analysis_requirements": "A high-precision implementation requires project-level name and type resolution, receiver-type inference, member-declaration lookup, import/alias resolution, inheritance and extension-method awareness, and distinction between self/local members and foreign members. Accessor-mediated ATFD requires call resolution or library/project summaries. Writes and reconstruction need CFG-aware def-use; closures, returned aliases, heap objects, fluent chains, and indirect mutation require points-to/alias analysis. Candidate Move Method safety further needs call graph and override analysis, visibility/access rules, target signature collision checks, dependency-cycle effects, and language-specific refactoring preconditions. Context and field sensitivity improve precision but are not necessary for a conservative syntax-only MVP if unresolved accesses are excluded and coverage is explicit. Historical corroboration requires entity tracking across renames/moves and commit-size/noise filtering.",
+  "tree_sitter_feasibility": "Tree-sitter can reliably extract lexical owners, named functions, type/field declarations, parameters, explicit self/this accesses, member-access syntax, method-call syntax, destructuring, constructors, imports, and precise locations. It can conservatively classify explicit self/this members as local and some receivers whose types are syntactically declared as foreign. It can count unresolved receiver/member patterns and dominant receiver identifiers. It cannot by itself reliably resolve inferred or generic receiver types, overloaded or virtual calls, accessors to underlying fields, aliases, re-exports, traits/extensions, dynamic dispatch, reflection, monkey patching, or ownership through containers. Therefore syntax-only results must be labeled partial, must not equate an identifier spelling with a type owner, and should exclude unresolved edges from the positive numerator while displaying them as a coverage limitation.",
+  "language_constraints": "Java and C# offer the best initial precision because nominal types, explicit members, this-access, and established Move Method semantics are available, although overloads, inheritance, properties, extension methods, Lombok/source generation, and dependency injection still require resolution. Kotlin adds extension functions, properties, implicit receivers, delegation, and top-level functions. Rust has explicit ownership syntax but responsibility does not map one-to-one to memory ownership; traits, deref coercions, associated functions, macros, and module privacy complicate receiver ownership. Go methods and structs are tractable, but interfaces, embedding, package-level functions, and pointer aliases complicate targets. TypeScript is partial when compiler types are unavailable; structural typing, unions, re-exports, decorators, and Vue SFC boundaries reduce certainty. JavaScript, Python, Ruby, and PHP need conservative receiver heuristics because dynamic attributes, monkey patching, metaprogramming, magic methods, and duck typing make provider resolution incomplete. Bash and PowerShell lack a stable class/member model for this smell and should be unsupported initially. C/C++ are only basic source extensions in current Reforge and should also be unsupported until parsed semantic ownership exists.",
+  "complexity_cost": "Syntax extraction is linear in AST size, O(N), with per-function maps proportional to observed member accesses. Building and resolving a project symbol/type index is approximately O(N + E) time and O(N + E) memory, but language-specific resolution dominates implementation effort. A lightweight historical co-change pass is O(C * K) for C commits touching K tracked entities if large commits are capped; naive all-pairs co-change is O(C * K^2) and must be bounded. Whole-program points-to, context-sensitive call graphs, and automated move-safety checking are high-cost and unsuitable for the MVP. Overall implementation complexity is high across all Reforge languages but moderate for a Java/C# syntax-plus-explicit-type pilot.",
+  "false_positives": [
+    "Visitor, Strategy, Comparator, formatter, presenter, report/query, and analytics functions intentionally operate on foreign passive data.",
+    "DTO, record, schema, ORM entity, protobuf, serialization, mapper, adapter, anti-corruption-layer, and API-boundary code intentionally reconstruct representations.",
+    "Application services and use-case orchestrators legitimately coordinate several domain owners without owning their data.",
+    "Functional and data-oriented architectures place behavior outside data types by design; ECS systems intentionally process component data from systems.",
+    "Tests, fixtures, builders, migrations, compatibility shims, generated code, and glue code often traverse foreign representations.",
+    "Fluent APIs and immutable value transformations create many syntactic foreign accesses without leaking mutable representation.",
+    "A tiny source method with zero local state can have an extreme ratio from only one or two harmless accesses.",
+    "Receiver-name heuristics can merge unrelated values or misclassify aliases and accessor calls."
+  ],
+  "precision_boosters": [
+    "Require a minimum evidence floor, such as at least three distinct resolved foreign members or repeated accesses, before evaluating ratios.",
+    "Require one dominant target provider and display ATFD, local-access ratio, foreign-provider count, and dominant-provider share independently.",
+    "Prefer direct reads/writes and repeated deep traversals over ordinary public method calls; weight writes and representation reconstruction separately.",
+    "Require resolvable receiver and declaring-owner types; exclude external libraries and unresolved edges from the decision.",
+    "Corroborate with function-to-target call/entity dependency similarity, duplicate type shape, data clump, dependency hub/cycle, or adapter-boundary evidence.",
+    "Add method-level co-change localization: the source function should co-change more with target-owner entities than with source-owner entities, with minimum support and large-commit filtering.",
+    "Check that a concrete Move Method or Extract-then-Move target exists and that basic visibility, signature, override, and cycle risks are not violated.",
+    "Suppress or downgrade recognized tests, generated code, mappers/serializers/adapters, visitors, DTOs, and report/query namespaces while showing the reason.",
+    "Use project-relative percentiles and require stability across harmless formatting/renaming transformations rather than imposing a universal ratio alone."
+  ],
+  "legitimate_exceptions": "Expected cases include anemic or intentionally passive domain models; functional programming and data-oriented/ECS designs; CQRS read models and reporting/analytics; Visitor, Strategy, Comparator, and pattern-matching dispatch; serializers, mappers, adapters, anti-corruption layers, API clients, ORMs, and schema conversion; UI presenters/view models; migrations and compatibility shims; generated clients/models; test fixtures and assertions; and application-service orchestration. A project may deliberately forbid behavior on data classes or preserve dependency direction, so moving behavior into the envied owner could violate architectural policy or introduce a cycle.",
+  "confidence_tier": "experimental",
+  "existing_capabilities": "Reforge already parses named functions, types, parameters, imports, and public items with Tree-sitter across Rust, JavaScript/TypeScript/TSX/Vue, Python, Go, Java, C#, Kotlin, PHP, Ruby, Bash, and PowerShell. Its structural pipeline supplies function/type spans, members, parameters, complexity, nesting, and test classification. The source-file dependency graph supplies resolved local imports, fan-in/out, transitive reach, depth, hubs, cycles, and unresolved-edge receipts. Churn supplies file-level commits, authors, additions/deletions, and recency context, but not yet method-level entity co-change. Relevant corroborators include data_clump, duplicate_type_shape, similar_functions/parallel_implementation, import_heavy_file, dependency_hub, dependency_cycle, adapter_boundary_bypass, and generic_bucket_drift. The report model already supports atomic findings, related locations, typed metrics, detector manifests, coverage statuses, execution receipts, suppressions, and agent-evidence context closure. Missing capabilities are a project symbol/type index, member-use extraction and resolution, function-level history tracking, and refactoring-safety analysis.",
+  "proposed_metrics": {
+    "function.foreign_member_distinct": "Count of distinct resolved members declared outside the function's lexical owner.",
+    "function.foreign_access_occurrences": "Number of resolved foreign read/write/call access occurrences.",
+    "function.local_member_distinct": "Count of distinct resolved members declared by the lexical owner.",
+    "function.local_access_ratio": "local resolved member accesses / (local + foreign resolved member accesses), unit ratio 0..1.",
+    "function.foreign_provider_count": "Number of distinct resolved foreign declaring types/modules.",
+    "function.dominant_foreign_provider_share": "accesses to the most-used foreign provider / all resolved foreign accesses, unit ratio 0..1.",
+    "function.foreign_write_count": "Resolved writes to fields/properties owned by foreign types/modules.",
+    "function.foreign_reconstruction_count": "Construction or object/record rebuild operations of a resolved foreign representation.",
+    "function.max_foreign_traversal_depth": "Maximum member-chain length rooted at a foreign receiver.",
+    "function.unresolved_member_access_count": "Member accesses whose owner cannot be established; context-only coverage metric.",
+    "function.target_vs_source_cochange_ratio": "supported commits co-changing the function with dominant-target entities divided by supported commits co-changing it with source-owner entities; optional history context.",
+    "module.foreign_ownership_leak_count": "Number of candidate functions in a module targeting the same foreign owner.",
+    "threshold_note": "[uncertain] Initial thresholds should be calibrated from labeled corpora; the classical ATFD > 2 and low LAA family is a fixture baseline, not a Reforge default until precision is measured."
+  },
+  "proposed_finding_kinds": [
+    {
+      "name": "ownership_leakage",
+      "issue_family": "responsibility_placement",
+      "mechanism": "behavior depends disproportionately on data owned by one foreign abstraction",
+      "action": "review Extract Method plus Move Method, introduce an owner operation, or preserve as intentional boundary code",
+      "scope": "function with source and target type/module related locations",
+      "precision_risk": "high for syntax-only analysis; medium when receivers resolve, a dominant target exists, exceptions are filtered, and historical or structural evidence corroborates"
+    },
+    {
+      "name": "broken_modularization_cluster",
+      "issue_family": "responsibility_placement",
+      "mechanism": "multiple functions and data declarations that appear to form one responsibility are dispersed across modules",
+      "action": "review Move Method/Move Field or consolidate an abstraction",
+      "scope": "cross-module cluster",
+      "precision_risk": "high; defer beyond MVP because clustering and architectural intent are ambiguous"
+    }
+  ],
+  "explanation_path": "Each finding must show: source module/type and function location; lexical owner; dominant foreign target type/module and its declaration location; at least three representative access locations with edge kind (read, write, call, reconstruction) and member name; local versus foreign counts; local-access ratio; provider count; dominant-provider share; unresolved-access count; and applicable exception/filter status. If history is used, show commit support counts and representative co-change paths without treating commit adjacency as causality. Related locations should include the target members/methods, relevant import edge, and any dependency-cycle consequence. The recommendation must explain why the target is proposed and state that move safety and architectural intent were not proven.",
+  "coverage_contract": "Observed means the function, lexical owner, relevant receiver types, and declaring members were parsed and resolved within the scanned project, with the detector executed and no parse failure on the evidence path. Partial means some member accesses, aliases, generated declarations, dependencies, history, or dynamic dispatch remain unresolved; positive findings may use only resolved edges, while an absent finding cannot be read as absence of leakage. Unsupported applies initially to Bash, PowerShell, C/C++, dynamic-only ownership cases, reflection/metaprogramming, macro-generated members, and languages without the detector's required resolver tier. Excluded cases include tests/generated/dependencies according to scan settings and recognized exception categories; exclusion counts and reasons must be reported. Reports must expose analyzed function/access totals, resolved/unresolved edge counts, supported language tier, parse failures, history availability, and whether refactoring preconditions were checked.",
+  "mvp_scope": "Implement a read-only Java and C# pilot for named instance methods with explicit lexical class, explicit this/self accesses, parameters or fields with syntactically declared nominal types, and member accesses resolvable to project declarations. Compute distinct/occurrence foreign access, local-access ratio, provider count, dominant-provider share, unresolved count, and related access paths. Emit only ownership_leakage when there is a minimum evidence floor, one dominant in-project target, no recognized test/generated/mapper/serializer/visitor exception, and at least one independent Reforge corroborator or optional history signal. Do not perform or guarantee a move. Defer inferred/generic receiver types, inheritance/extension semantics, alias/points-to analysis, accessor-mediated field inference, automatic Move Method safety, method-level git tracking, dynamic languages, Rust/Go-specific ownership models, and Broken Modularization clustering until corpus results justify expansion.",
+  "fixtures": {
+    "positive": [
+      "A Java OrderPrinter method in ReportService reads four distinct Order fields, calls two Order-derived calculations, uses no ReportService state, and has Order as the single resolved provider.",
+      "A C# method destructures and reconstructs one Customer value across repeated accesses, with target-owner co-change support and no mapper/serializer marker.",
+      "Several source-module functions each traverse the same foreign type and one extracted fragment can be moved without using source state."
+    ],
+    "negative": [
+      "Visitor, Comparator, Strategy, serializer, ORM mapper, DTO assembler, CQRS query handler, report renderer, and anti-corruption-layer examples with identical raw ratios.",
+      "A coordinator accesses one member from each of five providers: high foreign count but no dominant owner.",
+      "A two-line helper with one foreign getter and no local fields; below the evidence floor.",
+      "A method where moving to the target would invert an architectural dependency or create a file cycle.",
+      "Dynamic or reflected member access marked partial rather than clean."
+    ],
+    "metamorphic": [
+      "Renaming identifiers and reformatting must not change resolved metrics or finding identity.",
+      "Replacing repeated receiver text with a same-typed local alias should preserve a semantic-tier finding and downgrade syntax-only coverage rather than change ownership.",
+      "Adding unrelated imports or local variables must not affect the signal.",
+      "Moving the complete method to the dominant owner and updating calls should remove the finding if behavior and access resolution remain equivalent.",
+      "Adding a second equally used foreign provider should reduce dominant-provider share and suppress or downgrade the finding.",
+      "Annotating the fixture as generated/test/intentional mapper should change exclusion/suppression receipts, not raw metrics."
+    ]
+  },
+  "corpus_strategy": "Build a stratified corpus with Java and C# repositories from domain applications, libraries, frameworks, compilers, IDEs, web services, data pipelines, and GUI systems. Deliberately include Visitor-heavy, DTO/mapping, CQRS, ORM, functional-style, and generated-code projects as hard negatives. Mine real Move Method/Move Field commits using a refactoring miner, then manually verify pre- and post-change responsibility intent; keep synthetic moved-method fixtures only for sensitivity tests. Sample detector negatives as well as positives, stratified by method size, provider count, project, and exception category. Split train/calibration and holdout by repository and organization, never by method, and reserve at least one language/project family for external validation. Compare syntax-only, resolved-static, history-only, and combined variants; evaluate module aggregation separately from method Feature Envy.",
+  "oracle_and_labels": "Use at least two maintainers or experienced language reviewers independently. Separate four labels: (1) instrumentation correctness: are lexical owner, target owner, member edges, and coverage right; (2) smell interpretation: is behavior disproportionately concerned with the proposed target; (3) actionability: keep, extract only, move method, move field, introduce target operation/facade, or intentional exception; and (4) outcome: if applied, did tests preserve behavior and did dependency/co-change localization improve without creating a cycle or policy violation. Reviewers must see evidence paths and code context but not the detector score or each other's labels. Resolve disagreements by adjudication, report agreement (Cohen's kappa or Krippendorff's alpha), and retain an ambiguous label instead of forcing consensus. Real refactoring commits count as positive outcomes only after manual intent and behavior checks; reverted or later-undone moves are tracked separately.",
+  "success_criteria": "For the Java/C# MVP, require at least 95% precision for owner/member instrumentation on resolved edges and explicit coverage for 100% of analyzed functions. On repository-disjoint holdout data, target finding precision >= 80% with a 95% confidence-interval lower bound >= 70%; report recall against manually verified real opportunities, with >= 40% as an initial useful floor rather than optimizing recall at the cost of review volume. At least 70% of true findings should receive a maintainer label of actionable or useful-for-inspection, and fewer than 10% should recommend a target that violates a known dependency rule or creates a cycle. Finding IDs and metrics must remain identical under formatting/order fixtures and >= 95% stable under identifier-renaming fixtures. Added scan time should be <= 25% and peak memory <= 1.5x on the calibration corpus for the syntax/resolution pass. Every finding and zero-finding run must carry complete execution and coverage receipts; all accepted refactors must pass the repository's existing tests, while test passage is reported as outcome evidence rather than proof of semantic equivalence.",
+  "open_questions": "[uncertain] Product and research decisions remain: whether the canonical owner is a class/type, file/module, package, bounded context, or a configurable hierarchy; whether public method calls should count less than direct state access; how to treat immutable data and extension/trait methods; whether writes and reconstruction deserve higher weight; which exception recognizers are safe; whether co-change should be required or merely displayed; how much history support is enough; whether a finding should be suppressed when Move Method preconditions fail but an architectural smell remains; how target dependency direction should constrain recommendations; whether Move Field should ever be suggested from access evidence without independent co-change/encapsulation proof; which Java/C# resolver can be added without unacceptable dependency/runtime cost; and whether module-level Broken Modularization has enough agreement to become a separate detector rather than a composite issue.",
+  "uncertain": [
+    "proposed_metrics",
+    "open_questions"
+  ]
+}

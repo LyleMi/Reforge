@@ -1,0 +1,172 @@
+{
+  "item_name": "Pass-through chains and data clumps",
+  "thesis": "Pass-through chains are useful only as experimental composite evidence of misplaced orchestration or weak abstraction boundaries. Hop count alone is not a finding. A candidate should require a value or repeated parameter group to cross multiple resolved functions and modules while remaining mostly identity-preserving, receiving little local use or transformation, and being corroborated by an independent signal such as DataClump or boundary bypass. The result should invite inspection for an aggregate parameter object, a direct dependency, or relocation of orchestration; it should not prescribe an automatic refactoring.",
+  "refactoring_relevance": "A value forwarded unchanged through several layers suggests a behavior-preserving structural hypothesis: eliminate a redundant delegate, shorten an unnecessary message chain, move orchestration to the boundary that owns the operation, or replace a recurring primitive parameter group with a typed parameter object. The hypothesis is strongest when intermediate functions neither validate, authorize, transform, branch on, store, nor combine the forwarded values and when the chain crosses module ownership boundaries. The behavior-preservation claim applies only after retaining required ordering, error mapping, instrumentation, transaction, security, and lifecycle semantics. A long path may instead express an intentional facade, port/adapter boundary, pipeline, middleware stack, CQRS command/query route, event choreography, typed-newtype transition, or generated client forwarding, in which case shortening it can damage the architecture.",
+  "evidence_strength": "moderate for the underlying concepts and weak-to-speculative for a cross-language Reforge detector. Program dependence graphs provide a strong formal basis for tracking value dependences, and Data Clumps, Message Chains, and Middle Man are established smell labels. Hall et al. provide empirical evidence that some smells have statistically significant but small fault effects, which supports prioritization but not arbitrary refactoring. CodeQL demonstrates practical local/global data-flow analysis while warning that global flow costs more and is less precise. No supplied evidence directly validates hop-count-based pass-through detection or Reforge-specific thresholds, so the proposed finding must remain experimental and corroborated.",
+  "foundational_sources": [
+    {
+      "title": "The Program Dependence Graph and Its Use in Optimization",
+      "year": 1987,
+      "authors": "Jeanne Ferrante, Karl J. Ottenstein, and Joe D. Warren",
+      "claim": "Introduced the program dependence graph as a unified representation of control and data dependences. It supplies the formal foundation for tracing whether definitions and uses propagate through procedures, but does not itself equate a long dependence path with a design defect.",
+      "url": "https://doi.org/10.1145/24039.24041"
+    },
+    {
+      "title": "Refactoring: Improving the Design of Existing Code",
+      "year": 1999,
+      "claim": "Established Data Clumps, Message Chains, and Middle Man as refactoring smells and connects them to parameter objects, hiding delegates, and removing unnecessary intermediaries. These labels motivate candidate treatments but remain contextual design judgments.",
+      "url": "https://martinfowler.com/books/refactoring.html"
+    }
+  ],
+  "empirical_sources": [
+    {
+      "title": "Some Code Smells Have a Significant but Small Effect on Faults",
+      "year": 2014,
+      "authors": "Tracy Hall et al.",
+      "systems_and_labels": "Empirical study of code-smell occurrence and fault outcomes; relevant labels include Data Clumps, Message Chains, and Middle Man.",
+      "relevant_results": "The study reports that some smell-fault relationships are statistically significant but their effects are small. This supports using smells as weak prioritization evidence and directly limits the inference that an arbitrary detected chain deserves refactoring.",
+      "url": "https://doi.org/10.1145/2629648"
+    }
+  ],
+  "industrial_precedents": [
+    {
+      "tool": "CodeQL",
+      "practice": "Official data-flow documentation distinguishes local from global flow, models value-preserving flow and non-value-preserving taint separately, and requires explicit source/sink modeling for useful global queries. It warns that global flow is more expensive and less precise, supporting bounded, question-specific analysis rather than enumerating every long path.",
+      "url": "https://codeql.github.com/docs/writing-codeql-queries/about-data-flow-analysis/"
+    },
+    {
+      "tool": "Reforge",
+      "practice": "The existing DataClump detector identifies repeated parameter-name groups, while the file dependency graph supplies import/dependency paths. Together they can corroborate a future pass-through prototype, although neither currently proves value flow through calls.",
+      "url": "repository-local implementation"
+    }
+  ],
+  "conflicting_evidence": "The strongest supplied empirical result is cautionary: Hall et al. found effects on faults that were significant in some cases but small, so smell presence does not establish harmfulness or expected refactoring payoff. The smell categories also describe different mechanisms: repeated parameters, excessive delegation, and client traversal can coincide but are not interchangeable. CodeQL's official guidance states that global flow is more expensive and less precise and should be constrained by sources and sinks. Architecturally meaningful facades, middleware, pipelines, adapters, CQRS/event routes, typed wrappers, dependency-injection seams, telemetry/error boundaries, and generated forwarders all produce long identity-looking paths. These limits rule out raw hop thresholds, automatic deletion of delegates, and claims that zero findings prove the absence of pass-through chains.",
+  "observable_pattern": "Starting at a named parameter, argument expression, field read, or return value, observe a sequence of resolved call arguments and callee parameters/returns. A candidate path spans at least several functions and preferably multiple files/modules. At each intermediate step, the tracked value or tracked group is passed onward with the same resolved identity or a transparent projection/wrapper; the intermediate function performs little or no local use, branching, validation, transformation, persistence, or combination involving it. For a group candidate, the same two-or-more parameter names or resolved origins travel together across edges. The observable evidence must distinguish exact identity, simple renaming, field projection, transparent wrapping/unwrapping, and unknown transformation. A long call chain without a traced value, or a repeated parameter group without forwarding, is not this signal.",
+  "graph_model": {
+    "nodes": [
+      "module/file",
+      "function/method",
+      "call site",
+      "formal parameter",
+      "argument/value definition",
+      "return value",
+      "field or typed wrapper"
+    ],
+    "edges": [
+      "module declares function",
+      "caller invokes callee",
+      "actual argument binds to formal parameter",
+      "definition reaches use",
+      "parameter flows to argument",
+      "value flows to return",
+      "field projected from value",
+      "wrapper constructed or unwrapped",
+      "file depends on file"
+    ],
+    "labels_and_summaries": "Every flow edge needs a source location, resolution status, language, flow kind, identity-preservation class, and confidence. Each intermediate function needs counts of local uses, forwarding uses, transformations, control predicates, writes, and outgoing calls. Function summaries should map input positions to output call positions and return positions. Module aggregation must retain the concrete function path and collapse recursive cycles safely rather than treating repeated traversal as extra hops.",
+    "candidate_path": "source definition -> caller argument -> callee formal -> zero or more local aliases/projections -> next call argument or return -> ... -> sink/use, with function and module ownership attached at every interprocedural boundary"
+  },
+  "analysis_requirements": "A defensible detector needs project-level symbol and call resolution, actual-to-formal parameter binding, a control-flow graph, and def-use/SSA-like value tracking within each function. Interprocedural summaries must record which inputs can reach call arguments or returns and whether the transfer is identity-preserving. Dynamic dispatch, callbacks, higher-order functions, overloads, generics, default/named/variadic arguments, closures, async boundaries, re-exports, and indirect calls require conservative call-graph modeling. Alias and points-to analysis are needed when values pass through fields, mutable containers, object properties, or receiver state. Field sensitivity helps distinguish forwarding one member from forwarding the whole value; context sensitivity prevents unrelated call sites from being merged. Library/framework models are needed for transparent wrappers, middleware APIs, futures/promises, serialization, and generated clients. A source/sink-scoped global traversal with depth/state budgets is preferable to unrestricted all-pairs flow.",
+  "tree_sitter_feasibility": "Tree-sitter can reliably extract functions, formal parameter names and positions, call expressions, actual argument syntax, returns, simple assignments, member accesses, imports, modules, and precise source locations. It can conservatively recognize direct forwarding such as f(x) calling g(x), returning g(x), or passing the same pair of identifiers to another call; it can also join those observations to Reforge's repeated parameter-name groups. Syntax alone cannot reliably resolve callees, bind named/default/variadic parameters, distinguish shadowed identifiers across scopes without a symbol layer, identify aliases through branches and fields, prove that a wrapper is transparent, or account for dispatch, callbacks, macros, decorators, reflection, and generated code. A Tree-sitter-only prototype may produce path candidates with partial coverage, but must not call them proven interprocedural value flow.",
+  "language_constraints": "Rust, Java, C#, Go, Kotlin, and typed TypeScript offer the best pilot surface when calls and explicit parameters can be resolved, but traits/interfaces, virtual dispatch, extension methods, generics, implicit receivers, macros, and async lowering still limit precision. Rust ownership types can make explicit newtype conversions meaningful transformations rather than redundant hops. JavaScript, Python, Ruby, PHP, and untyped TypeScript have dynamic dispatch, decorators/metaprogramming, monkey patching, flexible arguments, and runtime property mutation, so syntax-only paths are often partial. Go interfaces, embedding, and goroutines complicate interprocedural destinations; Java/C# reflection and dependency injection do likewise. Vue component boundaries add template/event flow not represented by ordinary calls. Bash and PowerShell pipelines and dynamic command resolution need separate semantics and should be unsupported initially. Cross-process RPC, queues, databases, and event buses terminate the static call/def-use graph unless explicit framework models exist.",
+  "complexity_cost": "AST candidate extraction is approximately O(N) in syntax size. Intraprocedural CFG and def-use construction is roughly O(N + E) per project representation. A resolved call graph and cached input/output summaries are O(V + E) for storage, but propagation can revisit summary states until a fixed point and grow substantially with call contexts, aliases, and fields. Unrestricted all-pairs global flow is expensive and imprecise; source/sink scoping, path-length limits, per-function summaries, strongly connected component condensation, and state budgets are required. Implementation complexity is high because Reforge currently lacks a call graph and def-use graph; a direct-identifier pilot is moderate but offers only partial coverage.",
+  "false_positives": [
+    "Facades deliberately stabilize a public API while delegating implementation.",
+    "Pipelines and middleware intentionally pass a request, context, or event through many stages.",
+    "CQRS handlers, event choreography, actors, and message buses encode explicit routing boundaries.",
+    "Ports/adapters, anti-corruption layers, RPC clients, repositories, and controllers preserve dependency direction while forwarding values.",
+    "Authentication, authorization, tracing, metrics, transactions, retries, cancellation, error translation, and resource-lifecycle code may use a value semantically even when syntax shows little transformation.",
+    "Typed newtypes, validation wrappers, capability tokens, and ownership/lifetime transitions may look identity-preserving but enforce invariants.",
+    "Generated clients, proxies, bindings, mocks, compatibility shims, and framework glue are forwarding by design.",
+    "Builders and configuration propagation naturally carry repeated parameter groups.",
+    "Identifier equality can conflate shadowed or unrelated values; field projection and reconstruction can hide real transformations.",
+    "Recursive calls and cycles can inflate a naive hop count."
+  ],
+  "precision_boosters": [
+    "Require resolved actual-to-formal bindings and a concrete inspectable path rather than matching identifier text alone.",
+    "Require mostly identity-preserving forwarding across the path and report the exact proportion and any unknown edge.",
+    "Require cross-module span and at least two semantically empty intermediate functions, while treating the hop threshold as calibration data rather than proof.",
+    "Require low local-use and transformation counts at intermediate nodes, including checks for control predicates, writes, validation, wrapping, logging, error mapping, authorization, and lifecycle actions.",
+    "Require an independent corroborator such as Reforge DataClump, adapter-boundary bypass, duplicate wrapper signatures, dependency indirection, or repeated parallel paths.",
+    "Prefer repeated parameter groups whose resolved value origins remain together across multiple calls over name coincidence.",
+    "Suppress generated, test, facade, middleware, pipeline, adapter, CQRS, event, proxy, and typed-newtype contexts when recognized; otherwise display the exception risk.",
+    "Bound analysis to selected source categories and sinks, following CodeQL's source/sink-scoped global-flow precedent.",
+    "Show unresolved edges and exclude them from positive identity-preservation claims.",
+    "Check that the proposed shortening would not violate module dependency direction or remove required policy behavior."
+  ],
+  "legitimate_exceptions": "Expected and often beneficial cases include public facades, layered APIs, request/response pipelines, middleware, interceptors, decorators, CQRS command/query handlers, domain/event choreography, actors, ports-and-adapters and anti-corruption layers, controllers and application services, repositories, RPC and SDK clients, proxies, compatibility shims, dependency-injection wiring, telemetry/security/transaction boundaries, typed newtypes and capability wrappers, immutable context propagation, generated forwarding code, mocks, and framework glue. These structures may intentionally trade more hops for stable interfaces, policy enforcement, testability, observability, or dependency inversion.",
+  "confidence_tier": "experimental",
+  "existing_capabilities": "Reforge already detects repeated parameter-name groups as DataClump, which can identify groups worth tracing and serve as independent corroboration. Its source-file dependency graph provides resolved local file edges, module span, transitive paths, hubs, cycles, and boundary-oriented context. Tree-sitter adapters already expose named functions, parameters, calls/import syntax, and locations across supported languages, and the report system can present related locations, metrics, coverage, and suppressions. Relevant corroboration includes adapter_boundary_bypass and structural dependency findings. Reforge does not currently have a resolved call graph, actual-to-formal binding, CFG-backed def-use graph, interprocedural summaries, or points-to analysis, so its dependency graph must not be presented as value flow.",
+  "proposed_metrics": {
+    "path.function_hops": "Number of distinct interprocedural call boundaries traversed after recursive SCC condensation.",
+    "path.module_span": "Number of distinct project modules/files containing functions on the path.",
+    "path.identity_preserving_edges": "Count of flow edges classified as direct identity, local alias, or explicitly modeled transparent wrapper.",
+    "path.identity_preservation_ratio": "identity-preserving resolved edges / all resolved path edges, ratio 0..1.",
+    "path.unknown_flow_edges": "Number of path edges whose transformation or binding status is unresolved.",
+    "path.intermediate_function_count": "Number of functions strictly between the source and terminal sink/use.",
+    "path.empty_intermediary_ratio": "intermediate functions with only forwarding uses / all intermediate functions, ratio 0..1.",
+    "path.local_use_count": "Non-forwarding reads, calls, predicates, stores, or returns involving the tracked value within intermediaries.",
+    "path.transformation_count": "Validated conversions, arithmetic/string operations, reconstruction, mutation, projection, or nontransparent wrapping applied along the path.",
+    "path.corroborator_count": "Number of independent Reforge signals linked to the same path, such as DataClump or adapter-boundary bypass.",
+    "group.width": "Number of distinct parameters/values forwarded together.",
+    "group.cohesion_ratio": "call boundaries on which the complete group remains together / boundaries on the candidate path.",
+    "path.resolved_edge_ratio": "resolved flow bindings / attempted flow bindings, used as coverage context rather than score.",
+    "threshold_note": "[uncertain] Initial minimum hop, module-span, identity ratio, and local-use thresholds must be derived from labeled fixtures and repository-disjoint corpora; no supplied evidence supports universal cutoffs."
+  },
+  "proposed_finding_kinds": [
+    {
+      "name": "pass_through_chain",
+      "issue_family": "data_journey_shape",
+      "mechanism": "a resolved value is forwarded mostly unchanged through low-use intermediaries across module boundaries",
+      "action": "inspect whether to remove a redundant delegate, expose a direct operation, or relocate orchestration while preserving policy boundaries",
+      "scope": "one source-to-sink value path with every function and flow edge as related evidence",
+      "precision_risk": "high; emit only as experimental composite evidence with corroboration"
+    },
+    {
+      "name": "forwarded_data_clump",
+      "issue_family": "parameter_grouping",
+      "mechanism": "the same resolved group of parameters repeatedly travels together, mostly unchanged, across functions/modules",
+      "action": "inspect Introduce Parameter Object or a domain-specific typed value, or keep the group explicit if it represents a boundary contract",
+      "scope": "parameter group and interprocedural path",
+      "precision_risk": "medium-to-high because name groups and boundary DTOs can be intentional"
+    }
+  ],
+  "explanation_path": "A finding must show the source definition and terminal use/sink; every call site, caller, callee, actual argument, and bound formal parameter in order; module/file transitions; and whether each edge is direct identity, alias, projection, transparent wrapper, transformed, or unresolved. For every intermediate function, show forwarding-use, local-use, transformation, branch/predicate, write, and policy-action counts plus representative locations. Display function hops, SCC-condensed path, module span, identity-preservation ratio, unresolved-edge count, group width/cohesion where applicable, and the independent DataClump/boundary/dependency corroborator. Also show recognized exception markers and explain that architectural intent and behavior-preserving removal were not proven.",
+  "coverage_contract": "Observed means all reported functions parsed successfully, every displayed caller-to-callee edge and actual-to-formal binding resolved within the project, and every positive flow step has an explicit identity/transformation classification. Partial means any call target, dispatch alternative, alias, wrapper, generated declaration, macro expansion, callback, field flow, or dynamic edge is unresolved; partial paths may be displayed as candidates but cannot support a high-confidence conclusion, and a zero result does not mean absence. Unsupported initially includes Bash/PowerShell pipelines, reflection/metaprogramming, runtime message routing, cross-process queues/RPC without models, macro-generated call graphs, and languages without the selected resolver tier. Excluded generated, dependency, test, and recognized architecture categories must have counts and reasons. Reports must include parsed-function totals, call-site totals, resolved/unresolved bindings, summarized-flow totals, truncated searches, source/sink selection, budgets, supported languages, parse failures, and detector version.",
+  "mvp_scope": "Build a read-only prototype for direct named-function forwarding in one statically tractable language already parsed by Reforge. Index functions and unambiguous project-local calls, bind positional arguments to formal parameters, and recognize only direct identifier aliases and direct parameter-to-call/return flows within straight-line function bodies. Seed traversal only from existing DataClump groups or explicit boundary-bypass candidates, require cross-file/module span, low local use, mostly identity-preserving edges, and at least one independent corroborator. Emit an experimental path with complete coverage receipts; do not auto-refactor or claim semantic redundancy. Defer virtual/dynamic dispatch, callbacks, fields/heap aliases, closures, exceptions, complex branches, async/event flow, wrapper inference, points-to/context-sensitive analysis, unrestricted all-pairs flow, and broad multi-language rollout.",
+  "fixtures": {
+    "positive": [
+      "A three-value DataClump is passed unchanged from an HTTP handler through two project modules to a service, while both intermediaries only call the next function.",
+      "A single request value crosses three resolved functions in different modules; two intermediaries have zero local use and an independent boundary-bypass signal identifies an avoidable layer.",
+      "Two parameters are locally renamed but their resolved definitions remain together across the path, demonstrating semantic rather than spelling-based flow."
+    ],
+    "negative": [
+      "A facade delegates one hop to preserve a stable API.",
+      "Authentication middleware forwards a request after checking credentials and adding policy context.",
+      "A pipeline transforms the value at every stage.",
+      "A CQRS command passes through dispatcher and handler boundaries.",
+      "A typed newtype wrapper validates a primitive before forwarding.",
+      "Generated proxy and RPC client methods mirror signatures.",
+      "A long call chain in which no single value is tracked end to end.",
+      "The same parameter names occur in unrelated scopes but definitions do not connect."
+    ],
+    "metamorphic": [
+      "Identifier renaming and formatting must preserve resolved paths and finding IDs.",
+      "Introducing a semantically equivalent local alias must preserve the path.",
+      "Adding a real validation, branch, or transformation must increase local-use/transformation metrics and suppress or downgrade the finding.",
+      "Adding an unrelated call or import must not affect the path.",
+      "Replacing one redundant intermediary with a direct call must shorten or remove the finding without changing terminal behavior.",
+      "Moving a path into generated code must change exclusion receipts while leaving raw instrumentation explainable.",
+      "Adding recursion must not inflate hop count after SCC condensation."
+    ]
+  },
+  "corpus_strategy": "Construct a stratified corpus spanning service applications, layered enterprise systems, libraries, compilers, CLI tools, web frameworks, data pipelines, and SDK/client generators. Oversample hard negatives: middleware-heavy frameworks, CQRS/event-driven projects, hexagonal architecture, typed-newtype Rust, RPC clients, proxies, and generated code. Mine commits that introduce parameter objects, remove middle men, hide delegates, collapse chains, or relocate orchestration; manually verify intent and preserve pre-change snapshots as candidate positives. Also sample detector negatives and random flow paths to estimate missed opportunities. Split calibration and holdout by repository and organization, not by function, and keep architecture families represented in both while reserving at least one family for external validation. Compare hop-only, identity-only, DataClump-seeded, boundary-seeded, and composite variants to measure the value of each corroborator.",
+  "oracle_and_labels": "At least two experienced reviewers should independently label four layers: (1) instrumentation correctness—call target, argument binding, def-use edge, identity/transformation classification, and coverage; (2) design interpretation—redundant pass-through, necessary architectural boundary, ambiguous, or false path; (3) actionability—keep, remove delegate, hide delegate/direct call, relocate orchestration, introduce parameter object/typed value, or another treatment; and (4) outcome—tests preserved behavior and the change reduced avoidable coupling/parameter repetition without violating dependency or policy constraints. Reviewers should see full path context and exception evidence but not detector scores or each other's labels. Report agreement and retain ambiguity after adjudication. A historical refactoring is not automatically a positive unless its intent and subsequent survival are verified.",
+  "success_criteria": "[uncertain] Before promotion beyond experimental, target at least 95% precision for displayed resolved call/binding/flow edges and explicit coverage receipts on every run. On a repository-disjoint holdout, target finding precision of at least 80% with a 95% confidence-interval lower bound of at least 70%, and at least 70% of true findings labeled useful for inspection or actionable; separately report recall against manually verified historical and seeded opportunities, initially aiming for at least 40%. Legitimate architecture exceptions should be below 10% of emitted findings after suppression. Results and metrics must be identical under formatting and at least 95% stable under identifier-renaming fixtures. The bounded MVP should add no more than 25% scan time and 1.5x peak memory on the calibration corpus, with truncation/budget receipts for all incomplete traversals. These numbers are product hypotheses, not thresholds supported by the supplied literature.",
+  "open_questions": "[uncertain] Unresolved decisions include which language and resolver should host the MVP; whether DataClump or boundary bypass must always be present; what counts as a module; how many hops/intermediaries are review-worthy; how to weight aliases, projections, wrappers, and returned values; whether a group must preserve resolved origins or only names/types; how to recognize policy work such as authorization and transactions; whether facade/middleware/CQRS/event/newtype/generated exceptions can be detected safely; how to scope sources and sinks; how much context, field, and path sensitivity is affordable; whether recursive SCCs should be suppressed; whether dependency-direction improvement is required for actionability; and whether pass_through_chain and forwarded_data_clump should remain separate findings or only composite evidence attached to existing Reforge findings.",
+  "uncertain": [
+    "proposed_metrics",
+    "success_criteria",
+    "open_questions"
+  ]
+}

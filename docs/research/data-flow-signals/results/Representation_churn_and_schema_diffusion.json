@@ -1,0 +1,300 @@
+{
+  "item_name": "Representation churn and schema diffusion",
+  "thesis": "Representation churn is a useful composite refactoring signal when one logical payload is repeatedly copied between near-equivalent records, objects, dictionaries, or wire shapes across modules with little semantic transformation. The source-observable fact is repeated structural correspondence, not shared business meaning. Reforge should flag dispersed, mostly identity-preserving conversion chains for review and recommend consolidating ownership or mapping, while treating deliberate boundary models as exceptions rather than defects.",
+  "refactoring_relevance": "A high-confidence instance suggests a behavior-preserving structural change such as reusing an existing model inside one bounded context, extracting a named value object, replacing repeated ad hoc construction with one owned mapper, moving mapping code to an adapter, or generating equivalent representations from one schema. The behavior-preserving precondition is that fields, defaults, validation, nullability, serialization names, units, and compatibility behavior remain unchanged. The signal is valuable because every duplicated representation and conversion site is another place that must co-evolve when the fact changes. It is not sufficient to recommend collapsing persistence, domain, API, event, and UI models: those boundaries may intentionally isolate change, security, or vocabulary. A detector should therefore identify representation families and repeated conversion evidence, then let maintainers choose consolidation, centralization, generation, or an intentional-boundary disposition.",
+  "evidence_strength": "Moderate [uncertain]. Data-clump, code-clone, DTO, and schema/code co-evolution research independently supports the ingredients: recurring field groups are measurable, duplication around DTOs can expose refactoring opportunities, and schema changes propagate into application code. Industrial mapping tools also validate field correspondences in practice. However, no located study establishes a calibrated, language-independent detector for the exact combination of near-equivalent types plus repeated destructure/rebuild/rename/serialize chains, or shows that consolidating every detected family improves maintenance. The direct thesis is therefore a well-supported synthesis, not a validated causal rule.",
+  "foundational_sources": [
+    {
+      "title": "Refactoring: Improving the Design of Existing Code / Introduce Parameter Object",
+      "year": 1999,
+      "claim": "Recurring groups of parameters can be replaced by a named object, establishing repeated co-traveling fields as a classic refactoring cue rather than a defect proof.",
+      "url": "https://refactoring.com/catalog/introduceParameterObject.html"
+    },
+    {
+      "title": "Data Transfer Object",
+      "year": 2003,
+      "claim": "A DTO intentionally carries serializable data across a remote boundary and is commonly assembled from domain objects; this establishes both the representation/mapping pattern and a major legitimate exception.",
+      "url": "https://martinfowler.com/eaaCatalog/dataTransferObject.html"
+    },
+    {
+      "title": "Survey of Research on Software Clones",
+      "year": 2007,
+      "claim": "Software redundancy and similarity admit multiple clone types and detection techniques; near-miss structural copies require more than exact text matching.",
+      "url": "https://doi.org/10.4230/DagSemProc.06301.13"
+    },
+    {
+      "title": "Bounded Context",
+      "year": 2014,
+      "claim": "Different bounded contexts may deliberately use different models for common concepts and translate between them; structural overlap across a real context boundary does not by itself justify model unification.",
+      "url": "https://martinfowler.com/bliki/BoundedContext.html"
+    }
+  ],
+  "empirical_sources": [
+    {
+      "title": "Evaluating Code Duplication to Identify Rich Business Objects from Data Transfer Objects",
+      "year": 2010,
+      "systems_or_labels": "An industrial Java enterprise content-management system; DTOs, invoking classes, calls, and code-duplication edges were visualized as DTO Constellations.",
+      "relevant_result": "Manual inspection found three logical data groups and three duplication categories. Duplication between DTOs exposed shared data that could be merged or factored, while duplication between DTO clients exposed business logic that could be moved or factored. This is direct but single-case, exploratory evidence.",
+      "url": "https://scg.unibe.ch/archive/papers/Peri10dDTOs.pdf"
+    },
+    {
+      "title": "An Empirical Analysis of the Co-evolution of Schema and Code in Database Applications",
+      "year": 2013,
+      "systems_or_labels": "Ten popular open-source database applications totaling more than 160,000 revisions; database schema changes and application-code changes.",
+      "relevant_result": "Schemas evolved frequently, schema changes induced significant code-level modifications, and co-change analysis appeared viable for assisting evolution. This supports displaying historical propagation around representation families, though it studies database schemas rather than arbitrary DTO chains.",
+      "url": "https://doi.org/10.1145/2491411.2491431"
+    },
+    {
+      "title": "Some Code Smells Have a Significant but Small Effect on Faults",
+      "year": 2014,
+      "systems_or_labels": "Eclipse, ArgoUML, and Apache Commons; five smells including Data Clumps, with repository-derived fault data and negative-binomial models.",
+      "relevant_result": "Data Clumps had inconsistent direction across systems and every significant smell effect was under 10 percent. The study cautions against using a structural smell alone as a fault-reduction mandate.",
+      "url": "https://doi.org/10.1145/2629648"
+    },
+    {
+      "title": "Characteristics and Automated Detection and Refactoring of Data Clumps",
+      "year": 2026,
+      "systems_or_labels": "More than eight million line-level data clumps across 23 open-source projects and 3,290 timestamps, plus more than 100,000 UML class diagrams.",
+      "relevant_result": "Data clumps occurred predominantly in parameters in source code, were mostly local to classes, increased over project lifetimes, and correlated positively with faults in many projects. The work supplies scalable recurring-field-group evidence but does not evaluate cross-language conversion chains.",
+      "url": "https://doi.org/10.48693/930"
+    }
+  ],
+  "industrial_precedents": [
+    {
+      "tool": "CodeQL",
+      "practice": "Its data-flow libraries model value nodes and directed flow steps, support local and global flow, field/call paths, and path explanations. This demonstrates the semantic infrastructure needed to connect a source field read to a destination field write, while the documentation warns that global flow is costlier and less precise.",
+      "url": "https://codeql.github.com/docs/writing-codeql-queries/creating-path-queries/"
+    },
+    {
+      "tool": "MapStruct",
+      "practice": "The compile-time Java mapper validates source and target property coverage and can warn or fail on unmapped properties. This demonstrates that explicit type-pair field correspondence and rename/conversion declarations are practical build artifacts.",
+      "url": "https://mapstruct.org/documentation/stable/reference/html/"
+    },
+    {
+      "tool": "AutoMapper",
+      "practice": "The .NET mapper validates that destination members have corresponding source members and treats source renames as a typical configuration failure. This is practical evidence that mapping pairs and field coverage are inspectable, not evidence that mapping is itself a smell.",
+      "url": "https://docs.automapper.io/en/stable/Configuration-validation.html"
+    },
+    {
+      "tool": "SonarQube",
+      "practice": "It reports token/statement-based duplicated blocks and density across supported languages. Clone evidence can corroborate repeated hand-written mapper bodies, although ordinary duplication thresholds miss short or renamed field mappings.",
+      "url": "https://docs.sonarsource.com/sonarqube-community-build/user-guide/code-metrics/metrics-definition"
+    },
+    {
+      "tool": "PMD",
+      "practice": "Its Java DataClass and ExcessiveParameterList rules operationalize passive data holders and ungrouped related parameters using explainable metrics. These are adjacent ingredients, not a representation-chain detector.",
+      "url": "https://pmd.github.io/pmd/pmd_rules_java_design.html"
+    }
+  ],
+  "conflicting_evidence": "The most important conflict is architectural: DTOs, anti-corruption layers, bounded contexts, persistence entities, events, public API versions, read models, and view models deliberately represent overlapping facts differently so that one schema does not become shared coupling. Fowler's DTO and bounded-context descriptions make translation an expected cost at real boundaries. Empirically, Hall et al. found small and system-dependent fault effects for Data Clumps and warned that arbitrary refactoring may not reduce faults. The Perin and Girba DTO result is one exploratory industrial case without precision, recall, controlled maintenance outcomes, or generalization beyond Java enterprise code. Structural equality also does not establish semantic equality: identically named fields can differ in units, privacy, validation, lifecycle, ownership, or optionality, while renamed fields can be the same fact. These limits require conservative wording and independent evidence before recommending unification.",
+  "observable_pattern": "Observe declarations and operations without inferring intent: (1) two or more declared or anonymous record shapes share at least three normalized fields or have a recoverable one-to-one field correspondence; (2) functions read fields from one shape and construct, assign, return, serialize, or pass a second shape; (3) most correspondences are direct copies, simple renames, wrapping/unwrapping, or type-preserving serialization rather than calculations; and (4) the same shape family or conversion is repeated across modules, or a value traverses two or more successive near-equivalent reconstructions. Concrete syntax includes object/struct literals, constructors/builders, destructuring followed by rebuilding, getter-to-setter assignments, dictionary/hash projection, spread/copy plus overrides, serializer annotations, JSON key literals, and mapper declarations. The finding is stronger when conversion logic is dispersed outside named adapter modules, reverse mappings disagree, or the representation family co-changes historically.",
+  "graph_model": {
+    "nodes": [
+      "named type, record, class, struct, interface, data class, and schema declarations",
+      "anonymous object, dictionary, hash, tuple, and serialized payload shapes",
+      "field/property/key declarations and access-path slots",
+      "construction, destructuring, assignment, setter, mapper, serialization, and conversion operations",
+      "functions, files, modules, packages, and configured boundaries"
+    ],
+    "edges": [
+      "type-contains-field and module-contains-entity",
+      "value/field read to destination field write via local def-use",
+      "argument-to-parameter and return-to-call-result",
+      "constructs, destructures, serializes, deserializes, maps-to, and calls",
+      "field-correspondence with exact-name, normalized-name, declared-annotation, positional, or resolved-flow provenance",
+      "import/dependency and optional historical co-change"
+    ],
+    "labels_and_summaries": "Label shapes with language, module, visibility, nominal name, normalized field name, declared type text, nullability/default, serialization alias, annotation/tag, and generated/test/boundary status. Label correspondences with confidence, copy/rename/coerce/compute/drop/add kind, direction, and location. Summarize each conversion as source shape, target shape, copied fields, renamed fields, transformed fields, dropped/added fields, coverage, and unresolved operations. Collapse conversions into representation-family components and value-path chains; aggregate by module pair and boundary crossing.",
+    "decision_model": "Candidate shape edges require minimum field support and high weighted correspondence. Candidate churn requires either the same conversion implemented at multiple independent sites or a path with repeated near-identity conversion edges. Schema diffusion is a representation-family component spread across multiple non-boundary modules. Do not equate transitive shape similarity with semantic identity; preserve every edge's direct evidence and split components when correspondence is weak or contradictory."
+  },
+  "analysis_requirements": "A high-quality detector needs language-aware parsing; declaration and import/name resolution; type resolution for constructors, fields, overloads, generic substitutions, and inferred records; local CFG and def-use/SSA-like reasoning to follow aliases from a source access into a destination construction; call-graph and function summaries for helper mappers; field-sensitive access paths; and modest context sensitivity to distinguish the same generic mapper at different type pairs. Points-to analysis is needed for mutable aliases, setters, collections, and heap-carried payloads. Library/framework models are required for serializers, ORMs, mapping frameworks, builders, reflection, generated clients, protocol buffers, database rows, and messaging APIs. A syntax-only tier can instead infer correspondences inside one expression or function from direct field accesses, identifier provenance, names, tags, and positional arguments; it must not claim whole-program value flow. Historical co-change is optional corroboration and needs entity matching across renames and generated/noisy commit filtering.",
+  "tree_sitter_feasibility": "Tree-sitter can reliably locate successfully parsed declarations, fields, parameters, object/struct literals, constructors, destructuring patterns, assignments, returns, direct calls, member accesses, dictionary keys, annotations/tags, and source locations. Reforge can conservatively extract named shape signatures and direct mapping pairs such as Target(a = source.a, b = source.b), {a: source.a}, or target.setA(source.getA()) within one function. It can also recognize serializer/mapping annotations and combine this with file dependencies. Tree-sitter alone cannot reliably resolve nominal or inferred types, overloads, aliases, spread values, generic builders, macro/proc-macro expansion, operator conversions, reflection, generated members, framework serializers, dynamic keys, or semantic equivalence of names and types. It cannot prove that two copied values denote the same business fact. Therefore an MVP should report explicit correspondences and unresolved counts, and treat shape-name similarity without value provenance only as corroboration.",
+  "language_constraints": {
+    "Rust": "Struct declarations/literals, field shorthand, destructuring, From/Into/TryFrom implementations, and serde rename attributes are promising. Macros, proc-macro-generated serializers, trait dispatch, tuple structs, update syntax, deref coercion, and generic conversion traits limit syntax-only resolution.",
+    "JavaScript_TypeScript_Vue": "Object literals, destructuring, spreads, serializers, and mapped fields are visible, but structural typing, inferred anonymous types, dynamic keys, prototype mutation, re-exports, callback chains, and framework transforms make identity and flow uncertain. TypeScript compiler information would materially improve precision; Vue template payloads need separate modeling.",
+    "Python": "Dataclasses, TypedDict, Pydantic-style models, keyword construction, dict literals/comprehensions, and ** unpacking are visible. Duck typing, decorators, dynamic attributes, serializers, and metaclasses make nominal families and generated mappings incomplete.",
+    "Go": "Struct declarations/literals, explicit selectors, conversions, and JSON tags are tractable. Positional literals, embedding, interfaces, reflection, map[string]any, generated protobuf code, and custom Marshal methods need special handling.",
+    "Java_CSharp_Kotlin": "Nominal DTOs, records/data classes, constructors, builders, properties, object initializers, annotations, and mapper methods provide strong syntax. Overloads, inheritance, extension methods, Lombok/source generators, reflection, ORM proxies, nullability conventions, and dependency injection require semantic models. Java and C# are the best initial resolved-language pilots; Kotlin adds implicit receivers and destructuring components.",
+    "PHP_Ruby": "Associative arrays/hashes and constructors are visible, but dynamic fields, magic accessors, monkey patching, symbols versus strings, metaprogramming, and framework hydration sharply reduce precision. Restrict an MVP to explicit literal-to-literal or accessor-to-constructor mappings.",
+    "Bash_PowerShell": "Shell variables, pipelines, environment records, hashtables, and external JSON tools can transform data, but stable type and field identity are usually absent. Mark representation-family analysis unsupported initially except for explicit PowerShell hashtable literals or configured schemas."
+  },
+  "complexity_cost": "AST extraction and direct intra-function mapping recognition are O(N) in syntax nodes with O(N) stored occurrences. Building shape signatures is O(F), where F is total fields. Candidate generation should use an inverted index by normalized field/token; naive all-pairs comparison is O(T^2 * average_fields) for T shapes, while indexed candidates are closer to the sum of squared posting-list sizes and need caps for ubiquitous names such as id or name. Local def-use is roughly linear in CFG size per function. Representation-family clustering is O(V + E) after candidate edges exist. Interprocedural, field-sensitive points-to and context-sensitive summaries are high-cost in time, memory, and language engineering; unrestricted path enumeration can be exponential and must be summarized and bounded. The syntax-only multi-language MVP is moderate-to-high implementation work; a semantic whole-program version is a major subsystem.",
+  "false_positives": [
+    "API request/response DTOs intentionally decouple public compatibility from domain evolution.",
+    "Persistence entities, ORM rows, database migrations, and domain objects intentionally differ in lifecycle and constraints.",
+    "Bounded contexts and anti-corruption layers intentionally translate overlapping concepts with different vocabularies.",
+    "CQRS commands, events, projections, read models, and UI view models optimize different use cases.",
+    "Security/privacy projections deliberately drop secrets, authorization state, internal identifiers, or regulated fields.",
+    "Versioned messages and compatibility shims intentionally retain near-equivalent old and new schemas.",
+    "Generated protobuf/OpenAPI/GraphQL clients, serializers, ORM code, and mapping-framework output duplicate shapes mechanically.",
+    "Unit, currency, timezone, locale, normalization, encryption, validation, and null/default conversions can look syntactically trivial while changing semantics.",
+    "Builders, copy constructors, immutable with-methods, cloning, and snapshot/audit code legitimately rebuild the same shape.",
+    "Tests, fixtures, factories, fuzz inputs, and assertions repeat payload construction for clarity and isolation.",
+    "Generic object-copy or serialization utilities create apparent flows that cannot be attributed to a stable business shape.",
+    "Common generic fields such as id, name, status, created_at, and metadata create accidental shape overlap."
+  ],
+  "precision_boosters": [
+    "Require at least three high-information corresponding fields and discount ubiquitous names with inverse-document-frequency weighting.",
+    "Require direct source-field-to-destination-field provenance for most matched fields, not names alone.",
+    "Require a high identity-preserving ratio and report calculated, dropped, added, defaulted, and unresolved fields separately.",
+    "Require either at least two independent conversion sites, at least three successive representations, or the same representation family in at least three non-boundary modules.",
+    "Prefer evidence where the same source/target pair is mapped in both directions or multiple implementations disagree on coverage, defaults, or renames.",
+    "Use declared types, serialization aliases, annotations, tags, mapper configurations, and exact value flow as independent correspondence evidence.",
+    "Downgrade recognized adapter, mapper, serializer, generated, migration, test, DTO, event, command, projection, persistence, and versioned namespaces; display the reason instead of silently deleting raw metrics.",
+    "Corroborate with Reforge duplicate_type_shape, data_clump, similar_functions, repeated_literal, adapter_boundary_bypass, dependency hub/cycle, or churn/co-change evidence.",
+    "Require all candidate types to be project-owned and exclude standard-library or third-party shapes unless explicitly configured.",
+    "Show whether consolidation would cross a declared module/bounded-context boundary or create a dependency cycle.",
+    "Use project-relative calibration and human feedback rather than one universal shape-overlap threshold."
+  ],
+  "legitimate_exceptions": "Expected and often beneficial cases include ports-and-adapters and anti-corruption layers; bounded contexts; public API and message versioning; remote DTOs; persistence/domain separation; CQRS commands, events, and read models; UI view models; privacy/security projections; generated schemas and clients; serializer/ORM/mapping code; migrations and compatibility shims; immutable copies and snapshots; test fixtures; ETL/data pipelines where each stage has a declared schema; and integrations that normalize units or vendor-specific conventions. The smell is dispersion or redundant near-identity work within an ownership boundary, not the mere existence of multiple representations.",
+  "confidence_tier": "experimental",
+  "existing_capabilities": "Reforge already has several strong inputs. data_clump finds repeated parameter groups; duplicate_type_shape extracts types with at least three fields and groups shapes at roughly 0.75 field-name overlap; similar_functions and parallel_implementation expose repeated mapping bodies; repeated_literal can expose duplicated wire keys; adapter_boundary_bypass and stale_compatibility_path provide boundary/compatibility context; file dependencies provide resolved local import edges, fan-in/out, hubs, cycles, transitive context, and unresolved-edge counts; structural analysis supplies named functions, parameters, type size/public surface, imports, and precise spans; git churn supplies file-level commits, authors, additions/deletions, and recency; issue clustering and related locations can combine corroborating findings. The current duplicate-type-shape extraction is largely lexical/line-oriented and Reforge does not yet have field-level def-use, constructor/type resolution, mapper summaries, anonymous-shape identity, schema-family graphs, or method/type-level co-change.",
+  "proposed_metrics": [
+    {
+      "name": "representation_family_size",
+      "definition": "Number of distinct named or stable anonymous shapes connected by supported correspondence or conversion edges.",
+      "unit": "shapes"
+    },
+    {
+      "name": "representation_module_spread",
+      "definition": "Distinct production modules that declare or reconstruct members of one representation family.",
+      "unit": "modules"
+    },
+    {
+      "name": "conversion_site_count",
+      "definition": "Distinct functions or mapper declarations implementing a supported conversion between family members.",
+      "unit": "sites"
+    },
+    {
+      "name": "max_conversion_chain_length",
+      "definition": "Maximum bounded count of representation-changing edges on an observed or summarized value path.",
+      "unit": "conversions"
+    },
+    {
+      "name": "field_correspondence_count",
+      "definition": "Destination fields with a supported correspondence to a source field.",
+      "unit": "fields"
+    },
+    {
+      "name": "identity_preserving_ratio",
+      "definition": "Direct copy or pure rename correspondences divided by all resolved destination-field correspondences.",
+      "unit": "ratio"
+    },
+    {
+      "name": "shape_overlap_weighted",
+      "definition": "IDF-weighted Jaccard similarity over normalized field names, optionally constrained by compatible declared type text.",
+      "unit": "ratio"
+    },
+    {
+      "name": "renamed_field_count",
+      "definition": "Resolved correspondences whose source and destination serialized or declared names differ.",
+      "unit": "fields"
+    },
+    {
+      "name": "transformed_field_count",
+      "definition": "Resolved destination fields produced by non-trivial calculations, coercions, validation, normalization, or aggregation.",
+      "unit": "fields"
+    },
+    {
+      "name": "dropped_or_added_field_count",
+      "definition": "Source fields not propagated plus destination fields supplied without a source-field correspondence.",
+      "unit": "fields"
+    },
+    {
+      "name": "mapping_disagreement_count",
+      "definition": "Field, rename, default, or transform decisions that differ among implementations of the same source/target pair.",
+      "unit": "decisions"
+    },
+    {
+      "name": "unresolved_mapping_operation_count",
+      "definition": "Spreads, helper calls, dynamic keys, aliases, or framework operations whose contribution to the destination shape is unknown.",
+      "unit": "operations"
+    },
+    {
+      "name": "family_cochange_support",
+      "definition": "History commits touching two or more independently owned family members after noise filtering; context only.",
+      "unit": "commits"
+    },
+    {
+      "name": "threshold_note",
+      "definition": "[uncertain] Minimum field count, weighted overlap, identity ratio, chain length, and module spread require repository-disjoint labeled-corpus calibration; suggested fixture values are not defaults.",
+      "unit": "calibration note"
+    }
+  ],
+  "proposed_finding_kinds": [
+    {
+      "name": "representation_churn",
+      "issue_family": "data_modeling",
+      "mechanism": "one value path repeatedly reconstructs near-equivalent shapes with predominantly identity-preserving field correspondences",
+      "action": "review eliminating an internal hop, reusing a model within the boundary, or centralizing/generating the conversion",
+      "scope": "conversion chain with source, intermediate, and destination locations",
+      "precision_risk": "high with syntax-only flow; medium when direct field provenance, resolved types, and boundary classification are available"
+    },
+    {
+      "name": "schema_diffusion",
+      "issue_family": "data_modeling",
+      "mechanism": "a near-equivalent representation family and its conversion responsibility are dispersed across multiple non-boundary modules",
+      "action": "review a single owning schema/value object, generated derivatives, or one explicit adapter per real boundary",
+      "scope": "representation family aggregated by modules",
+      "precision_risk": "high because structural overlap does not prove shared meaning"
+    },
+    {
+      "name": "duplicated_mapping",
+      "issue_family": "duplication",
+      "mechanism": "the same source/target field correspondence is hand-implemented at multiple sites",
+      "action": "extract or generate one owned mapper and add mapping-coverage tests",
+      "scope": "source/target pair with repeated site locations",
+      "precision_risk": "medium when both types and field provenance resolve; high when inferred from body similarity"
+    },
+    {
+      "name": "mapping_drift",
+      "issue_family": "concept_drift",
+      "mechanism": "independent mappings for the same representation pair disagree about fields, aliases, defaults, or conversion behavior",
+      "action": "reconcile intentional differences or consolidate mapping ownership",
+      "scope": "mapping pair with conflicting decisions",
+      "precision_risk": "medium; differences may be operation-specific and intentional"
+    }
+  ],
+  "explanation_path": "Each finding should show the representation family, declaration/module location of every involved shape, and one shortest evidence path. For each conversion edge, show the conversion function/call location; source and destination types or stable shape IDs; representative source-read to destination-write pairs; exact-copy, rename, transform, add, and drop labels; identity-preserving ratio; unresolved operations; and boundary/generated/test classification. For duplicated mappings, show at least two implementation locations and a correspondence diff. For schema diffusion, show the module aggregation and only the strongest direct edges rather than implying that every transitive family member is semantically equal. Include relevant Reforge corroborators, dependency edges/cycle risk, and coverage receipts. The recommendation must state that semantic equivalence and safe model unification were not proven.",
+  "coverage_contract": "Observed means the files parsed successfully and the reported shape declarations, conversion syntax, field accesses, and source-to-destination correspondences are directly present; for semantic-tier findings, constructor/callee and field owners also resolved. Partial means any type, alias, spread, builder step, helper call, serializer, generated declaration, dynamic key, dependency, or path segment is unresolved. Positive findings may be based only on supported edges, while absence of a finding never implies absence of churn under partial coverage. Unsupported initially includes Bash, most PowerShell pipelines, reflective/dynamic mappings, runtime-generated schemas, external service transformations, database/broker transformations, templates, macros that hide fields, and languages outside the implemented adapter tier. Excluded generated, dependency, test, migration, or configured boundary paths must have counts and reasons. Reports must expose analyzed shapes/conversions, resolved and unresolved correspondence counts, supported language/tier, parse failures, candidate-pair caps, history availability, and whether boundaries came from configuration or naming heuristics.",
+  "mvp_scope": "Implement a read-only syntax-tier detector first for Rust struct literals, Go keyed struct literals, Java/C#/Kotlin constructor/object-initializer or getter-to-setter mappers, and JavaScript/TypeScript/Python explicit object/dict literals. Reuse duplicate_type_shape candidates, but require at least three direct source-field-to-destination-field correspondences inside one named function and a high identity-preserving share. Emit duplicated_mapping only when the same explicit source/target shape pair occurs at two or more production sites, and representation_churn only when a statically connected chain contains at least three shapes. Add mapping sites and field pairs as related locations; expose unresolved operations and suppress/downgrade recognized tests, generated files, serializers, migrations, and designated adapter/boundary directories. Defer semantic schema-family unification, cross-function aliases, setters across statements where ownership is unresolved, reflection/framework hydration, points-to analysis, anonymous-shape interning across functions, historical co-change gating, schema_diffusion as a default finding, and mapping_drift defaults until corpus validation.",
+  "fixtures": {
+    "positive": [
+      "A Java controller maps ApiOrder to ServiceOrder field-for-field, a service maps ServiceOrder to RepositoryOrder, and a repository rebuilds the same fields; all three types have the same six fields and no boundary annotation between the internal hops.",
+      "Two C# modules independently implement CustomerDto to Customer mappings with the same five direct assignments.",
+      "Two TypeScript mapping functions copy the same object keys, but one omits postalCode; emit mapping disagreement with both sites.",
+      "A Rust chain implements From<WireUser> for AppUser and From<AppUser> for DbUser with direct copies for all but one field.",
+      "A Go conversion family repeats JSON-tag-equivalent fields under different nominal struct names across three internal packages."
+    ],
+    "negative": [
+      "A domain object maps once to a public API DTO at a configured remote boundary.",
+      "An anti-corruption layer renames vendor fields, converts cents to Money, validates status, and drops vendor-only metadata.",
+      "A versioned event v1-to-v2 upcaster preserves old wire compatibility.",
+      "A privacy projection copies public fields but deliberately removes email and internal identifiers.",
+      "A generated protobuf model and generated mapper are excluded with receipts.",
+      "Two unrelated types share id, name, status, and metadata but have no mapping/value-flow edge.",
+      "A test fixture rebuilds a record for assertion clarity.",
+      "A copy constructor and immutable with-method rebuild the same type, not a distinct representation family."
+    ],
+    "metamorphic": [
+      "Formatting, field-order changes in keyed constructions, and local-variable renames must not change finding identity or metrics.",
+      "Replacing direct source.field expressions with same-value local aliases should preserve a semantic-tier result and mark the syntax tier partial rather than invent a different correspondence.",
+      "Adding an unrelated common field named id to both shapes must not alone cross the threshold because common-name weighting is low.",
+      "Extracting repeated mapping into one shared mapper should reduce conversion_site_count and remove duplicated_mapping without changing observed outputs.",
+      "Marking the same directories as configured adapters should preserve raw metrics but change disposition/confidence.",
+      "Adding a non-trivial unit conversion should decrease identity_preserving_ratio and increase transformed_field_count.",
+      "Changing a serialization alias while preserving the declared field name should update the wire-shape correspondence but not the in-memory shape signature.",
+      "Deleting an intermediate identity mapping and passing the existing representation through should shorten the chain and remove representation_churn."
+    ]
+  },
+  "corpus_strategy": "Create a stratified corpus across Reforge's supported ecosystems: Rust services and CLIs using serde; Go services with API/domain/database structs; Java/Kotlin and C# enterprise applications with DTOs, ORMs, MapStruct/AutoMapper, records/data classes, and generated clients; TypeScript/Vue frontends and Node services; Python applications using dataclasses/Pydantic-like models; and smaller PHP/Ruby samples for explicit mapping coverage. Deliberately oversample hard negatives: bounded contexts, anti-corruption layers, CQRS/events, public API versioning, privacy projections, migrations, generated protobuf/OpenAPI code, ETL pipelines, and tests. Mine candidate commits that introduce/extract mappers, merge duplicate models, generate schemas, or remove intermediate DTOs; manually verify intent and preserved behavior. Label detector negatives as well as positives. Split calibration and holdout by repository and organization, with no forks or generated siblings across splits. Compare shape-only, direct-flow, clone-corroborated, boundary-aware, and history-aware variants, and publish per-language/per-exception performance rather than one pooled score.",
+  "oracle_and_labels": "Use at least two maintainers or experienced language reviewers independently and separate four decisions. Instrumentation: are shapes, fields, type owners, correspondences, conversion edges, and coverage correct? Interpretation: do the shapes represent the same or deliberately related fact, or is similarity accidental/unknown? Actionability: keep separate, centralize mapper, generate from schema, reuse a type within one boundary, extract value object, remove a hop, or needs design discussion? Outcome: if changed, did characterization/golden tests preserve serialized payloads and behavior, did mappings remain complete, and did conversion sites/dependency spread decrease without collapsing a valid boundary? Reviewers see code and explanation paths but not detector score or each other's answers. Preserve ambiguous and intentional-boundary labels, adjudicate disagreements, report Cohen's kappa or Krippendorff's alpha, and never use passing tests alone as proof of semantic equivalence.",
+  "success_criteria": "[uncertain] For the syntax MVP, target at least 95% precision for directly reported field correspondences and 100% explicit coverage receipts. On a repository-disjoint holdout, require duplicated_mapping precision of at least 85% with the lower bound of its 95% confidence interval at least 75%, and representation_churn precision of at least 80% with a lower bound at least 70%; report recall separately against manually verified opportunities, with 40% as an initial floor. At least 70% of true findings should be labeled actionable or useful-for-inspection, while fewer than 10% should recommend unifying models across a reviewer-confirmed valid boundary. Finding IDs and metrics must be identical after formatting/field-order fixtures and at least 95% stable under local-variable renames. Added self-scan time should be at most 25% and peak memory at most 1.5 times baseline for the syntax tier, with candidate-pair caps reported. Any applied refactoring must pass existing tests plus mapping/serialization golden tests; these numeric thresholds require calibration before becoming release gates.",
+  "open_questions": "[uncertain] Unresolved decisions include: what defines a representation identity for anonymous shapes; whether nominal types, serialized keys, or value provenance dominate field matching; how to weight common names and compatible type text; how many fields and hops make the signal useful; whether schema diffusion should be a finding or only an issue-level aggregation; how projects declare bounded contexts and legitimate adapter directories; whether DTO/Entity/Event suffixes should suppress, downgrade, or only annotate; how to distinguish pure renames from semantic unit or privacy changes; how to model optionality, defaults, nullability, validation, and version compatibility; whether bidirectional mappings deserve more or less suspicion; how to handle generic mapping frameworks and code generation; whether mapping disagreement is operation-specific or true drift; how much unresolved flow is acceptable; which compiler/type-service integrations fit Reforge's portable CLI; whether history should be required or displayed; and whether maintainer value comes more from individual warnings, a representation-family visualization, or a machine-readable inventory.",
+  "uncertain": [
+    "evidence_strength",
+    "proposed_metrics",
+    "success_criteria",
+    "open_questions"
+  ]
+}
