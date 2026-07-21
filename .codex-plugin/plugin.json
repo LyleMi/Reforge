@@ -1,0 +1,27 @@
+{
+  "name": "reforge",
+  "version": "0.1.0",
+  "description": "Evidence-driven, approval-gated refactoring workflows for Codex",
+  "author": {
+    "name": "Reforge contributors",
+    "url": "https://github.com/LyleMi/Reforge"
+  },
+  "homepage": "https://lylemi.github.io/Reforge/",
+  "repository": "https://github.com/LyleMi/Reforge",
+  "license": "Apache-2.0",
+  "keywords": ["refactoring", "evidence", "workflow", "rust"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Reforge",
+    "shortDescription": "Evidence-driven refactoring workflows",
+    "longDescription": "Scan repositories, investigate selected evidence, apply an explicitly approved plan, and verify the result with durable local artifacts.",
+    "developerName": "Reforge contributors",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Scan this repository for refactoring evidence.",
+      "Plan a safe fix for selected Reforge issues.",
+      "Verify this approved Reforge workflow."
+    ]
+  }
+}

@@ -82,41 +82,42 @@ cargo install --path .
 reforge scan D:\path\to\project
 ```
 
-## Agent Skill
+## Agent Workflow
 
-The optional `skills/reforge-scan` skill teaches compatible agents to run the
-CLI, read schema 21 coverage and evidence, explain limitations, and recommend
-scoped follow-up work.
+The standard `reforge` plugin bundles `reforge-scan`, `reforge-plan`,
+`reforge-apply`, and `reforge-verify`, plus an optional read-only investigator.
+The workflow keeps durable schema-v1 artifacts and requires an explicit
+`reforge workflow approve` before source changes.
 
-Install the skill and CLI for Codex on Windows:
+Install the plugin and CLI for Codex on Windows:
 
 ```batch
-.\scripts\install-agent-skill.bat
+.\scripts\install-agent-workflow.bat
 ```
 
 Or use PowerShell directly:
 
 ```powershell
-.\scripts\install-agent-skill.ps1
+.\scripts\install-agent-workflow.ps1
 ```
 
 On macOS or Linux:
 
 ```bash
-sh scripts/install-agent-skill.sh
+sh scripts/install-agent-workflow.sh
 ```
 
-Pass `-Force` or `--force` to update an existing skill. Pass `-SkipCli` or
-`--skip-cli` to install only the skill. A generic skill directory can be
-selected explicitly:
+Pass `-Force` or `--force` for an atomic update. Pass `-SkipCli` or `--skip-cli`
+to omit CLI installation, `--skip-agent` to omit the investigator, or
+`--skills-only` with a custom skills directory:
 
 ```bash
-sh scripts/install-agent-skill.sh --agent generic --skills-dir ~/.agent/skills --force
+sh scripts/install-agent-workflow.sh --skills-only --skills-dir ~/.agent/skills --force
 ```
 
-The [agent workflow research](docs/agent-workflows.md) compares the current
-single skill with a proposed safe, resumable scan/plan/apply/verify workflow.
-Only `reforge-scan` is implemented today.
+The older `install-agent-skill.*` entry points remain compatible and install
+only `reforge-scan`. See [Agent Workflows](docs/agent-workflows.md) for commands,
+artifacts, phase transitions, and trust boundaries.
 
 ## Documentation
 
@@ -284,7 +285,6 @@ Frontend changes under `web/report-app` must regenerate and commit
 
 ## Roadmap
 
-Near-term work is documented in the
-[agent workflow implementation plan](docs/agent-workflows.md): first repair and
-test the schema/CLI documentation contract, then prototype a read-only plan
-phase before adding optional parallel investigation or source modification.
+Workflow evaluation and future autonomy limits are tracked in
+[Agent Workflows](docs/agent-workflows.md). Reforge will remain a deterministic
+evidence engine rather than a quality or refactor-safety predictor.
