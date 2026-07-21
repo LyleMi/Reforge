@@ -7,6 +7,7 @@ struct CoverageProjectionInput<'a> {
     findings: &'a [Finding],
     parse_failures: &'a [ParseFailure],
     unresolved_dependency_edges: usize,
+    flow_analysis: &'a crate::model::FlowAnalysisSummary,
     churn: &'a crate::model::ChurnSummary,
     unity_observed: bool,
 }
@@ -89,74 +90,128 @@ fn detector_execution_receipts(context: &CoverageContext<'_, '_>) -> Vec<Detecto
         .input
         .manifest
         .iter()
-        .map(|entry| {
-            let applicable = detector_is_applicable(entry, context.detected_languages);
-            let analyzed_entities = if applicable {
-                context
-                    .entity_counts
-                    .get(&entry.entity_scope)
-                    .copied()
-                    .unwrap_or_else(|| {
-                        context
-                            .input
-                            .findings
-                            .iter()
-                            .filter(|finding| finding.kind == entry.kind)
-                            .count()
-                    })
-            } else {
-                0
-            };
-            let parse_sensitive = detector_requires_parse(entry);
-            let unresolved = if entry.approach == crate::model::DetectionApproach::GraphAnalysis {
-                context.input.unresolved_dependency_edges
-            } else {
-                0
-            };
-            DetectorExecutionReceipt {
-                kind: entry.kind,
-                status: if applicable {
-                    DetectorExecutionStatus::Completed
-                } else {
-                    DetectorExecutionStatus::NotApplicable
-                },
-                analyzed_entities,
-                candidate_groups: if entry.entity_scope == crate::model::EntityScope::FindingGroup {
-                    context
-                        .input
-                        .findings
-                        .iter()
-                        .filter(|finding| finding.kind == entry.kind)
-                        .count()
-                } else {
-                    0
-                },
-                unobservable_count: if applicable && parse_sensitive {
-                    context.input.parse_failures.len() + unresolved
-                } else {
-                    0
-                },
-                unobservable_reasons: if applicable {
-                    [
-                        (!context.input.parse_failures.is_empty() && parse_sensitive).then(|| {
-                            format!(
-                                "{} source files failed syntax parsing",
-                                context.input.parse_failures.len()
-                            )
-                        }),
-                        (unresolved > 0).then(|| {
-                            format!("{unresolved} dependency edges could not be resolved")
-                        }),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    .collect()
-                } else {
-                    Vec::new()
-                },
-            }
-        })
+        .map(|entry| detector_execution_receipt(entry, context))
         .collect()
+}
+
+fn detector_execution_receipt(
+    entry: &crate::model::DetectorManifestEntry,
+    context: &CoverageContext<'_, '_>,
+) -> DetectorExecutionReceipt {
+    if entry.kind == FindingKind::AdapterFlowBypass
+        && context.input.flow_analysis.status == crate::model::FlowAnalysisStatus::Disabled
+    {
+        return DetectorExecutionReceipt {
+            kind: entry.kind,
+            status: DetectorExecutionStatus::NotApplicable,
+            analyzed_entities: 0,
+            candidate_groups: 0,
+            unobservable_count: 0,
+            unobservable_reasons: vec!["data-flow mode is off".into()],
+        };
+    }
+    let applicable = detector_runtime_applicable(entry, context);
+    let parse_sensitive = detector_requires_parse(entry);
+    let unresolved = detector_unresolved_count(entry, context);
+    DetectorExecutionReceipt {
+        kind: entry.kind,
+        status: if applicable {
+            DetectorExecutionStatus::Completed
+        } else {
+            DetectorExecutionStatus::NotApplicable
+        },
+        analyzed_entities: analyzed_entity_count(entry, context, applicable),
+        candidate_groups: finding_group_count(entry, context),
+        unobservable_count: if applicable && parse_sensitive {
+            context.input.parse_failures.len() + unresolved
+        } else {
+            0
+        },
+        unobservable_reasons: detector_unobservable_reasons(
+            entry,
+            context,
+            applicable,
+            parse_sensitive,
+            unresolved,
+        ),
+    }
+}
+
+fn analyzed_entity_count(
+    entry: &crate::model::DetectorManifestEntry,
+    context: &CoverageContext<'_, '_>,
+    applicable: bool,
+) -> usize {
+    if entry.kind == FindingKind::AdapterFlowBypass {
+        return context.input.flow_analysis.functions_analyzed;
+    }
+    if !applicable {
+        return 0;
+    }
+    context
+        .entity_counts
+        .get(&entry.entity_scope)
+        .copied()
+        .unwrap_or_else(|| finding_group_count(entry, context))
+}
+
+fn finding_group_count(
+    entry: &crate::model::DetectorManifestEntry,
+    context: &CoverageContext<'_, '_>,
+) -> usize {
+    if entry.entity_scope == crate::model::EntityScope::FindingGroup {
+        context
+            .input
+            .findings
+            .iter()
+            .filter(|finding| finding.kind == entry.kind)
+            .count()
+    } else {
+        0
+    }
+}
+
+fn detector_unresolved_count(
+    entry: &crate::model::DetectorManifestEntry,
+    context: &CoverageContext<'_, '_>,
+) -> usize {
+    if entry.kind == FindingKind::AdapterFlowBypass {
+        context.input.flow_analysis.unresolved_edges + context.input.flow_analysis.truncated_paths
+    } else if entry.approach == crate::model::DetectionApproach::GraphAnalysis {
+        context.input.unresolved_dependency_edges
+    } else {
+        0
+    }
+}
+
+fn detector_unobservable_reasons(
+    entry: &crate::model::DetectorManifestEntry,
+    context: &CoverageContext<'_, '_>,
+    applicable: bool,
+    parse_sensitive: bool,
+    unresolved: usize,
+) -> Vec<String> {
+    if !applicable {
+        return Vec::new();
+    }
+    [
+        (!context.input.parse_failures.is_empty() && parse_sensitive).then(|| {
+            format!(
+                "{} source files failed syntax parsing",
+                context.input.parse_failures.len()
+            )
+        }),
+        (unresolved > 0).then(|| {
+            if entry.kind == FindingKind::AdapterFlowBypass {
+                format!("{unresolved} data-flow edges or bounded paths were unresolved")
+            } else {
+                format!("{unresolved} dependency edges could not be resolved")
+            }
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 fn coverage_manifest_entries(context: &CoverageContext<'_, '_>) -> Vec<CoverageManifestEntry> {
@@ -175,9 +230,10 @@ fn coverage_manifest_entry(
     ),
 ) -> CoverageManifestEntry {
             let entries = context.input.manifest.iter().filter(|entry| entry.mechanism == mechanism && entry.entity_scope == entity_scope).collect::<Vec<_>>();
-            let applicable = entries.iter().filter(|entry| detector_is_applicable(entry, context.detected_languages)).collect::<Vec<_>>();
+            let active_entries = entries.iter().copied().filter(|entry| entry.kind != FindingKind::AdapterFlowBypass || context.input.flow_analysis.status != crate::model::FlowAnalysisStatus::Disabled).collect::<Vec<_>>();
+            let applicable = active_entries.iter().copied().filter(|entry| detector_is_applicable(entry, context.detected_languages)).collect::<Vec<_>>();
             let completed_detectors = applicable.iter().map(|entry| entry.kind).collect::<Vec<_>>();
-            let unsupported_detectors = entries.iter().filter(|entry| !detector_is_applicable(entry, context.detected_languages)).map(|entry| entry.kind).collect::<Vec<_>>();
+            let unsupported_detectors = active_entries.iter().copied().filter(|entry| !detector_is_applicable(entry, context.detected_languages)).map(|entry| entry.kind).collect::<Vec<_>>();
             let entity_count = context.entity_counts.get(&entity_scope).copied().unwrap_or_else(|| applicable.iter().map(|entry| context.input.findings.iter().filter(|finding| finding.kind == entry.kind).count()).sum());
             let graph_cell = applicable.iter().any(|entry| entry.approach == crate::model::DetectionApproach::GraphAnalysis);
             let partial = !unsupported_detectors.is_empty() || (!context.input.parse_failures.is_empty() && applicable.iter().any(|entry| detector_requires_parse(entry))) || (graph_cell && context.input.unresolved_dependency_edges > 0);
@@ -226,7 +282,7 @@ fn coverage_summary(context: &CoverageContext<'_, '_>) -> CoverageSummary {
         detected_languages: context.detected_languages.iter().cloned().collect(),
         applicable_detectors: context.input.manifest
             .iter()
-            .filter(|entry| detector_is_applicable(entry, context.detected_languages))
+            .filter(|entry| detector_runtime_applicable(entry, context))
             .map(|entry| entry.kind)
             .collect(),
         analyzed_entities: context.entity_counts.clone(),
@@ -436,6 +492,15 @@ fn detector_is_applicable(
     })
 }
 
+fn detector_runtime_applicable(
+    entry: &crate::model::DetectorManifestEntry,
+    context: &CoverageContext<'_, '_>,
+) -> bool {
+    detector_is_applicable(entry, context.detected_languages)
+        && (entry.kind != FindingKind::AdapterFlowBypass
+            || context.input.flow_analysis.status != crate::model::FlowAnalysisStatus::Disabled)
+}
+
 fn detected_language(path: &Path) -> Option<String> {
     const EXTENSION_LANGUAGES: &[(&str, &str)] = &[
         ("rs", "rust"),
@@ -478,8 +543,10 @@ fn detected_language(path: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+    use crate::cli::{ChurnMode, ScanArgs};
 
     fn source_file(path: &str) -> SourceFile {
         SourceFile {
@@ -503,5 +570,72 @@ mod tests {
         assert!(languages.contains("bash"));
         assert!(languages.contains("powershell"));
         assert_eq!(detected_language(Path::new("module.psd1")), None);
+    }
+
+    #[test]
+    fn policy_scan_round_trips_all_report_outputs() -> anyhow::Result<()> {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("reforge-data-flow-{suffix}"));
+        std::fs::create_dir_all(root.join("src/application"))?;
+        std::fs::write(
+            root.join("src/application/mod.rs"),
+            "pub fn route(input: String) { let alias = input; crate::transport::send(alias); }",
+        )?;
+        std::fs::write(
+            root.join("src/transport.rs"),
+            "pub fn send(value: String) { let _accepted = value; }",
+        )?;
+        std::fs::write(
+            root.join("reforge.toml"),
+            r#"
+churn = "off"
+
+[data-flow]
+mode = "policy"
+max-hops = 4
+
+[[data-flow.boundaries]]
+name = "http-client"
+protected-paths = ["src/application"]
+adapter-paths = ["src/adapters/http"]
+sink-symbols = ["crate::transport::send"]
+"#,
+        )?;
+
+        let mut args = ScanArgs::defaults_for_path(root.clone());
+        args.churn = Some(ChurnMode::Off);
+        args.finding_controls.only = Some("adapter_flow_bypass".into());
+        let mut progress = NoopProgress;
+        let report = scan_report(&args, &mut progress)?;
+        assert_eq!(report.schema_version, 22);
+        assert_eq!(report.findings.len(), 1);
+        assert!(report.findings[0].flow_witness.is_some());
+
+        let json = serde_json::to_string(&report)?;
+        let decoded: ScanReport = serde_json::from_str(&json)?;
+        assert_eq!(decoded.findings[0].id, report.findings[0].id);
+        let yaml = serde_yaml::to_string(&report)?;
+        let decoded_yaml: ScanReport = serde_yaml::from_str(&yaml)?;
+        assert_eq!(decoded_yaml.flow_analysis, report.flow_analysis);
+        let mut human = Vec::new();
+        crate::output::write_human_report(&mut human, &report)?;
+        let human = String::from_utf8(human)?;
+        assert!(human.contains("Data flow"));
+        assert!(human.contains("adapter_flow_bypass"));
+        let mut sarif = Vec::new();
+        crate::output::write_sarif_report(&mut sarif, &report)?;
+        let sarif: serde_json::Value = serde_json::from_slice(&sarif)?;
+        assert!(sarif["runs"][0]["results"][0]["relatedLocations"]
+            .as_array()
+            .is_some_and(|locations| !locations.is_empty()));
+        let mut html = Vec::new();
+        crate::output::write_html_report(&mut html, &report)?;
+        let html = String::from_utf8(html)?;
+        assert!(html.contains("&quot;schema_version&quot;:22") || html.contains("\"schema_version\":22"));
+
+        std::fs::remove_dir_all(root)?;
+        Ok(())
     }
 }

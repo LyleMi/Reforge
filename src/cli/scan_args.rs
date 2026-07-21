@@ -199,7 +199,7 @@ pub struct CiArgs {
     #[arg(long, value_enum, default_value_t = BaselineShow::All)]
     pub show: BaselineShow,
 
-    /// Exit with a failure when unsuppressed findings are new relative to a schema 21 baseline.
+    /// Exit with a failure when unsuppressed findings are new relative to a schema 22 baseline.
     #[arg(long)]
     pub fail_on_findings: bool,
 }

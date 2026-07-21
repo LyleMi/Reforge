@@ -166,6 +166,24 @@ test-only and protocol literals remain important confounders to inspect.
 Drift detectors use path and identifier heuristics, so grouped cross-file
 findings generally provide stronger evidence than isolated matches.
 
+## Exact Rust Adapter Flow
+
+`adapter_flow_bypass` is an opt-in policy finding backed by an ordered exact
+Rust value-transfer witness from a configured protected path to a configured
+sink without visiting an allowed adapter path. The bounded source set is
+function parameters declared in protected Rust paths. It remains separate from
+`adapter_boundary_bypass`: the flow detector proves in-scope assignment,
+argument, return, and project-local call edges; the drift detector remains a
+naming and dependency heuristic.
+
+The detector requires `[data-flow].mode = "policy"`. It never emits when a
+witness edge is unresolved, unsupported, or beyond `max-hops`. Findings carry
+`flow.module_hops`, `flow.call_edges`, `flow.path_steps`,
+`flow.unresolved_edges`, `flow.policy_conforming_paths`, and
+`flow.policy_bypass_paths`, plus a typed `flow_witness`. A conforming comparison
+path is retained when observed but is not required before an exact bypass can
+be reported.
+
 ## Documentation Signals
 
 When the scan root looks like a project, Reforge checks for a stable

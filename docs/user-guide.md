@@ -217,6 +217,7 @@ Reports contain four main data layers plus suppression audit context:
 - `agent_evidence`: context closure and test reachability evidence for files
   and issues.
 - `suppression_summary`: counts of findings removed by suppressions.
+- `flow_analysis`: opt-in exact Rust edge and capability coverage.
 - `issues`: compatible atomic evidence grouped into refactoring issues.
 - `detector_manifest`: detector coverage, classification, and overlap metadata.
 - `findings`: actionable refactoring signals derived from thresholds and
@@ -239,6 +240,34 @@ private named free functions only when no same-name reference appears outside
 the function body. Public/exported functions, methods, and common entry-point
 names are skipped.
 
+## Exact Rust Adapter Flows
+
+Add a `[data-flow]` policy to `reforge.toml` when a repository has an explicit
+adapter ownership rule:
+
+```toml
+[data-flow]
+mode = "policy"
+max-hops = 4
+
+[[data-flow.boundaries]]
+name = "http-client"
+protected-paths = ["src/domain", "src/application"]
+adapter-paths = ["src/adapters/http"]
+sink-symbols = ["crate::transport::send"]
+exempt-paths = ["src/bin"]
+```
+
+Use `mode = "observe"` to inspect coverage without emitting policy findings.
+The default `off` mode performs no flow analysis. Read `flow_analysis` before
+interpreting a quiet report: `partial` lists unresolved constructs or depth
+truncation, and no speculative edge is used in a finding.
+
+An `adapter_flow_bypass` includes ordered witness steps in human, JSON/YAML,
+SARIF, and HTML output. Review the named source, exact call/assignment chain,
+configured adapter, optional conforming path, and proposed routing seam. The
+finding is architectural maintainability evidence, not a security claim.
+
 ## Churn
 
 The default `--churn auto` mode collects git churn when the scan root is inside
@@ -253,9 +282,9 @@ ignored so large mechanical changes do not dominate results.
 ## CI Gates and Baselines
 
 Use `--fail-on-findings` with `--baseline <PATH>` to make a scan exit nonzero
-when unsuppressed evidence IDs are absent from a prior schema 21 JSON or YAML
+when unsuppressed evidence IDs are absent from a prior schema 22 JSON or YAML
 report. Reforge writes the requested report before returning the failing exit
-status. The gate requires a baseline because v21 does not assign severity,
+status. The gate requires a baseline because v22 does not assign severity,
 priority, or a readiness score.
 
 `--baseline-mode` controls the selected findings:
@@ -327,7 +356,7 @@ git churn.
 | `--min-data-clump-occurrences` | `4` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a specific configuration file. |
-| `--baseline` | none | Read a prior schema 21 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 22 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new` | Select `new` or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new` or `all` current findings in human baseline reports. |
 | `--fail-on-findings` | false | Exit nonzero when unsuppressed finding IDs are new relative to the baseline. |

@@ -192,6 +192,6 @@ mod tests {
         .expect_err("schema 20 must not be accepted as a baseline");
 
         assert!(error.to_string().contains("schema version 20"));
-        assert!(error.to_string().contains("schema 21"));
+        assert!(error.to_string().contains("schema 22"));
     }
 }

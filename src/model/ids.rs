@@ -2,7 +2,7 @@ use super::*;
 
 use super::evidence::fnv1a64;
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 21;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 22;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -148,6 +148,18 @@ pub enum MetricId {
     DocumentationMissingCliFlags,
     #[serde(rename = "documentation.missing_schema_fields")]
     DocumentationMissingSchemaFields,
+    #[serde(rename = "flow.module_hops")]
+    FlowModuleHops,
+    #[serde(rename = "flow.call_edges")]
+    FlowCallEdges,
+    #[serde(rename = "flow.path_steps")]
+    FlowPathSteps,
+    #[serde(rename = "flow.unresolved_edges")]
+    FlowUnresolvedEdges,
+    #[serde(rename = "flow.policy_conforming_paths")]
+    FlowPolicyConformingPaths,
+    #[serde(rename = "flow.policy_bypass_paths")]
+    FlowPolicyBypassPaths,
 }
 
 impl MetricId {
@@ -156,7 +168,7 @@ impl MetricId {
     }
 }
 
-const METRIC_IDS: [&str; 38] = [
+const METRIC_IDS: [&str; 44] = [
     "file.loc",
     "file.imports",
     "file.public_items",
@@ -195,6 +207,12 @@ const METRIC_IDS: [&str; 38] = [
     "documentation.risk",
     "documentation.missing_cli_flags",
     "documentation.missing_schema_fields",
+    "flow.module_hops",
+    "flow.call_edges",
+    "flow.path_steps",
+    "flow.unresolved_edges",
+    "flow.policy_conforming_paths",
+    "flow.policy_bypass_paths",
 ];
 
 impl std::fmt::Display for MetricId {

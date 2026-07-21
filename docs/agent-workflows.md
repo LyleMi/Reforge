@@ -1,6 +1,6 @@
 # Agent Workflows
 
-Reforge ships a deterministic, resumable workflow around schema 21 evidence. The scanner does not assign quality, priority, severity, readiness, or hotspot scores. Selection and refactoring judgment remain review decisions.
+Reforge ships a deterministic, resumable workflow around schema 22 evidence. The scanner does not assign quality, priority, severity, readiness, or hotspot scores. Selection and refactoring judgment remain review decisions.
 
 ## Commands and phases
 
@@ -23,7 +23,7 @@ reforge workflow rescan .reforge/runs/run-...
 reforge workflow finish .reforge/runs/run-...
 ```
 
-`start` runs a complete schema 21 scan and stores the effective scan command and report, config, and source fingerprints. The default run directory is `.reforge/runs/run-<epoch>-<report-hash>/`; `--run-dir` selects an exact external or project-local directory.
+`start` runs a complete schema 22 scan and stores the effective scan command and report, config, and source fingerprints. The default run directory is `.reforge/runs/run-<epoch>-<report-hash>/`; `--run-dir` selects an exact external or project-local directory.
 
 `select` accepts only issue IDs present in `scan.json`. `advance` validates one immutable investigation per selected issue, then validates `plan.json`. `status` and `validate` never mutate artifacts.
 

@@ -1,6 +1,8 @@
 use super::*;
 use crate::cli::ChurnMode;
 
+include!("data_flow.rs");
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScanSummary {
@@ -237,6 +239,7 @@ pub struct ScanReport {
     pub agent_evidence: AgentEvidence,
     pub unity_project: UnityProjectReport,
     pub suppression_summary: SuppressionSummary,
+    pub flow_analysis: FlowAnalysisSummary,
     pub coverage_manifest: Vec<CoverageManifestEntry>,
     pub coverage_summary: CoverageSummary,
     pub detector_execution: Vec<DetectorExecutionReceipt>,

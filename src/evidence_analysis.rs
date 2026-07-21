@@ -68,6 +68,7 @@ impl From<FindingInput> for Finding {
             issue_id: None,
             message: input.message,
             related_locations: input.related_locations,
+            flow_witness: None,
         };
         finding.refresh_id();
         finding

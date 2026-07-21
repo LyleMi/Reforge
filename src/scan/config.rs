@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
+use globset::Glob;
 use serde::{Deserialize, Serialize};
 
 use crate::cli::{
@@ -45,6 +46,45 @@ struct ReforgeConfig {
     ignore_paths: Vec<String>,
     suppressions: Vec<ConfigSuppression>,
     unity: UnityConfig,
+    data_flow: DataFlowConfig,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum DataFlowMode {
+    #[default]
+    Off,
+    Observe,
+    Policy,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+pub(crate) struct DataFlowConfig {
+    pub mode: DataFlowMode,
+    pub max_hops: usize,
+    pub boundaries: Vec<DataFlowBoundaryConfig>,
+}
+
+impl Default for DataFlowConfig {
+    fn default() -> Self {
+        Self {
+            mode: DataFlowMode::Off,
+            max_hops: 4,
+            boundaries: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub(crate) struct DataFlowBoundaryConfig {
+    pub name: String,
+    pub protected_paths: Vec<String>,
+    pub adapter_paths: Vec<String>,
+    pub sink_symbols: Vec<String>,
+    #[serde(default)]
+    pub exempt_paths: Vec<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -70,6 +110,7 @@ pub(super) struct ConfigSuppression {
 pub(super) struct EffectiveScanConfig {
     pub args: ScanArgs,
     pub suppressions: Vec<ConfigSuppression>,
+    pub data_flow: DataFlowConfig,
 }
 
 #[derive(Debug, Serialize)]
@@ -94,6 +135,7 @@ pub(crate) struct EffectiveConfigOutput {
     max_unity_prefab_objects: usize,
     max_unity_serialized_fields: usize,
     max_unity_lifecycle_methods: usize,
+    data_flow: DataFlowConfig,
 }
 
 #[derive(Debug, Serialize)]
@@ -154,6 +196,7 @@ struct ReforgeConfigTemplate {
     churn_max_commit_lines: usize,
     ignore_paths: Vec<String>,
     unity: UnityConfigTemplate,
+    data_flow: DataFlowConfig,
 }
 
 #[derive(Debug, Serialize)]
@@ -208,7 +251,7 @@ impl From<&ReforgeConfig> for ConfigThresholdDefaults {
     }
 }
 
-pub(crate) fn effective_scan_config(args: &ScanArgs, root: &Path) -> Result<EffectiveScanConfig> {
+pub(super) fn effective_scan_config(args: &ScanArgs, root: &Path) -> Result<EffectiveScanConfig> {
     let mut effective = args.clone();
     let config_path = resolve_config_path(args.config.as_deref(), root);
     let config = match &config_path {
@@ -218,6 +261,10 @@ pub(crate) fn effective_scan_config(args: &ScanArgs, root: &Path) -> Result<Effe
     let suppressions = config
         .as_ref()
         .map(|config| config.suppressions.clone())
+        .unwrap_or_default();
+    let data_flow = config
+        .as_ref()
+        .map(|config| config.data_flow.clone())
         .unwrap_or_default();
 
     apply_config_defaults(&mut effective, args, config.as_ref());
@@ -244,6 +291,7 @@ pub(crate) fn effective_scan_config(args: &ScanArgs, root: &Path) -> Result<Effe
     Ok(EffectiveScanConfig {
         args: effective,
         suppressions,
+        data_flow,
     })
 }
 
@@ -261,7 +309,9 @@ pub(crate) fn effective_config_output(
     root: &Path,
 ) -> Result<EffectiveConfigOutput> {
     let effective = effective_scan_config(args, root)?;
-    Ok(EffectiveConfigOutput::from(&effective.args))
+    let mut output = EffectiveConfigOutput::from(&effective.args);
+    output.data_flow = effective.data_flow;
+    Ok(output)
 }
 
 pub(crate) fn default_config_toml() -> Result<String> {
@@ -284,9 +334,83 @@ fn resolve_config_path(config_path: Option<&Path>, root: &Path) -> Option<PathBu
 fn parse_config_file(path: &Path) -> Result<ReforgeConfig> {
     let contents = fs::read_to_string(path)
         .with_context(|| format!("failed to read config file {}", path.display()))?;
-    let config = toml::from_str(&contents)
+    let config: ReforgeConfig = toml::from_str(&contents)
         .with_context(|| format!("failed to parse config file {}", path.display()))?;
+    validate_data_flow_config(&config.data_flow)
+        .with_context(|| format!("invalid data-flow configuration in {}", path.display()))?;
     Ok(config)
+}
+
+fn validate_data_flow_config(config: &DataFlowConfig) -> Result<()> {
+    if config.max_hops == 0 {
+        bail!("data-flow max-hops must be greater than zero");
+    }
+    if config.mode == DataFlowMode::Policy && config.boundaries.is_empty() {
+        bail!("data-flow policy mode requires at least one boundary");
+    }
+    let mut names = std::collections::BTreeSet::new();
+    for boundary in &config.boundaries {
+        validate_data_flow_boundary(boundary)?;
+        if !names.insert(boundary.name.as_str()) {
+            bail!("duplicate data-flow boundary name {:?}", boundary.name);
+        }
+    }
+    Ok(())
+}
+
+fn validate_data_flow_boundary(boundary: &DataFlowBoundaryConfig) -> Result<()> {
+    if boundary.name.trim().is_empty() {
+        bail!("data-flow boundary names must not be empty");
+    }
+    if boundary.protected_paths.is_empty()
+        || boundary.adapter_paths.is_empty()
+        || boundary.sink_symbols.is_empty()
+    {
+        bail!(
+            "data-flow boundary {:?} requires protected-paths, adapter-paths, and sink-symbols",
+            boundary.name
+        );
+    }
+    for pattern in boundary
+        .protected_paths
+        .iter()
+        .chain(&boundary.adapter_paths)
+        .chain(&boundary.exempt_paths)
+    {
+        validate_boundary_pattern(&boundary.name, pattern)?;
+    }
+    for symbol in &boundary.sink_symbols {
+        if !is_fully_qualified_rust_symbol(symbol) {
+            bail!(
+                "data-flow boundary {:?} sink symbol {:?} must be a fully qualified crate:: Rust function",
+                boundary.name,
+                symbol
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_boundary_pattern(boundary: &str, pattern: &str) -> Result<()> {
+    if pattern.trim().is_empty() {
+        bail!("data-flow boundary {boundary:?} contains an empty path");
+    }
+    Glob::new(pattern).with_context(|| {
+        format!("data-flow boundary {boundary:?} contains invalid glob {pattern:?}")
+    })?;
+    Ok(())
+}
+
+fn is_fully_qualified_rust_symbol(symbol: &str) -> bool {
+    let mut segments = symbol.split("::");
+    segments.next() == Some("crate")
+        && segments.clone().count() >= 1
+        && segments.all(|segment| {
+            !segment.is_empty()
+                && segment.chars().enumerate().all(|(index, ch)| {
+                    ch == '_' || ch.is_ascii_alphanumeric() && (index > 0 || !ch.is_ascii_digit())
+                })
+        })
 }
 
 fn discover_config_path(root: &Path) -> Option<PathBuf> {
@@ -386,6 +510,7 @@ impl From<&ScanArgs> for EffectiveConfigOutput {
             max_unity_prefab_objects: args.max_unity_prefab_objects,
             max_unity_serialized_fields: args.max_unity_serialized_fields,
             max_unity_lifecycle_methods: args.max_unity_lifecycle_methods,
+            data_flow: DataFlowConfig::default(),
         }
     }
 }
@@ -424,6 +549,86 @@ impl From<&ScanArgs> for ReforgeConfigTemplate {
                 max_serialized_fields: args.max_unity_serialized_fields,
                 max_lifecycle_methods: args.max_unity_lifecycle_methods,
             },
+            data_flow: DataFlowConfig::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn boundary() -> DataFlowBoundaryConfig {
+        DataFlowBoundaryConfig {
+            name: "http-client".into(),
+            protected_paths: vec!["src/application/**".into()],
+            adapter_paths: vec!["src/adapters/http/**".into()],
+            sink_symbols: vec!["crate::transport::send".into()],
+            exempt_paths: vec!["src/bin/**".into()],
+        }
+    }
+
+    #[test]
+    fn validates_complete_data_flow_policy() {
+        let config = DataFlowConfig {
+            mode: DataFlowMode::Policy,
+            max_hops: 4,
+            boundaries: vec![boundary()],
+        };
+        validate_data_flow_config(&config).unwrap();
+    }
+
+    #[test]
+    fn rejects_incomplete_or_ambiguous_data_flow_policy() {
+        let mut config = DataFlowConfig {
+            mode: DataFlowMode::Policy,
+            max_hops: 0,
+            boundaries: Vec::new(),
+        };
+        assert!(
+            validate_data_flow_config(&config)
+                .unwrap_err()
+                .to_string()
+                .contains("max-hops")
+        );
+        config.max_hops = 4;
+        assert!(
+            validate_data_flow_config(&config)
+                .unwrap_err()
+                .to_string()
+                .contains("boundary")
+        );
+        config.boundaries = vec![boundary(), boundary()];
+        assert!(
+            validate_data_flow_config(&config)
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate")
+        );
+        config.boundaries.truncate(1);
+        config.boundaries[0].sink_symbols = vec!["transport::send".into()];
+        assert!(
+            validate_data_flow_config(&config)
+                .unwrap_err()
+                .to_string()
+                .contains("fully qualified")
+        );
+        config.boundaries[0] = boundary();
+        config.boundaries[0].protected_paths = vec!["[invalid".into()];
+        assert!(
+            validate_data_flow_config(&config)
+                .unwrap_err()
+                .to_string()
+                .contains("invalid glob")
+        );
+    }
+
+    #[test]
+    fn generated_config_keeps_data_flow_off() {
+        let generated = default_config_toml().unwrap();
+        assert!(generated.contains("[data-flow]"));
+        assert!(generated.contains("mode = \"off\""));
+        let parsed: ReforgeConfig = toml::from_str(&generated).unwrap();
+        assert_eq!(parsed.data_flow.mode, DataFlowMode::Off);
     }
 }

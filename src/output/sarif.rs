@@ -3,7 +3,7 @@ use std::io::{self, Write};
 
 use serde_json::{Value, json};
 
-use crate::model::{Issue, ScanReport};
+use crate::model::{Finding, Issue, ScanReport};
 
 pub fn print_sarif_report(report: &ScanReport) -> io::Result<()> {
     write_sarif_report(std::io::stdout().lock(), report)
@@ -39,7 +39,7 @@ fn sarif_log(report: &ScanReport) -> Value {
             },
             "results": report.issues
                 .iter()
-                .map(|issue| sarif_result(issue, &rule_indices))
+                .map(|issue| sarif_result(issue, &report.findings, &rule_indices))
                 .collect::<Vec<_>>(),
             "properties": {
                 "reforgeSchemaVersion": report.schema_version,
@@ -80,7 +80,26 @@ fn sarif_rule(id: &str) -> Value {
     })
 }
 
-fn sarif_result(issue: &Issue, rule_indices: &BTreeMap<String, usize>) -> Value {
+fn sarif_result(
+    issue: &Issue,
+    findings: &[Finding],
+    rule_indices: &BTreeMap<String, usize>,
+) -> Value {
+    let witness_finding = findings
+        .iter()
+        .find(|finding| finding.id == issue.primary_finding_id);
+    let related_locations = witness_finding
+        .into_iter()
+        .flat_map(|finding| finding.related_locations.iter())
+        .enumerate()
+        .map(|(index, location)| {
+            json!({
+                "id": index + 1,
+                "message": { "text": location.name },
+                "physicalLocation": physical_location(&location.path, Some(location.line))
+            })
+        })
+        .collect::<Vec<_>>();
     json!({
         "ruleId": issue.family,
         "ruleIndex": rule_indices.get(&issue.family).copied().unwrap_or(0),
@@ -89,6 +108,7 @@ fn sarif_result(issue: &Issue, rule_indices: &BTreeMap<String, usize>) -> Value 
         "locations": [{
             "physicalLocation": physical_location(&issue.path, issue.line)
         }],
+        "relatedLocations": related_locations,
         "partialFingerprints": {
             "reforgeIssueId": issue.id
         },
@@ -98,7 +118,8 @@ fn sarif_result(issue: &Issue, rule_indices: &BTreeMap<String, usize>) -> Value 
             "construct": issue.construct,
             "mechanism": issue.mechanism,
             "action": issue.action,
-            "evidence_ids": issue.finding_ids
+            "evidence_ids": issue.finding_ids,
+            "flow_witness": witness_finding.and_then(|finding| finding.flow_witness.as_ref())
         }
     })
 }

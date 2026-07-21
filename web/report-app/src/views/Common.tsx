@@ -18,6 +18,7 @@ export function FindingRow({ finding, onFile }: { finding: EvidenceFinding; onFi
     <details><summary>Evidence</summary>
       {finding.metrics.map(metric => <p key={metric.name}><code>{metric.name}</code> {metric.value} {metric.unit}{metric.threshold != null ? ` · threshold ${metric.threshold}` : ""}</p>)}
       <p>{finding.recommendation}</p>
+      {finding.flow_witness && <div className="flow-witness"><p><b>Policy:</b> {finding.flow_witness.policy} · {finding.flow_witness.path_steps} exact steps · {finding.flow_witness.module_hops} module hops</p><ol>{finding.flow_witness.ordered_steps.map((step, index) => <li key={`${step.from}:${step.to}:${index}`}><code>{label(step.kind)}</code> {step.name} <button onClick={() => onFile(step.path)}>{location(step.path, step.line)}</button></li>)}</ol>{finding.flow_witness.conforming_path?.length ? <p>A conforming comparison path was also observed.</p> : null}</div>}
       {finding.related_locations.map(item => <button key={`${item.path}:${item.line}`} onClick={() => onFile(item.path)}>{location(item.path, item.line)}</button>)}
     </details>
   </article>;

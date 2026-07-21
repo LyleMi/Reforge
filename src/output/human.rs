@@ -94,6 +94,7 @@ fn render_human_report_view<'report>(
     context.render_baseline_diff();
     context.render_scan_details();
     context.render_unity();
+    context.render_flow_analysis();
     context.render_coverage();
 
     if report.findings.is_empty() {
@@ -117,6 +118,23 @@ struct ReportRenderContext<'output, 'report, 'diff> {
 }
 
 impl ReportRenderContext<'_, '_, '_> {
+    fn render_flow_analysis(&mut self) {
+        if self.report.flow_analysis.status == crate::model::FlowAnalysisStatus::Disabled {
+            return;
+        }
+        let flow = &self.report.flow_analysis;
+        self.output.push_str(&format!(
+            "\nData flow  {:?}  {} functions, {} exact edges\n",
+            flow.status, flow.functions_analyzed, flow.exact_edges
+        ));
+        if flow.unresolved_edges > 0 || flow.truncated_paths > 0 {
+            self.output.push_str(&format!(
+                "  coverage: {} unresolved edges, {} truncated paths\n",
+                flow.unresolved_edges, flow.truncated_paths
+            ));
+        }
+    }
+
     fn render_unity(&mut self) {
         use crate::model::UnityProjectStatus;
         let unity = &self.report.unity_project;
@@ -514,6 +532,7 @@ fn has_related_location_details(finding: &Finding) -> bool {
             | FindingKind::FixtureFactoryDrift
             | FindingKind::GenericBucketDrift
             | FindingKind::AdapterBoundaryBypass
+            | FindingKind::AdapterFlowBypass
             | FindingKind::StaleCompatibilityPath
             | FindingKind::DependencyCycle
     )

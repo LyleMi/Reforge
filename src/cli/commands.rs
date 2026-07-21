@@ -71,7 +71,7 @@ pub struct WorkflowSelectArgs {
     /// Workflow run directory containing run.json.
     pub run: PathBuf,
 
-    /// Stable schema 21 issue ID. Repeat to select multiple issues.
+    /// Stable schema 22 issue ID. Repeat to select multiple issues.
     #[arg(long = "issue", required = true)]
     pub issues: Vec<String>,
 

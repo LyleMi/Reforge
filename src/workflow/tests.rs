@@ -121,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_21_serialization_has_no_schema_20_ranking_fields() -> Result<()> {
+    fn schema_22_serialization_has_no_schema_20_ranking_fields() -> Result<()> {
         let root = temp_root("schema");
         fs::create_dir_all(root.join("src"))?;
         fs::write(root.join("src/lib.rs"), "one\ntwo\n")?;

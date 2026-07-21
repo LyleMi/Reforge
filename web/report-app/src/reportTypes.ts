@@ -4,7 +4,10 @@ export type FileRawMetric = { path: string; loc: number; imports: number; public
 export type LocatedRawMetric = Record<string, unknown> & { path: string; name?: string; line?: number };
 export type FindingMetric = { name: string; value: number; threshold?: number | null; excess_ratio?: number | null; unit: string; normalized?: number | null; percentile?: number | null };
 export type RelatedLocation = { path: string; line: number; name?: string | null };
-export type Finding = { id: string; kind: string; path: string; line?: number | null; metrics: FindingMetric[]; construct: string; mechanism: string; issue_id?: string | null; message: string; recommendation: string; related_locations: RelatedLocation[] };
+type FlowLocation = { id: string; kind: string; path: string; line: number; function: string; module: string; name: string };
+type FlowWitnessStep = { kind: string; resolution: string; from: string; to: string; path: string; line: number; name: string };
+type FlowWitness = { policy: string; source: FlowLocation; ordered_steps: FlowWitnessStep[]; sink: FlowLocation; module_hops: number; call_edges: number; path_steps: number; truncated: boolean; conforming_path?: RelatedLocation[] | null };
+export type Finding = { id: string; kind: string; path: string; line?: number | null; metrics: FindingMetric[]; construct: string; mechanism: string; issue_id?: string | null; message: string; recommendation: string; related_locations: RelatedLocation[]; flow_witness?: FlowWitness | null };
 export type Issue = { id: string; family: string; summary: string; construct: string; mechanism: string; action: string; path: string; line?: number | null; primary_finding_id: string; finding_ids: string[]; kinds: string[]; subject: Record<string, unknown> };
 export type DependencyGraphNode = { path: string; fan_in: number; fan_out: number };
 export type DependencyGraphEdge = { from: string; to: string };
@@ -24,6 +27,8 @@ export type DependencyGraph = { nodes: DependencyGraphNode[]; edges: DependencyG
 export type AgentEvidence = { files: FileAgentEvidence[]; issues: IssueAgentEvidence[] };
 export type SuppressionSummary = { suppressed_count: number; suppressed_by_kind: Record<string, number> };
 export type CoverageSummary = { detected_languages?: string[]; unobservable_reasons?: string[]; parse_failures?: unknown[]; unresolved_dependency_edges?: number };
+type FlowCapability = { language: string; local_def_use: string; direct_calls: string; fields: string; dynamic_dispatch: string; library_models: string; reasons: string[] };
+type FlowAnalysis = { status: string; functions_analyzed: number; exact_edges: number; unresolved_edges: number; truncated_paths: number; capabilities: FlowCapability[] };
 
 export type ScanReport = {
   schema_version: number;
@@ -36,6 +41,7 @@ export type ScanReport = {
   agent_evidence: AgentEvidence;
   unity_project: Record<string, unknown>;
   suppression_summary: SuppressionSummary;
+  flow_analysis: FlowAnalysis;
   coverage_manifest: CoverageCell[];
   coverage_summary: CoverageSummary;
   detector_execution: DetectorExecutionReceipt[];

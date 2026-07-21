@@ -32,6 +32,7 @@ pub enum FindingKind {
     FixtureFactoryDrift,
     GenericBucketDrift,
     AdapterBoundaryBypass,
+    AdapterFlowBypass,
     StaleCompatibilityPath,
     MissingDocumentationSet,
     MissingUserGuide,

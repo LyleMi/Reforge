@@ -1,10 +1,8 @@
 # Data-flow Evidence Execution Plan
 
-> **Status:** Temporary working RFC. This document guides investigation and
-> implementation sequencing; it is not a commitment to ship a default detector.
-> Replace it with normative architecture, detector, configuration, and schema
-> documentation when the public feature is accepted, or remove it if the
-> validation gates fail.
+> **Status:** Implemented decision record. Normative behavior now lives in the
+> architecture, detector, configuration, metrics, and schema documentation.
+> This file is retained only to audit the research and rollout rationale.
 >
 > **Decision:** Conditional go for a bounded, exact-edge Rust prototype. No-go
 > for a generic `abnormal_data_flow` detector or whole-program taint engine.
@@ -487,22 +485,16 @@ scripts/build-docs.sh /tmp/reforge-docs-data-flow
 Use a task-specific temporary output path. Do not commit generated scan reports
 or documentation build output.
 
-## Open decisions before coding
+## Resolved implementation decisions
 
-The Phase 0 review must resolve these points:
-
-1. Whether the first policy sink syntax names fully qualified functions only or
-   also supports file/path patterns.
-2. Whether `observe` is an internal harness mode or a supported CLI/config
-   value.
-3. Whether ordered `RelatedLocation` entries are sufficient or schema 22 needs
-   a typed optional witness object.
-4. Whether the first public detector requires a conforming comparison path or
-   only an explicit declared adapter.
-5. Whether policy configuration belongs in `reforge.toml` or a separate file
-   referenced from it.
-6. Which retained Rust repositories and semantic reference engine form the
-   Phase 2 corpus.
-
-No source implementation should begin until these decisions and the Phase 0
-fixture catalog are reviewed.
+1. Sink syntax accepts fully qualified `crate::...` free-function symbols only.
+2. `observe` is a supported config mode that emits coverage but no findings.
+3. Schema 22 uses ordered related locations and a typed optional
+   `flow_witness`; the internal graph is not serialized.
+4. A declared adapter is sufficient. A conforming comparison path is retained
+   when available but is not required to emit an exact bypass.
+5. Policy configuration belongs in `reforge.toml` and remains config-owned.
+6. The implementation is experimental and opt-in. Inline frozen Rust fixtures,
+   report contracts, self-scan, and benchmark checks are release gates; broader
+   independently labeled corpora remain a prerequisite for Phase 5 promotion,
+   not for retaining the opt-in detector.

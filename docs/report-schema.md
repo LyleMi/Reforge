@@ -1,12 +1,11 @@
 # Report Schema
 
-Schema 21 separates atomic evidence (`findings`) from decision units (`issues`)
-and adds `agent_evidence` for context closure and test reachability. It retains
-measurement, detector-execution, coverage, dependency, suppression, and Unity
-provenance without serializing a priority, severity, hotspot, scoring-policy,
+Schema 22 separates atomic evidence (`findings`) from decision units (`issues`),
+retains agent context, and adds opt-in exact Rust data-flow coverage and witness
+contracts. It does not serialize a priority, severity, hotspot, scoring-policy,
 or readiness model.
 
-JSON and YAML reports use schema version `21`. Older reports and baselines,
+JSON and YAML reports use schema version `22`. Older reports and baselines,
 including v20, are rejected and must be regenerated. The same Rust data model
 is serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 whose results represent issue decision units.
@@ -15,7 +14,7 @@ whose results represent issue decision units.
 
 ```json
 {
-  "schema_version": 21,
+  "schema_version": 22,
   "summary": {},
   "stats": {},
   "metrics_summary": {},
@@ -25,6 +24,7 @@ whose results represent issue decision units.
   "agent_evidence": {},
   "unity_project": {},
   "suppression_summary": {},
+  "flow_analysis": {},
   "coverage_manifest": [],
   "coverage_summary": {},
   "detector_execution": [],
@@ -37,7 +37,7 @@ whose results represent issue decision units.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `21`.
+- `schema_version`: report schema version. Current value is `22`.
 - `coverage_manifest`: normative 7 mechanisms × 6 entity scopes matrix with expectation, runtime status, detectors, entity count, and unobservable reasons.
 - `detector_execution`: one execution receipt per detector, including completed zero-finding runs.
 - `raw_metric_coverage`: observation state for all 18 canonical raw metrics. Disabled churn is `unavailable`, never observed zero pressure.
@@ -53,6 +53,8 @@ Top-level fields:
 - `unity_project`: Unity detection status, Editor/serialization metadata, asset statistics, asmdef graph, problem references, and Unity-specific coverage.
 - `suppression_summary`: aggregate counts for findings removed by
   suppressions.
+- `flow_analysis`: mode-aware Rust data-flow coverage, exact/unresolved edge
+  counts, truncation counts, and capability receipts.
 - `issues`: compatible atomic evidence grouped into stable human-facing
   refactoring issues.
 - `detector_manifest`: coverage and classification metadata for every finding
@@ -230,6 +232,9 @@ Finding fields:
 - `message`: human-readable summary.
 - `recommendation`: concise refactoring hint computed from `kind`.
 - `related_locations`: additional locations for grouped findings.
+- `flow_witness`: `null` except for `adapter_flow_bypass`; those findings carry
+  the policy, exact source/sink, ordered steps, module/call/path counts,
+  truncation state, and an optional conforming comparison path.
 
 `metrics` entries contain:
 
@@ -260,6 +265,26 @@ set of primary and related path/line locations. It intentionally does not
 include the representative location choice, related-location order, names,
 message text, or metric values. Baseline comparison therefore recognizes the
 same evidence group when detector traversal order or ranking changes.
+For `adapter_flow_bypass`, identity instead uses the detector kind, metric
+names, policy name, and stable source/sink node IDs. Ordered witness detail,
+messages, metric values, comments, formatting, and intermediate wrappers do
+not define the finding identity.
+
+## `flow_analysis`
+
+- `status`: `disabled`, `observed`, or `partial`.
+- `functions_analyzed`: indexed project-local Rust free functions.
+- `exact_edges`: exact assignment, argument-to-parameter, and
+  return-to-result edges.
+- `unresolved_edges`: unsupported or unresolved call/construct occurrences.
+- `truncated_paths`: searches stopped by `max-hops`.
+- `capabilities`: per-language status for `local_def_use`, `direct_calls`,
+  `fields`, `dynamic_dispatch`, and `library_models`, plus concrete reasons.
+
+An `observed` status describes only the declared Rust subset. Fields, methods,
+trait dispatch, macros, escaping closures, async causality, unsafe pointers,
+external crates, and library models are not inferred. `partial` must not be
+interpreted as an observed absence of paths.
 
 ## `issues`
 
@@ -316,13 +341,15 @@ by issue `family`, and each issue result contains:
 
 - `ruleId`: issue family.
 - `ruleIndex`: index into the run's rule table.
-- `level`: `note`; schema 21 does not assign severity.
+- `level`: `note`; schema 22 does not assign severity.
 - `message.text`: issue summary.
 - `locations[].physicalLocation`: primary path and line.
 - `partialFingerprints.reforgeIssueId`: stable issue `id`.
 - `properties.id`: stable issue `id`.
 - `properties.family`, `construct`, `mechanism`, and `action`.
 - `properties.evidence_ids`: member finding IDs.
+- `relatedLocations`: ordered witness locations when present.
+- `properties.flow_witness`: the typed witness or `null`.
 
 ## Finding Kinds
 
@@ -356,6 +383,7 @@ Current `kind` values:
 - `fixture_factory_drift`
 - `generic_bucket_drift`
 - `adapter_boundary_bypass`
+- `adapter_flow_bypass`
 - `stale_compatibility_path`
 - `missing_documentation_set`
 - `missing_user_guide`
@@ -374,10 +402,13 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `21` adds `agent_evidence` and removes serialized priority, severity,
-hotspots, scoring policy, and reliability fields. It also changes baseline
-gating to stable-ID selection and SARIF output to issue decision units.
-In particular, schema 21 no longer emits `detection_reliability`,
+version `22` adds `flow_analysis`, typed optional `flow_witness` evidence,
+`adapter_flow_bypass`, six `flow.*` finding metrics, and witness-aware SARIF
+locations. Schema version `21` added `agent_evidence`, removed serialized
+priority, severity, hotspots, scoring policy, and reliability fields, changed
+baseline gating to stable-ID selection, and changed SARIF output to issue
+decision units.
+In particular, schema 22 no longer emits `detection_reliability`,
 `interpretation_reliability`, `priority_factors`, or `rank_explanation` on
 findings; consumers must not infer replacements for those removed fields.
 Baselines from older schemas are rejected and should be regenerated. Schema

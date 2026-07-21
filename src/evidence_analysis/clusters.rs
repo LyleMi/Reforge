@@ -55,14 +55,24 @@ fn subject(finding: &Finding) -> EvidenceSubject {
             line: finding.line.unwrap_or(0),
         },
         EntityScope::FindingGroup => EvidenceSubject::Group {
-            locations: std::iter::once(format!("{}:{}", finding.path, finding.line.unwrap_or(0)))
-                .chain(
-                    finding
-                        .related_locations
-                        .iter()
-                        .map(|location| format!("{}:{}", location.path, location.line)),
-                )
-                .collect(),
+            locations: finding.flow_witness.as_ref().map_or_else(
+                || {
+                    std::iter::once(format!("{}:{}", finding.path, finding.line.unwrap_or(0)))
+                        .chain(
+                            finding
+                                .related_locations
+                                .iter()
+                                .map(|location| format!("{}:{}", location.path, location.line)),
+                        )
+                        .collect()
+                },
+                |witness| {
+                    vec![
+                        witness.source.id.clone(),
+                        format!("{}:policy:{}", witness.sink.id, witness.policy),
+                    ]
+                },
+            ),
         },
     }
 }

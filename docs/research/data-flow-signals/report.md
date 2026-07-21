@@ -1016,7 +1016,7 @@ Implement a read-only syntax-tier detector first for Rust struct literals, Go ke
 positive:   - A Java controller maps ApiOrder to ServiceOrder field-for-field, a service maps ServiceOrder to RepositoryOrder, and a repository rebuilds the same fields; all three types have the same six fields and no boundary annotation between the internal hops.
   - Two C# modules independently implement CustomerDto to Customer mappings with the same five direct assignments.
   - Two TypeScript mapping functions copy the same object keys, but one omits postalCode; emit mapping disagreement with both sites.
-  - A Rust chain implements From<WireUser> for AppUser and From<AppUser> for DbUser with direct copies for all but one field.
+  - A Rust chain implements `From<WireUser>` for `AppUser` and `From<AppUser>` for `DbUser` with direct copies for all but one field.
   - A Go conversion family repeats JSON-tag-equivalent fields under different nominal struct names across three internal packages.; negative:   - A domain object maps once to a public API DTO at a configured remote boundary.
   - An anti-corruption layer renames vendor fields, converts cents to Money, validates status, and drops vendor-only metadata.
   - A versioned event v1-to-v2 upcaster preserves old wire compatibility.

@@ -43,6 +43,12 @@ function reportPaths(report: ScanReport): string[] {
     ...report.findings.flatMap((finding) => [
       finding.path,
       ...finding.related_locations.map((location) => location.path),
+      ...(finding.flow_witness ? [
+        finding.flow_witness.source.path,
+        finding.flow_witness.sink.path,
+        ...finding.flow_witness.ordered_steps.map((step) => step.path),
+        ...(finding.flow_witness.conforming_path?.map((location) => location.path) ?? []),
+      ] : []),
     ]),
     ...report.issues.map((issue) => issue.path),
     ...report.dependency_graph.edges.flatMap((edge) => [edge.from, edge.to]),
@@ -73,6 +79,13 @@ export function toDisplayReport(report: ScanReport): ScanReport {
         ...location,
         path: display(location.path),
       })),
+      flow_witness: finding.flow_witness ? {
+        ...finding.flow_witness,
+        source: { ...finding.flow_witness.source, path: display(finding.flow_witness.source.path) },
+        sink: { ...finding.flow_witness.sink, path: display(finding.flow_witness.sink.path) },
+        ordered_steps: finding.flow_witness.ordered_steps.map((step) => ({ ...step, path: display(step.path) })),
+        conforming_path: finding.flow_witness.conforming_path?.map((location) => ({ ...location, path: display(location.path) })) ?? null,
+      } : null,
     })),
     issues: report.issues.map((issue) => ({ ...issue, path: display(issue.path) })),
     dependency_graph: {

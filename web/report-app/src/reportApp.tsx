@@ -30,7 +30,7 @@ export function App() {
 
   return <main>
     <header>
-      <div><span className="eyebrow">Schema 21 evidence report</span><h1>Refactoring evidence</h1><p>Deterministic observations, coverage receipts, and repository context. No inferred ranking or quality score.</p></div>
+      <div><span className="eyebrow">Schema 22 evidence report</span><h1>Refactoring evidence</h1><p>Deterministic observations, coverage receipts, and repository context. No inferred ranking or quality score.</p></div>
       <div className="scan-meta"><b>{report.summary.scanned_files} files</b><span>churn {report.summary.churn.status}</span><span>{report.summary.duration_ms} ms</span></div>
     </header>
     <nav role="tablist">{views.map(([key, name]) => <button role="tab" aria-selected={state.view === key} key={key} onClick={() => go({ view: key, file: key === "map" ? state.file : null })}>{name}</button>)}</nav>

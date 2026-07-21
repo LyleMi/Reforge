@@ -247,6 +247,12 @@ const FINDING_KIND_DISPLAYS: &[FindingKindDisplay] = &[
         MetricFormat::PluralCount("bypass"),
     ),
     display(
+        FindingKind::AdapterFlowBypass,
+        "adapter flow bypass",
+        DisplayMetric::Named(MetricId::FlowPathSteps),
+        MetricFormat::PluralCount("step"),
+    ),
+    display(
         FindingKind::StaleCompatibilityPath,
         "stale compatibility path",
         DisplayMetric::GroupSize,

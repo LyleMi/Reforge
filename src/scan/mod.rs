@@ -9,6 +9,7 @@ use ignore::{DirEntry, WalkBuilder};
 
 use crate::cli::ScanArgs;
 use crate::concept_drift::{ConceptDriftOptions, scan_concept_drift};
+use crate::detectors::data_flow::scan_data_flow;
 use crate::detectors::dependency_graph::scan_dependency_graph_report;
 use crate::detectors::manifest::{detector_manifest, evidence_role, raw_metric_manifest};
 use crate::documentation::scan_documentation;
@@ -18,10 +19,10 @@ use crate::evidence_analysis::{
 use crate::model::{
     ChurnFileMetric, CoverageExpectation, CoverageManifestEntry, CoverageStatus, CoverageSummary,
     DependencyGraphSnapshot, DetectorExecutionReceipt, DetectorExecutionStatus, DirectoryRawMetric,
-    EvidenceRole, FileRawMetric, Finding, FindingKind, FindingMetric, FunctionRawMetric, MetricId,
-    ParseFailure, ParseFailureReason, RawMetricCoverage, RawMetricCoverageStatus, RawMetrics,
-    SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary, SuppressionSummary,
-    TypeRawMetric, serialized_finding_kind,
+    EvidenceRole, FileRawMetric, Finding, FindingKind, FindingMetric, FlowAnalysisSummary,
+    FunctionRawMetric, MetricId, ParseFailure, ParseFailureReason, RawMetricCoverage,
+    RawMetricCoverageStatus, RawMetrics, SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats,
+    ScanSummary, SuppressionSummary, TypeRawMetric, serialized_finding_kind,
 };
 use crate::similar_functions::{
     ParsedSourceFile, SimilarFunctionOptions, SimilarFunctionProgress, SourceFile,
@@ -33,7 +34,7 @@ use crate::structural::{
 use crate::unused_functions::{UnusedFunctionOptions, scan_parsed_unused_functions};
 
 mod churn;
-mod config;
+pub(crate) mod config;
 mod finding_control;
 mod progress;
 mod thresholds;
@@ -75,6 +76,7 @@ struct SourceScan {
     parse_failures: Vec<ParseFailure>,
     unresolved_dependency_edges: usize,
     unresolved_dependency_edges_by_file: BTreeMap<String, usize>,
+    flow_analysis: FlowAnalysisSummary,
 }
 
 #[derive(Debug, Default)]
@@ -101,7 +103,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     let effective = effective_scan_config(args, &root)?;
     let effective_args = effective.args;
     let (mut scan, unity_scan, churn_summary) =
-        collect_scan_observations(&root, &effective_args, progress)?;
+        collect_scan_observations(&root, &effective_args, &effective.data_flow, progress)?;
     let metrics_summary = summarize_raw_metrics(&scan.raw_metrics);
     scan.findings
         .retain(|finding| evidence_role(finding.kind) != EvidenceRole::CompositeSummary);
@@ -139,6 +141,7 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         agent_evidence,
         unity_project: unity_scan.report,
         suppression_summary: post_score_controls.suppression_summary,
+        flow_analysis: scan.flow_analysis,
         coverage_manifest,
         coverage_summary,
         detector_execution,
@@ -169,6 +172,7 @@ fn project_scan_coverage(
         findings: &scan.findings,
         parse_failures: &scan.parse_failures,
         unresolved_dependency_edges: scan.unresolved_dependency_edges,
+        flow_analysis: &scan.flow_analysis,
         churn,
         unity_observed: matches!(
             unity_status,
@@ -181,6 +185,7 @@ fn project_scan_coverage(
 fn collect_scan_observations(
     root: &Path,
     args: &ScanArgs,
+    data_flow: &config::DataFlowConfig,
     progress: &mut dyn ProgressSink,
 ) -> Result<(
     SourceScan,
@@ -194,7 +199,7 @@ fn collect_scan_observations(
         .then_some(source_plan.source_files.len());
     report_scan_start(progress, root, total_source_files);
     scan_sources(source_plan, args, total_source_files, progress, &mut scan)?;
-    run_scan_signals(root, args, progress, &mut scan)?;
+    run_scan_signals(root, args, data_flow, progress, &mut scan)?;
     let mut unity_scan = crate::unity::scan_unity(root, args)?;
     scan.findings.append(&mut unity_scan.findings);
     scan.findings.extend(scan_documentation(root)?);
@@ -236,6 +241,7 @@ include!("coverage.rs");
 fn run_scan_signals(
     root: &Path,
     args: &ScanArgs,
+    data_flow: &config::DataFlowConfig,
     progress: &mut dyn ProgressSink,
     scan: &mut SourceScan,
 ) -> Result<()> {
@@ -248,6 +254,7 @@ fn run_scan_signals(
     signals.scan_structural_signals()?;
     signals.scan_unused_function_signals();
     signals.scan_dependency_graph_signals();
+    signals.scan_data_flow_signals(data_flow)?;
     signals.scan_concept_drift_signals();
     signals.scan_similarity_signals()?;
     Ok(())
@@ -328,6 +335,25 @@ struct ScanSignalContext<'a> {
 }
 
 impl ScanSignalContext<'_> {
+    fn scan_data_flow_signals(&mut self, config: &config::DataFlowConfig) -> Result<()> {
+        if config.mode == config::DataFlowMode::Off {
+            return Ok(());
+        }
+        self.progress.report(&format!(
+            "Analyzing exact Rust data flow in {} parsed files",
+            self.scan.parsed_sources.len()
+        ));
+        let mut flow = scan_data_flow(
+            self.root,
+            &self.scan.parsed_sources,
+            &self.scan.parse_failures,
+            config,
+        )?;
+        self.scan.findings.append(&mut flow.findings);
+        self.scan.flow_analysis = flow.summary;
+        Ok(())
+    }
+
     fn scan_dependency_graph_signals(&mut self) {
         self.progress.report(&format!(
             "Analyzing dependency graph in {} files",

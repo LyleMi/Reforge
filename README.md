@@ -33,8 +33,10 @@ safe.
 - Records coverage, detector execution, parse failures, suppressions, and
   unavailable observations so a quiet scan is not mistaken for complete
   evidence.
+- Optionally proves bounded Rust assignment/call/return witnesses against
+  repository-owned adapter policies; unsupported edges remain coverage facts.
 - Projects dependency closure, unresolved local edges, evidence dispersion,
-  and direct/reachable tests through schema 21 `agent_evidence`.
+  and direct/reachable tests through schema 22 `agent_evidence`.
 - Collects git churn in repositories by default with graceful fallback when
   history is unavailable.
 - Skips common generated, dependency, hidden, and git-ignored paths by default.
@@ -142,7 +144,7 @@ Read the [published documentation](https://lylemi.github.io/Reforge/) or open
 the [current self-scan sample](https://lylemi.github.io/Reforge/sample/). Source
 documentation includes the [user guide](docs/user-guide.md),
 [configuration reference](docs/configuration.md),
-[schema 21 report contract](docs/report-schema.md),
+[schema 22 report contract](docs/report-schema.md),
 [metrics and evidence model](docs/metrics-model.md),
 [detector reference](docs/detectors.md),
 [HTML report app](docs/report-app.md), and
@@ -150,14 +152,14 @@ documentation includes the [user guide](docs/user-guide.md),
 
 ## Report Model
 
-Schema 21 contains these major layers:
+Schema 22 contains these major layers:
 
 - `raw_metrics`, `metrics_summary`, `raw_metric_manifest`, and
   `raw_metric_coverage`: observations and their definitions/availability.
 - `dependency_graph`, `agent_evidence`, and `unity_project`: topology and
   project-specific context.
-- `coverage_manifest`, `coverage_summary`, and `detector_execution`: what could
-  run and what was actually observed.
+- `coverage_manifest`, `coverage_summary`, `flow_analysis`, and
+  `detector_execution`: what could run and what was actually observed.
 - `findings`: atomic detector evidence with stable `rf3-...` IDs, metrics,
   recommendations, and related locations.
 - `issues`: stable `ri3-...` decision units that group compatible evidence by
@@ -178,6 +180,7 @@ Core signals include:
   and function proliferation;
 - structurally similar functions, repeated literals/error handling/test setup,
   data clumps, and conservative happy-path-only test risk;
+- opt-in exact Rust `adapter_flow_bypass` paths declared in `reforge.toml`;
 - unused private functions, dependency cycles/hubs, naming and directory
   concept drift;
 - parallel implementations, shadowed abstractions, duplicate type shapes,
@@ -226,8 +229,8 @@ Use `cargo run -- scan --help` for the complete current option set.
 
 ## CI Gates and Baselines
 
-Schema 21 gates compare stable finding IDs. A blocking gate requires a current
-schema 21 JSON or YAML baseline:
+Schema 22 gates compare stable finding IDs. A blocking gate requires a current
+schema 22 JSON or YAML baseline:
 
 ```powershell
 cargo run -- scan . --baseline baseline.json --baseline-mode new --fail-on-findings --output json --progress never
@@ -241,7 +244,7 @@ cargo run -- scan . --baseline baseline.json --show new --output human --progres
 ```
 
 Reforge writes the requested report before returning a failing exit status.
-Older schemas are rejected and must be regenerated. Schema 21 has no
+Older schemas are rejected and must be regenerated. Schema 22 has no
 `new-or-worse` mode because it does not assign priority or severity.
 
 ## Git Churn
@@ -252,7 +255,7 @@ Outside a repository it records an unavailable reason and continues. Use
 
 The configured time window and maximum added-plus-deleted lines per commit
 bound the observation. Binary rows, paths outside the scan root, and oversized
-commits are ignored. Churn remains raw context in schema 21; it is not combined
+commits are ignored. Churn remains raw context in schema 22; it is not combined
 into a hotspot or priority score.
 
 ## Configuration

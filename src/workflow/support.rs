@@ -58,6 +58,10 @@ fn effective_scan_command(
 }
 
 fn append_effective_config(command: &mut Vec<String>, key: &str, value: &Value) -> Result<()> {
+    if key == "data-flow" {
+        // Data-flow policy remains config-owned; the stored command already retains --config.
+        return Ok(());
+    }
     if key == "ignore-paths" {
         let values = value
             .as_array()

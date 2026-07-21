@@ -7,7 +7,7 @@ not a normative basis for current behavior. Raw reports and source identities
 were never committed, so the old result tables cannot be regenerated or
 audited from this repository.
 
-Schema 21 calibration must start from new reports. Historical observations may
+Schema 22 calibration must start from new reports. Historical observations may
 still motivate which repository shapes to include, but historical ranks,
 severity bands, hotspot counts, and policy fits must not be compared with
 current issue/finding output.
@@ -55,7 +55,7 @@ Keep label questions independent:
 - Outcome: after an accepted refactor, did declared tests pass and did the
   selected evidence remain, disappear, become unobservable, or change identity?
 
-Schema 21 does not have a ranking-gold dataset because it does not emit a
+Schema 22 does not have a ranking-gold dataset because it does not emit a
 priority order. If a downstream consumer wants ranking, that policy and its
 validation data must remain external to the Reforge evidence contract.
 
@@ -92,7 +92,7 @@ Earlier anonymous passes suggested several useful hypotheses:
 - Unity thresholds require Unity-specific samples and should remain operational
   heuristics until those samples exist.
 
-These are hypotheses for a new schema 21 run, not current benchmark results.
+These are hypotheses for a new schema 22 run, not current benchmark results.
 
 ## Acceptance Before Policy Changes
 
@@ -108,4 +108,4 @@ Before changing built-in presets or detector defaults:
 7. Keep any agent-workflow evaluation separate from detector calibration.
 
 New aggregate results should be appended only when their source revisions and
-schema 21 artifacts are reproducible from retained metadata.
+schema 22 artifacts are reproducible from retained metadata.

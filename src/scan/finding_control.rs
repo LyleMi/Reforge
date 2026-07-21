@@ -373,6 +373,7 @@ fn known_finding_kinds() -> Vec<String> {
         FindingKind::FixtureFactoryDrift,
         FindingKind::GenericBucketDrift,
         FindingKind::AdapterBoundaryBypass,
+        FindingKind::AdapterFlowBypass,
         FindingKind::StaleCompatibilityPath,
         FindingKind::MissingDocumentationSet,
         FindingKind::MissingUserGuide,

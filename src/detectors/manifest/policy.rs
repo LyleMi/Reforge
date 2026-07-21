@@ -36,6 +36,14 @@ pub(crate) fn input_metrics(kind: FindingKind) -> &'static [MetricId] {
         }
         K::StaleCliDocumentation => &[M::DocumentationMissingCliFlags],
         K::StaleSchemaDocumentation => &[M::DocumentationMissingSchemaFields],
+        K::AdapterFlowBypass => &[
+            M::FlowModuleHops,
+            M::FlowCallEdges,
+            M::FlowPathSteps,
+            M::FlowUnresolvedEdges,
+            M::FlowPolicyConformingPaths,
+            M::FlowPolicyBypassPaths,
+        ],
         K::DependencyCycle => &[
             M::DependencyCycleFiles,
             M::DependencyCycleEdges,
@@ -109,6 +117,7 @@ pub(crate) fn action(kind: FindingKind) -> RefactorAction {
         | K::ImportHeavyFile
         | K::LargePublicSurface
         | K::AdapterBoundaryBypass => A::ReduceDependencyCoupling,
+        K::AdapterFlowBypass => A::ReduceDependencyCoupling,
         K::UnityAssemblyCycle
         | K::UnityAssemblyHub
         | K::UnityUnresolvedAssemblyReference
@@ -198,6 +207,9 @@ pub(crate) fn entity_scope(kind: FindingKind) -> EntityScope {
     ) {
         return E::Type;
     }
+    if kind == K::AdapterFlowBypass {
+        return E::FindingGroup;
+    }
     if is_group_scoped_finding(kind) {
         return E::FindingGroup;
     }
@@ -250,6 +262,7 @@ fn approach(kind: FindingKind) -> DetectionApproach {
         | K::UnityRuntimeEditorDependency
         | K::UnityBrokenAssetReference
         | K::UnityMissingScript => A::GraphAnalysis,
+        K::AdapterFlowBypass => A::GraphAnalysis,
         K::UnityLargeScene
         | K::UnityLargePrefab
         | K::UnitySerializedFieldBloat
@@ -318,6 +331,7 @@ fn precision_risk(kind: FindingKind) -> PrecisionRisk {
             | K::UnityLargePrefab
             | K::UnitySerializedFieldBloat
             | K::UnityLifecycleOverload
+            | K::AdapterFlowBypass
     ) {
         R::Low
     } else if matches!(
@@ -397,6 +411,7 @@ fn supported_languages(kind: FindingKind) -> &'static [&'static str] {
         K::LargeFile | K::LargeDirectory | K::DebtMarker | K::FileNamingDrift => PATHS,
         K::UnusedFunction => UNUSED,
         K::DependencyCycle | K::DependencyHub => GRAPH,
+        K::AdapterFlowBypass => &["rust"],
         K::UnityAssemblyCycle
         | K::UnityAssemblyHub
         | K::UnityUnresolvedAssemblyReference

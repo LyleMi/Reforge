@@ -53,8 +53,8 @@ cargo run -- scan . --output-file reforge-report.html --progress never
 - [User Guide](user-guide.md): install the CLI, run scans, choose output, and
   troubleshoot common failures.
 - [Configuration](configuration.md): configure thresholds, exclusions,
-  suppressions, churn, and precedence.
-- [Report Schema](report-schema.md): consume JSON/YAML schema 21 and SARIF 2.1.0.
+  suppressions, churn, exact Rust adapter-flow policies, and precedence.
+- [Report Schema](report-schema.md): consume JSON/YAML schema 22 and SARIF 2.1.0.
 - [HTML Report](report-app.md): build and use the self-contained visual report.
 
 ### Understand Results

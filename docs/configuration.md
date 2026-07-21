@@ -116,6 +116,17 @@ reason = "generated fixture checked by snapshot tests"
 [[suppressions]]
 path = "src/legacy/generated.rs"
 reason = "legacy migration tracked separately"
+
+[data-flow]
+mode = "policy"
+max-hops = 4
+
+[[data-flow.boundaries]]
+name = "http-client"
+protected-paths = ["src/domain", "src/application"]
+adapter-paths = ["src/adapters/http"]
+sink-symbols = ["crate::transport::send"]
+exempt-paths = ["src/bin", "src/migrations"]
 ```
 
 ## Supported Keys
@@ -152,9 +163,37 @@ reason = "legacy migration tracked separately"
 | `churn-max-commit-lines` | `2000` | `--churn-max-commit-lines` |
 | `ignore-paths` | `[]` | `--ignore-path` |
 | `suppressions` | `[]` | none |
+| `[data-flow].mode` | `off` | none; config-owned |
+| `[data-flow].max-hops` | `4` | none; config-owned |
+| `[[data-flow.boundaries]]` | `[]` | none; config-owned |
 
 `preset` accepts `strict`, `balanced`, or `relaxed`. `churn` accepts `auto`,
 `on`, or `off`.
+
+## Exact Rust Data Flow
+
+Data-flow analysis is opt-in and configuration-owned. `off` allocates no flow
+graph. `observe` builds exact Rust facts and coverage receipts but emits no
+finding. `policy` evaluates configured boundaries and can emit
+`adapter_flow_bypass`.
+
+Each boundary requires a unique non-empty `name`, at least one
+`protected-paths`, `adapter-paths`, and `sink-symbols` entry, and may declare
+`exempt-paths`. Paths are root-relative glob patterns; a plain directory also
+matches its descendants. Sink symbols must be complete `crate::...` Rust
+free-function symbols. `max-hops` counts interprocedural call edges and must be
+greater than zero.
+
+The resolver covers project-local free functions, positional arguments,
+lexical aliases, returns, `crate`, `self`, `super`, explicit module paths, and
+unambiguous imports/re-exports. Unsupported fields, methods, trait dispatch,
+macros, escaping closures, external crates, async causality, and library calls
+degrade coverage instead of becoming speculative witness edges.
+
+`config validate` rejects unknown keys, invalid modes/globs, duplicate or empty
+boundary names, zero hops, incomplete boundaries, and non-qualified sink
+symbols. Finding filters, suppressions, and baselines apply to emitted findings
+without hiding raw `flow_analysis` coverage.
 
 ## Choosing Parameters
 
@@ -244,7 +283,7 @@ For a new policy, begin with `balanced`, keep `--churn auto` for exploratory
 audits, and use `--churn off` when comparing reproducible source-only reports.
 Review findings with maintainers across several representative repositories,
 then validate proposed changes on a holdout repository. For CI, capture a
-schema 21 baseline and use `--baseline-mode new --fail-on-findings` so
+schema 22 baseline and use `--baseline-mode new --fail-on-findings` so
 unchanged legacy evidence remains visible without blocking every change.
 
 ## Ignored Paths

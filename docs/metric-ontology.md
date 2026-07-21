@@ -8,7 +8,7 @@ software quality.
 
 ## Normative Coverage Matrix
 
-Schema 21 declares coverage independently of detector registration. Its stable
+Schema 22 declares coverage independently of detector registration. Its stable
 7 mechanisms × 6 entity scopes form 42 cells: required combinations plus
 explicitly out-of-scope combinations. Runtime status distinguishes observed,
 partially observed, unsupported, no-entity, planned, and intentionally out-of-
@@ -58,10 +58,10 @@ Reforge uses these layers:
    by the evidence.
 4. Issue clusters join compatible findings by issue family, canonical subject,
    and typed refactoring action under stable `ri3-...` identity.
-5. Coverage and agent evidence explain what could be observed and the likely
-   inspection/test surface.
+5. Coverage, optional exact-flow witnesses, and agent evidence explain what
+   could be observed and the likely inspection/test surface.
 
-There is no priority or readiness layer in schema 21. For example, complexity
+There is no priority or readiness layer in schema 22. For example, complexity
 and nesting findings on one function remain independently filterable while a
 compatible issue presents their shared decision surface. Neither observation
 automatically outweighs another issue.
@@ -98,6 +98,8 @@ declared input set. Unsupported languages mean “not observed,” not “no iss
   locations. Issue IDs derive from issue family and canonical subject.
   Traversal order, rendering text, and metric value changes do not define
   identity.
+- Flow finding IDs use the declared policy and stable source/sink node IDs;
+  intermediate witness steps remain explanatory rather than identity-bearing.
 
 ## Raw Metric Contract
 
@@ -119,6 +121,7 @@ documentation, Unity project data, and optional git history.
 | Parsed functions, types, structure, and similarity | Declared per detector for supported Tree-sitter languages | Parse failures and unsupported grammars are not observations. |
 | Unused-function analysis | Conservative supported-language local/private functions | Dynamic and unresolved references reduce recall. |
 | Dependency graph | Declared language adapters and resolvable local edges | External, dynamic, alias, or framework-specific unresolved edges are omitted. |
+| Exact Rust data flow | Lexical aliases, direct assignments/returns, and project-local free calls in the declared subset | Fields, methods, dynamic dispatch, macros, closures, external crates, heap aliases, and runtime hops are unsupported and reported as coverage limits. |
 | Repository documentation contract | Reforge repository scope | Not a universal documentation policy for arbitrary projects. |
 | Unity project model | Recognized roots and supported text-serialized assets | Binary serialization, missing packages, and unresolved references degrade coverage. |
 | Change history | Git history when enabled and available | Disabled, unavailable, binary, out-of-root, and oversized commits are omitted. |

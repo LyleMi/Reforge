@@ -36,6 +36,7 @@ const ALL_FINDING_KINDS: &[FindingKind] = &[
     FindingKind::FixtureFactoryDrift,
     FindingKind::GenericBucketDrift,
     FindingKind::AdapterBoundaryBypass,
+    FindingKind::AdapterFlowBypass,
     FindingKind::StaleCompatibilityPath,
     FindingKind::MissingDocumentationSet,
     FindingKind::MissingUserGuide,
@@ -94,7 +95,9 @@ pub(crate) fn classification(kind: FindingKind) -> (QualityConstruct, SignalMech
         | K::UnitySerializedFieldBloat
         | K::UnityLifecycleOverload => (C::Modifiability, M::ResponsibilityDispersion),
         K::UnityUnbalancedEventSubscription => (C::Testability, M::VerificationDifficulty),
-        K::AdapterBoundaryBypass => (C::Modularity, M::DependencyPropagation),
+        K::AdapterBoundaryBypass | K::AdapterFlowBypass => {
+            (C::Modularity, M::DependencyPropagation)
+        }
         K::SimilarFunctions
         | K::RepeatedLiteral
         | K::RepeatedErrorPattern
@@ -169,7 +172,7 @@ fn assert_manifest_invariants(manifest: &[DetectorManifestEntry]) {
             entry
                 .input_metrics
                 .iter()
-                .all(|metric| raw_names.contains(metric)),
+                .all(|metric| raw_names.contains(metric) || is_flow_evidence_metric(*metric)),
             "detector {:?} declares an unknown input metric",
             entry.kind
         );
@@ -202,6 +205,18 @@ fn assert_manifest_invariants(manifest: &[DetectorManifestEntry]) {
             );
         }
     }
+}
+
+fn is_flow_evidence_metric(metric: MetricId) -> bool {
+    matches!(
+        metric,
+        MetricId::FlowModuleHops
+            | MetricId::FlowCallEdges
+            | MetricId::FlowPathSteps
+            | MetricId::FlowUnresolvedEdges
+            | MetricId::FlowPolicyConformingPaths
+            | MetricId::FlowPolicyBypassPaths
+    )
 }
 
 pub(crate) fn issue_family(kind: FindingKind) -> &'static str {

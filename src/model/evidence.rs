@@ -12,6 +12,7 @@ pub struct Finding {
     pub issue_id: Option<IssueKey>,
     pub message: String,
     pub related_locations: Vec<RelatedLocation>,
+    pub flow_witness: Option<FlowWitness>,
 }
 
 impl Finding {
@@ -147,6 +148,10 @@ const KIND_RECOMMENDATIONS: &[(FindingKind, &str)] = &[
         "Route boundary access through the adapter instead of reaching across layers directly.",
     ),
     (
+        FindingKind::AdapterFlowBypass,
+        "Route the witnessed value transfer through the declared adapter boundary, preserving the existing behavior at that seam.",
+    ),
+    (
         FindingKind::StaleCompatibilityPath,
         "Remove the compatibility path if callers have migrated or add an explicit sunset plan.",
     ),
@@ -277,6 +282,16 @@ pub fn stable_finding_id(finding: &Finding) -> EvidenceId {
         input.push_str(name);
     }
 
+    if let Some(witness) = &finding.flow_witness {
+        input.push('\0');
+        input.push_str(&witness.policy);
+        input.push('\0');
+        input.push_str(&witness.source.id);
+        input.push('\0');
+        input.push_str(&witness.sink.id);
+        return EvidenceId(format!("rf3-{:016x}", fnv1a64(input.as_bytes())));
+    }
+
     let mut locations = finding
         .related_locations
         .iter()
@@ -325,7 +340,7 @@ impl Serialize for Finding {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("Finding", 11)?;
+        let mut state = serializer.serialize_struct("Finding", 12)?;
         state.serialize_field("id", &self.id)?;
         state.serialize_field("kind", &self.kind)?;
         state.serialize_field("path", &self.path)?;
@@ -337,6 +352,7 @@ impl Serialize for Finding {
         state.serialize_field("message", &self.message)?;
         state.serialize_field("recommendation", &self.recommendation())?;
         state.serialize_field("related_locations", serialized_related_locations(self))?;
+        state.serialize_field("flow_witness", &self.flow_witness)?;
         state.end()
     }
 }
@@ -360,6 +376,8 @@ impl<'de> Deserialize<'de> for Finding {
             message: String,
             recommendation: String,
             related_locations: Vec<RelatedLocation>,
+            #[serde(default)]
+            flow_witness: Option<FlowWitness>,
         }
 
         let value = SerializedFinding::deserialize(deserializer)?;
@@ -379,6 +397,7 @@ impl<'de> Deserialize<'de> for Finding {
             issue_id: value.issue_id,
             message: value.message,
             related_locations: value.related_locations,
+            flow_witness: value.flow_witness,
         })
     }
 }
