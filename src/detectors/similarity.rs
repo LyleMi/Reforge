@@ -8,7 +8,7 @@ use tree_sitter::{Node, Parser, Tree};
 use crate::language::{
     BODY_FIELD, FUNCTION_DECLARATION, FUNCTION_DEFINITION, FUNCTION_ITEM,
     GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
-    NAME_FIELD, adapter_for_path, child_by_kind, has_rust_cfg_test_attribute,
+    NAME_FIELD, adapter_for_source, child_by_kind, has_rust_cfg_test_attribute,
     is_identifier_like_kind,
 };
 use crate::scanner::{Finding, FindingInput, FindingKind, FindingMetric, RelatedLocation};
@@ -168,7 +168,7 @@ pub(crate) fn parse_source_files(files: &[SourceFile]) -> Result<Vec<ParsedSourc
 }
 
 pub(crate) fn parse_source_file(file: SourceFile) -> Result<Option<ParsedSourceFile>> {
-    let Some(adapter) = adapter_for_path(&file.path) else {
+    let Some(adapter) = adapter_for_source(&file.path, &file.source) else {
         return Ok(None);
     };
     let mut file = file;
