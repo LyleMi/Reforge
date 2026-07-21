@@ -417,190 +417,7 @@ fn supported_languages(kind: FindingKind) -> &'static [&'static str] {
     }
 }
 
-pub(crate) fn default_detection_reliability(kind: FindingKind) -> f64 {
-    use FindingKind as K;
-
-    match kind {
-        K::SimilarFunctions
-        | K::RepeatedErrorPattern
-        | K::TestDuplication
-        | K::DataClump
-        | K::ConfigKeyDrift
-        | K::FixtureFactoryDrift => 0.85,
-        K::RepeatedLiteral => 0.75,
-        K::DuplicateTypeShape => 0.80,
-        K::AdapterBoundaryBypass => 0.65,
-        K::GenericBucketDrift
-        | K::StaleCompatibilityPath
-        | K::HappyPathOnlyTests
-        | K::FileNamingDrift
-        | K::DirectoryDrift
-        | K::FunctionProliferation
-        | K::UnusedFunction
-        | K::ParallelImplementation
-        | K::ShadowedAbstraction => 0.60,
-        K::MissingDocumentationSet
-        | K::MissingUserGuide
-        | K::MissingReportSchemaDocs
-        | K::MissingMetricsModelDocs
-        | K::MissingArchitectureDocs
-        | K::StaleCliDocumentation
-        | K::StaleSchemaDocumentation => 0.95,
-        K::DependencyCycle
-        | K::DependencyHub
-        | K::ReadabilityRisk
-        | K::UnityAssemblyCycle
-        | K::UnityRuntimeEditorDependency
-        | K::UnityDuplicateGuid
-        | K::UnityMissingMeta
-        | K::UnityOrphanMeta
-        | K::UnityBrokenAssetReference
-        | K::UnityMissingScript
-        | K::UnityNonTextSerialization
-        | K::UnityLargeScene
-        | K::UnityLargePrefab
-        | K::UnitySerializedFieldBloat
-        | K::UnityLifecycleOverload
-        | K::UnityEditorApiInRuntime => 0.90,
-        K::UnityAssemblyHub
-        | K::UnityUnresolvedAssemblyReference
-        | K::UnitySceneBuildDrift
-        | K::UnityExpensiveFrameCall
-        | K::UnityUnbalancedEventSubscription => 0.65,
-        K::DebtMarker
-        | K::LargeFile
-        | K::LargeDirectory
-        | K::LongFunction
-        | K::ComplexFunction
-        | K::DeepNesting
-        | K::ManyParameters
-        | K::LargeType
-        | K::LargePublicSurface
-        | K::ImportHeavyFile => 1.0,
-    }
-}
-
-pub(crate) fn default_interpretation_reliability(kind: FindingKind) -> f64 {
-    match kind {
-        FindingKind::UnityUnbalancedEventSubscription => 0.55,
-        FindingKind::UnityExpensiveFrameCall => 0.70,
-        FindingKind::UnityAssemblyHub | FindingKind::UnitySceneBuildDrift => 0.80,
-        FindingKind::UnityUnresolvedAssemblyReference => 0.85,
-        _ => 0.90,
-    }
-}
-
-pub(crate) fn impact(kind: FindingKind) -> f64 {
-    use FindingKind as K;
-
-    match kind {
-        K::DebtMarker => 25.0,
-        K::RepeatedLiteral => 30.0,
-        K::HappyPathOnlyTests | K::ShadowedAbstraction | K::GenericBucketDrift => 35.0,
-        K::FileNamingDrift => 40.0,
-        K::TestDuplication
-        | K::AdapterBoundaryBypass
-        | K::StaleCompatibilityPath
-        | K::ParallelImplementation => 45.0,
-        K::ConfigKeyDrift | K::FixtureFactoryDrift => 50.0,
-        K::LargePublicSurface
-        | K::ImportHeavyFile
-        | K::FunctionProliferation
-        | K::UnusedFunction => 60.0,
-        K::LargeFile
-        | K::LargeDirectory
-        | K::RepeatedErrorPattern
-        | K::DirectoryDrift
-        | K::DataClump
-        | K::DuplicateTypeShape => 65.0,
-        K::MissingDocumentationSet
-        | K::MissingUserGuide
-        | K::MissingMetricsModelDocs
-        | K::MissingArchitectureDocs
-        | K::LongFunction
-        | K::DeepNesting
-        | K::ManyParameters
-        | K::LargeType => 70.0,
-        K::ReadabilityRisk | K::StaleCliDocumentation | K::DependencyHub => 75.0,
-        K::SimilarFunctions => 80.0,
-        K::DependencyCycle
-        | K::UnityAssemblyCycle
-        | K::UnityRuntimeEditorDependency
-        | K::UnityDuplicateGuid
-        | K::UnityMissingScript => 85.0,
-        K::UnityAssemblyHub
-        | K::UnityUnresolvedAssemblyReference
-        | K::UnityMissingMeta
-        | K::UnityOrphanMeta
-        | K::UnityBrokenAssetReference
-        | K::UnityNonTextSerialization
-        | K::UnityLargeScene
-        | K::UnityLargePrefab
-        | K::UnitySerializedFieldBloat
-        | K::UnityLifecycleOverload
-        | K::UnityExpensiveFrameCall
-        | K::UnityEditorApiInRuntime => 65.0,
-        K::UnitySceneBuildDrift | K::UnityUnbalancedEventSubscription => 35.0,
-        K::ComplexFunction | K::MissingReportSchemaDocs | K::StaleSchemaDocumentation => 90.0,
-    }
-}
-
-pub(crate) fn actionability(kind: FindingKind) -> f64 {
-    use FindingKind as K;
-
-    match kind {
-        K::GenericBucketDrift => 35.0,
-        K::RepeatedLiteral | K::HappyPathOnlyTests => 40.0,
-        K::ShadowedAbstraction | K::StaleCompatibilityPath | K::AdapterBoundaryBypass => 45.0,
-        K::ParallelImplementation => 50.0,
-        K::TestDuplication => 55.0,
-        K::DebtMarker | K::FileNamingDrift | K::DirectoryDrift => 60.0,
-        K::ConfigKeyDrift | K::FixtureFactoryDrift => 65.0,
-        K::MissingMetricsModelDocs | K::MissingArchitectureDocs | K::RepeatedErrorPattern => 70.0,
-        K::LargeDirectory
-        | K::ImportHeavyFile
-        | K::LargePublicSurface
-        | K::FunctionProliferation
-        | K::UnusedFunction
-        | K::DataClump
-        | K::DependencyHub => 75.0,
-        K::ReadabilityRisk => 80.0,
-        K::MissingDocumentationSet
-        | K::MissingUserGuide
-        | K::MissingReportSchemaDocs
-        | K::StaleCliDocumentation
-        | K::StaleSchemaDocumentation
-        | K::DependencyCycle
-        | K::LargeFile
-        | K::LongFunction
-        | K::ComplexFunction
-        | K::DeepNesting
-        | K::ManyParameters
-        | K::LargeType
-        | K::SimilarFunctions
-        | K::DuplicateTypeShape
-        | K::UnityAssemblyCycle
-        | K::UnityAssemblyHub
-        | K::UnityUnresolvedAssemblyReference
-        | K::UnityRuntimeEditorDependency
-        | K::UnityDuplicateGuid
-        | K::UnityMissingMeta
-        | K::UnityOrphanMeta
-        | K::UnityBrokenAssetReference
-        | K::UnityMissingScript
-        | K::UnityNonTextSerialization
-        | K::UnitySceneBuildDrift
-        | K::UnityLargeScene
-        | K::UnityLargePrefab
-        | K::UnitySerializedFieldBloat
-        | K::UnityLifecycleOverload
-        | K::UnityExpensiveFrameCall
-        | K::UnityEditorApiInRuntime
-        | K::UnityUnbalancedEventSubscription => 85.0,
-    }
-}
-
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     use crate::model::{MetricDirection, MetricScale};
 
@@ -652,17 +469,13 @@ mod tests {
     }
 
     #[test]
-    fn detector_specs_have_unique_typed_inputs_and_explicit_ranking_policy() {
+    fn detector_specs_have_unique_typed_inputs() {
         for entry in detector_manifest() {
             let mut inputs = entry.input_metrics.clone();
             inputs.sort_unstable();
             inputs.dedup();
 
             assert_eq!(inputs.len(), entry.input_metrics.len(), "{:?}", entry.kind);
-            assert!((0.0..=1.0).contains(&entry.default_detection_reliability));
-            assert!((0.0..=1.0).contains(&entry.default_interpretation_reliability));
-            assert!((0.0..=100.0).contains(&entry.impact));
-            assert!((0.0..=100.0).contains(&entry.actionability));
         }
     }
 }

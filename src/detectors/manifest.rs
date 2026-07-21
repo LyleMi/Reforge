@@ -151,10 +151,6 @@ pub(crate) fn detector_manifest() -> Vec<DetectorManifestEntry> {
                 issue_family: issue_family(kind).to_string(),
                 evidence_role: evidence_role(kind),
                 constituent_kinds: constituent_kinds(kind).to_vec(),
-                default_detection_reliability: default_detection_reliability(kind),
-                default_interpretation_reliability: default_interpretation_reliability(kind),
-                impact: impact(kind),
-                actionability: actionability(kind),
             }
         })
         .collect::<Vec<_>>();

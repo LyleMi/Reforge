@@ -138,39 +138,6 @@ fn is_module_specifier_literal(literal: &str) -> bool {
     looks_relative || looks_scoped_package || has_source_extension
 }
 
-pub(super) fn repeated_literal_confidence(literal: &str, locations: &[Occurrence]) -> f64 {
-    let normalized = literal.to_ascii_lowercase();
-    let weak_text = contains_report_or_fixture_text(&normalized)
-        || locations
-            .iter()
-            .all(|location| is_test_source(Path::new(&location.path)));
-
-    if weak_text {
-        0.55
-    } else if crosses_files(locations) {
-        0.80
-    } else {
-        0.65
-    }
-}
-
-pub(super) fn contains_report_or_fixture_text(literal: &str) -> bool {
-    [
-        "report", "schema", "fixture", "mock", "snapshot", "expected", "actual", "should", "test ",
-    ]
-    .iter()
-    .any(|word| literal.contains(word))
-}
-
-pub(super) fn crosses_files(locations: &[Occurrence]) -> bool {
-    locations
-        .iter()
-        .map(|location| location.path.as_str())
-        .collect::<BTreeSet<_>>()
-        .len()
-        > 1
-}
-
 pub(super) fn is_error_pattern_node(node: Node<'_>, traversal: StructureTraversal<'_>) -> bool {
     let kind = node.kind();
     match traversal.family {

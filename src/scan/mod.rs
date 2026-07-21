@@ -12,6 +12,9 @@ use crate::concept_drift::{ConceptDriftOptions, scan_concept_drift};
 use crate::detectors::dependency_graph::scan_dependency_graph_report;
 use crate::detectors::manifest::{detector_manifest, evidence_role, raw_metric_manifest};
 use crate::documentation::scan_documentation;
+use crate::evidence_analysis::{
+    FindingInput, cluster_findings, finalize_metric_context, summarize_raw_metrics,
+};
 use crate::model::{
     ChurnFileMetric, CoverageExpectation, CoverageManifestEntry, CoverageStatus, CoverageSummary,
     DependencyGraphSnapshot, DetectorExecutionReceipt, DetectorExecutionStatus, DirectoryRawMetric,
@@ -19,9 +22,6 @@ use crate::model::{
     ParseFailure, ParseFailureReason, RawMetricCoverage, RawMetricCoverageStatus, RawMetrics,
     SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats, ScanSummary, SuppressionSummary,
     TypeRawMetric, serialized_finding_kind,
-};
-use crate::scoring::{
-    FindingInput, cluster_findings, finalize_metric_context, summarize_raw_metrics,
 };
 use crate::similar_functions::{
     ParsedSourceFile, SimilarFunctionOptions, SimilarFunctionProgress, SourceFile,
@@ -46,11 +46,6 @@ use config::{ConfigSuppression, effective_scan_config};
 use finding_control::apply_finding_controls;
 use progress::ProgressEvent;
 pub(crate) use progress::{NoopProgress, ProgressSink, StderrProgress};
-
-#[cfg(test)]
-use churn::parse_git_numstat_churn;
-#[cfg(test)]
-pub(crate) use progress::WriterProgress;
 
 const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     "node_modules",
@@ -143,13 +138,11 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         dependency_graph: scan.dependency_graph,
         agent_evidence,
         unity_project: unity_scan.report,
-        hotspots: Vec::new(),
         suppression_summary: post_score_controls.suppression_summary,
         coverage_manifest,
         coverage_summary,
         detector_execution,
         raw_metric_coverage,
-        scoring_policy: crate::model::EffectiveScoringPolicy::builtin(),
         issues,
         detector_manifest: manifest,
         findings: scan.findings,
@@ -223,10 +216,8 @@ fn build_scan_summary(input: ScanSummaryInput<'_>) -> ScanSummary {
         scanned_files: input.scan.stats.source_files_scanned,
         finding_count: input.scan.findings.len(),
         issue_count: input.issues.len(),
-        hotspot_count: 0,
         similar_function_group_count: input.controls.similar_function_group_count,
         duration_ms: input.duration_ms,
-        hotspot_model: crate::cli::HotspotModel::Hybrid,
         churn: input.churn,
     }
 }

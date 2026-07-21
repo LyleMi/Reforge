@@ -6,7 +6,6 @@ struct UnityFindingInput {
     value: usize,
     threshold: usize,
     related: Vec<RelatedLocation>,
-    reliability: f64,
 }
 
 fn package_analysis_roots(packages: &Path) -> Result<Vec<PathBuf>> {
@@ -114,15 +113,10 @@ impl UnityFindingInput {
             value: metric.0,
             threshold: metric.1,
             related: Vec::new(),
-            reliability: 1.0,
         }
     }
     fn with_related(mut self, related: Vec<RelatedLocation>) -> Self {
         self.related = related;
-        self
-    }
-    fn with_reliability(mut self, reliability: f64) -> Self {
-        self.reliability = reliability;
         self
     }
 }
@@ -141,8 +135,7 @@ fn unity_finding(input: UnityFindingInput) -> Finding {
                 "items",
             )],
         )
-        .with_related_locations(input.related)
-        .with_detection_reliability(input.reliability),
+        .with_related_locations(input.related),
     )
 }
 
@@ -554,7 +547,7 @@ fn expensive_frame_call_findings(
                         format!("Unity frame-loop call path through {method_name} performs a repeated object or resource lookup"), (
                         1,
                         1))
-                    .with_reliability(if expensive { 0.9 } else { 0.7 }),
+                    ,
                 )
             })
         })
@@ -639,7 +632,7 @@ fn scan_editor_api(source: &str, path: &str, findings: &mut Vec<Finding>) {
                         .into(), (
                     1,
                     1))
-                .with_reliability(0.95),
+                ,
             ));
         }
     }
@@ -716,7 +709,7 @@ fn scan_event_balance(source: &str, path: &str, findings: &mut Vec<Finding>) {
                 1,
                 format!("Unity type has {subscriptions} event subscriptions but only {unsubscriptions} unsubscriptions"), (
                 subscriptions,
-                unsubscriptions.max(1))).with_reliability(0.6),
+                unsubscriptions.max(1))),
         ));
     }
 }

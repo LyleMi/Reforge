@@ -6,12 +6,12 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 use crate::cli::{ScanArgs, UnityMode};
+use crate::evidence_analysis::FindingInput;
 use crate::model::{
     Finding, FindingKind, FindingMetric, MetricId, RelatedLocation, UnityAssemblyEdge,
     UnityAssemblyNode, UnityCoverageEntry, UnityMetricManifestEntry, UnityProjectReport,
     UnityProjectStatus, UnityRawMetric, UnityReferenceProblem,
 };
-use crate::scoring::FindingInput;
 
 const ZERO_GUID: &str = "00000000000000000000000000000000";
 const LIFECYCLE_METHODS: &[&str] = &[

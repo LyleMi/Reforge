@@ -335,8 +335,6 @@ enum AnsiStyle {
     Path,
     Location,
     Muted,
-    Warning,
-    Critical,
     Info,
 }
 
@@ -346,7 +344,6 @@ fn render_status_cell(status: BaselineIssueStatus, color: bool) -> String {
         &format!("{:<8}", baseline_status_label(status)),
         match status {
             BaselineIssueStatus::New => AnsiStyle::Info,
-            BaselineIssueStatus::Worse => AnsiStyle::Warning,
             BaselineIssueStatus::Same => AnsiStyle::Muted,
         },
     )
@@ -355,7 +352,6 @@ fn render_status_cell(status: BaselineIssueStatus, color: bool) -> String {
 fn baseline_status_label(status: BaselineIssueStatus) -> &'static str {
     match status {
         BaselineIssueStatus::New => "new",
-        BaselineIssueStatus::Worse => "worse",
         BaselineIssueStatus::Same => "same",
     }
 }
@@ -363,7 +359,6 @@ fn baseline_status_label(status: BaselineIssueStatus) -> &'static str {
 fn baseline_show_label(show: BaselineShow) -> &'static str {
     match show {
         BaselineShow::New => "new",
-        BaselineShow::NewOrWorse => "new",
         BaselineShow::All => "all current",
     }
 }
@@ -371,7 +366,6 @@ fn baseline_show_label(show: BaselineShow) -> &'static str {
 fn baseline_show_value(show: BaselineShow) -> &'static str {
     match show {
         BaselineShow::New => "new",
-        BaselineShow::NewOrWorse => "new",
         BaselineShow::All => "all",
     }
 }
@@ -387,8 +381,6 @@ fn paint(color: bool, text: &str, style: AnsiStyle) -> String {
         AnsiStyle::Path => "36",
         AnsiStyle::Location => "2",
         AnsiStyle::Muted => "2",
-        AnsiStyle::Critical => "1;31",
-        AnsiStyle::Warning => "1;33",
         AnsiStyle::Info => "1;34",
     };
 

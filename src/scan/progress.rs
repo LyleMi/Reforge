@@ -180,33 +180,6 @@ fn fit_dynamic_message(message: &str, terminal_width: usize) -> String {
 }
 
 #[cfg(test)]
-pub struct WriterProgress<W: Write> {
-    writer: W,
-}
-
-#[cfg(test)]
-impl<W: Write> WriterProgress<W> {
-    pub fn new(writer: W) -> Self {
-        Self { writer }
-    }
-
-    pub fn into_inner(self) -> W {
-        self.writer
-    }
-}
-
-#[cfg(test)]
-impl<W: Write> ProgressSink for WriterProgress<W> {
-    fn report(&mut self, message: &str) {
-        let _ = writeln!(self.writer, "{message}");
-    }
-
-    fn wants_detailed_progress(&self) -> bool {
-        true
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 

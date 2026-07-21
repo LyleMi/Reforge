@@ -332,30 +332,16 @@ pub(in crate::detectors::structure) fn group_occurrences(
             min_occurrences,
             "occurrences",
         )];
-        let finding = if kind == FindingKind::RepeatedLiteral {
-            crate::scanner::Finding::from(
-                FindingInput::new(
-                    kind,
-                    representative.path.clone(),
-                    Some(representative.line),
-                    message(&key, group.len()),
-                    metrics,
-                )
-                .with_detection_reliability(repeated_literal_confidence(&key, &group))
-                .with_related_locations(related_locations),
+        let finding = crate::scanner::Finding::from(
+            FindingInput::new(
+                kind,
+                representative.path.clone(),
+                Some(representative.line),
+                message(&key, group.len()),
+                metrics,
             )
-        } else {
-            crate::scanner::Finding::from(
-                FindingInput::new(
-                    kind,
-                    representative.path.clone(),
-                    Some(representative.line),
-                    message(&key, group.len()),
-                    metrics,
-                )
-                .with_related_locations(related_locations),
-            )
-        };
+            .with_related_locations(related_locations),
+        );
         findings.push(finding);
     }
 

@@ -1,15 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultViewState, parseViewState, serializeViewState } from "../src/viewState";
-
-describe("view state hash", () => {
-  it("uses safe defaults for invalid values", () => {
-    expect(parseViewState("#unknown?severity=loud&sort=random&layer=heat&scope=lines")).toEqual(defaultViewState);
-  });
-  it("round trips issue filters", () => {
-    const state = parseViewState("#issues?query=main&severity=critical&kind=large_file&sort=path");
-    expect(serializeViewState(state)).toBe("#issues?query=main&severity=critical&kind=large_file&sort=path");
-  });
-  it("rejects a file absent from the report", () => {
-    expect(parseViewState("#map?file=missing.rs", { schema_version: 21, raw_metrics: { files: [{ path: "src/main.rs" }] } }).file).toBeNull();
-  });
+describe("evidence view state",()=>{
+  it("uses safe defaults for removed filters and layers",()=>expect(parseViewState("#unknown?severity=critical&layer=severity&sort=priority")).toEqual(defaultViewState));
+  it("round trips evidence filters",()=>{const state=parseViewState("#evidence?query=main&kind=large_file&sort=path");expect(serializeViewState(state)).toBe("#evidence?query=main&kind=large_file&sort=path")});
+  it("rejects unknown files",()=>{const report={schema_version:21,raw_metrics:{files:[{path:"src/main.rs"}]},findings:[],issues:[]} as never;expect(parseViewState("#map?file=missing.rs",report).file).toBeNull()});
 });

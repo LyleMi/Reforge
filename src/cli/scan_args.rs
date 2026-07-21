@@ -58,18 +58,12 @@ pub struct ScanArgs {
     #[arg(long)]
     pub config: Option<PathBuf>,
 
-    #[arg(skip)]
-    pub scoring_policy: Option<PathBuf>,
-
     #[command(flatten)]
     pub ci: CiArgs,
 
     /// Git churn collection mode.
     #[arg(long, value_enum)]
     pub churn: Option<ChurnMode>,
-
-    #[arg(skip)]
-    pub hotspot_model: Option<HotspotModel>,
 
     /// Number of days of git history to include in churn metrics.
     #[arg(long)]
@@ -208,9 +202,6 @@ pub struct CiArgs {
     /// Exit with a failure when unsuppressed findings are new relative to a schema 21 baseline.
     #[arg(long)]
     pub fail_on_findings: bool,
-
-    #[arg(skip)]
-    pub fail_on: Option<FailOnSeverity>,
 }
 
 #[derive(Debug, Clone, Default, Args)]
@@ -245,10 +236,4 @@ pub struct FindingControlArgs {
     /// Exclude findings from these detector kinds.
     #[arg(long = "exclude-detector", value_name = "KIND[,KIND...]")]
     pub exclude_detector: Option<String>,
-
-    #[arg(skip)]
-    pub min_priority: Option<u8>,
-
-    #[arg(skip)]
-    pub severity: Option<FindingSeverity>,
 }

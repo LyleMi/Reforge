@@ -67,14 +67,6 @@ pub fn render_human_report_colored(report: &ScanReport, color: bool) -> String {
     render_human_report_view(report, None, color)
 }
 
-#[cfg(test)]
-pub(crate) fn render_human_report_with_baseline(
-    report: &ScanReport,
-    diff: &BaselineDiff<'_>,
-) -> String {
-    render_human_report_with_baseline_colored(report, diff, false)
-}
-
 pub(crate) fn render_human_report_with_baseline_colored(
     report: &ScanReport,
     diff: &BaselineDiff<'_>,
@@ -238,7 +230,6 @@ impl ReportRenderContext<'_, '_, '_> {
             .push_str(&paint(self.color, "Baseline diff", AnsiStyle::Section));
         self.output.push('\n');
         self.render_summary_row("New", diff.summary.new);
-        self.render_summary_row("Worse", diff.summary.worse);
         self.render_summary_row("Same", diff.summary.same);
         self.render_summary_row("Resolved", diff.summary.resolved);
         self.render_summary_row(

@@ -1,238 +1,46 @@
-export type Severity = "info" | "warning" | "critical" | string;
-
-export type Percentiles = {
-  p50?: number;
-  p75?: number;
-  p90?: number;
-  p95?: number;
-  max?: number;
-};
-
-export type ChurnFileMetric = {
-  commits_touched?: number;
-  lines_added?: number;
-  lines_deleted?: number;
-  authors_count?: number;
-  recent_weighted_churn?: number;
-};
-
-export type FileRawMetric = {
-  path: string;
-  loc?: number;
-  imports?: number;
-  public_items?: number;
-  directory_source_files?: number;
-  is_test?: boolean;
-  churn?: ChurnFileMetric;
-};
-
-export type FindingMetric = {
-  name: string;
-  value?: number;
-  threshold?: number | null;
-  unit?: string;
-  normalized?: number | null;
-  percentile?: number | null;
-};
-
-export type RelatedLocation = {
-  path: string;
-  line?: number;
-  name?: string | null;
-};
-
-export type Finding = {
-  id?: string;
-  kind: string;
-  severity?: Severity;
-  path: string;
-  line?: number | null;
-  metrics?: FindingMetric[];
-  construct?: string;
-  mechanism?: string;
-  issue_id?: string | null;
-  priority?: number;
-  detection_reliability?: number;
-  interpretation_reliability?: number;
-  priority_factors?: Record<string, number>;
-  rank_explanation?: string;
-  message?: string;
-  recommendation?: string;
-  related_locations?: RelatedLocation[];
-};
-
-export type Issue = {
-  id: string;
-  construct: string;
-  mechanism: string;
-  action: string;
-  path: string;
-  line?: number | null;
-  primary_finding_id: string;
-  finding_ids: string[];
-  kinds: string[];
-  priority?: number;
-  severity?: Severity;
-};
-
-export type DetectorManifestEntry = {
-  kind: string;
-  construct: string;
-  mechanism: string;
-  action: string;
-  entity_scope: string;
-  approach: string;
-  supported_languages: string[];
-  precision_risk: string;
-  input_metrics?: string[];
-};
-
-export type RawMetricManifestEntry = {
-  name: string;
-  entity_scope: string;
-  unit: string;
-  scale: "boolean" | "count" | string;
-  direction: "higher_is_more_pressure" | "context_only" | string;
-  description: string;
-};
-
-export type Hotspot = {
-  level: string;
-  path: string;
-  line?: number | null;
-  name?: string | null;
-  priority?: number;
-  severity?: Severity;
-  static_risk?: number;
-  churn_risk?: number;
-  reason?: string;
-};
-
-export type DependencyGraphNode = {
-  path: string;
-  fan_in?: number;
-  fan_out?: number;
-};
-
-export type DependencyGraphEdge = {
-  from: string;
-  to: string;
-};
-
-export type ChurnSummary = {
-  mode?: string;
-  enabled?: boolean;
-  status?: string;
-  reason?: string | null;
-  window_days?: number;
-  max_commit_lines?: number;
-};
-
-export type ScanSummary = {
-  scanned_files?: number;
-  finding_count?: number;
-  issue_count?: number;
-  hotspot_count?: number;
-  similar_function_group_count?: number;
-  duration_ms?: number;
-  hotspot_model?: string;
-  churn?: ChurnSummary;
-};
-
-export type ScanStats = {
-  source_files_scanned?: number;
-  directories_scanned?: number;
-  function_candidates?: number;
-};
-
-export type SuppressionSummary = {
-  suppressed_count?: number;
-  suppressed_by_kind?: Record<string, number>;
-  suppressed_by_severity?: Record<string, number>;
-  highest_suppressed_priority?: number | null;
-};
-
-type MetricScope = "files" | "functions" | "types" | "churn";
-type LocatedRawMetric = Record<string, unknown> & { path: string };
-
-export type MetricsSummaryShape = Partial<Record<MetricScope, Record<string, Percentiles>>>;
-
-export type RawMetrics = {
-  files?: FileRawMetric[];
-  functions?: LocatedRawMetric[];
-  types?: LocatedRawMetric[];
-};
-
-export type DependencyGraph = {
-  nodes?: DependencyGraphNode[];
-  edges?: DependencyGraphEdge[];
-};
-
-export type UnityProject = {
-  status: "not_detected" | "disabled" | "observed" | "partially_observed" | string;
-  editor_version?: string | null;
-  serialization_mode?: string | null;
-  analysis_roots?: string[];
-  stats?: UnityProjectStats;
-  assemblies?: UnityAssembly[];
-  assembly_edges?: UnityAssemblyEdge[];
-  problem_references?: UnityReferenceProblem[];
-  raw_metrics?: UnityRawMetric[];
-  metric_manifest?: UnityMetricManifestEntry[];
-  coverage?: UnityCoverage[];
-  degraded_reasons?: string[];
-};
-
-type UnityProjectStats = { assemblies?: number; scenes?: number; prefabs?: number; assets?: number; meta_files?: number; guids?: number; tests?: number; yaml_assets?: number; binary_assets?: number; asset_references?: number };
-type UnityAssembly = { name: string; path: string; editor_only: boolean; test_assembly: boolean; predefined: boolean };
-type UnityAssemblyEdge = { from: string; to: string; reference: string; resolved: boolean };
-type UnityReferenceProblem = { source_path: string; line: number; guid: string; file_id?: string | null; category: string; resolved_target?: string | null };
-type UnityCoverage = { area: string; status: string; reason?: string | null };
-type UnityRawMetric = { name: string; path: string; value: number; unit: string };
-type UnityMetricManifestEntry = { name: string; entity: string; unit: string; description: string };
-
-export type CoverageCell = {
-  mechanism: string;
-  entity_scope: string;
-  expectation: "required" | "planned" | "intentionally_out_of_scope" | string;
-  status: "observed" | "partially_observed" | "unsupported" | "no_entities" | "planned" | "intentionally_out_of_scope" | string;
-  reason: string;
-  detectors?: string[];
-  completed_detectors?: string[];
-  entity_count?: number;
-  unobservable_reasons?: string[];
-};
-
-export type DetectorExecutionReceipt = {
-  kind: string;
-  status: string;
-  analyzed_entities?: number;
-  candidate_groups?: number;
-  unobservable_count?: number;
-  unobservable_reasons?: string[];
-};
-
-export type RawMetricCoverage = { metric: string; status: string; entity_count?: number; reason: string; unobservable_reasons?: string[] };
-export type EffectiveScoringPolicy = { source: string; path?: string | null; policy_id: string; version: number; fingerprint: string; global_weights?: Record<string, number> };
+export type Percentiles = { p50: number; p75: number; p90: number; p95: number; max: number };
+export type ChurnFileMetric = { commits_touched: number; lines_added: number; lines_deleted: number; authors_count: number; recent_weighted_churn: number };
+export type FileRawMetric = { path: string; loc: number; imports: number; public_items: number; is_test: boolean; churn: ChurnFileMetric };
+export type LocatedRawMetric = Record<string, unknown> & { path: string; name?: string; line?: number };
+export type FindingMetric = { name: string; value: number; threshold?: number | null; excess_ratio?: number | null; unit: string; normalized?: number | null; percentile?: number | null };
+export type RelatedLocation = { path: string; line: number; name?: string | null };
+export type Finding = { id: string; kind: string; path: string; line?: number | null; metrics: FindingMetric[]; construct: string; mechanism: string; issue_id?: string | null; message: string; recommendation: string; related_locations: RelatedLocation[] };
+export type Issue = { id: string; family: string; summary: string; construct: string; mechanism: string; action: string; path: string; line?: number | null; primary_finding_id: string; finding_ids: string[]; kinds: string[]; subject: Record<string, unknown> };
+export type DependencyGraphNode = { path: string; fan_in: number; fan_out: number };
+export type DependencyGraphEdge = { from: string; to: string };
+export type AgentTestReachability = { direct_test_files: string[]; reachable_test_files: string[]; reachable_test_file_count: number; nearest_test_distance?: number | null; nearest_test_paths: string[]; paths_truncated: boolean };
+export type FileAgentEvidence = AgentTestReachability & { path: string; coverage_status: string; context_closure_files: number; context_closure_loc: number; unresolved_local_dependencies: number };
+export type IssueAgentEvidence = AgentTestReachability & { issue_id: string; coverage_status: string; evidence_dispersion: { evidence_files: string[]; evidence_directories: string[]; evidence_languages: string[] }; context_closure_files: number; context_closure_loc: number; unresolved_local_dependencies: number };
+export type CoverageCell = { mechanism: string; entity_scope: string; expectation: string; status: string; reason: string; detectors: string[]; completed_detectors: string[]; entity_count: number; unobservable_reasons: string[] };
+export type DetectorExecutionReceipt = { kind: string; status: string; analyzed_entities: number; candidate_groups: number; unobservable_count: number; unobservable_reasons: string[] };
+export type RawMetricCoverage = { metric: string; status: string; entity_count: number; reason: string; unobservable_reasons: string[] };
+export type DetectorManifestEntry = { kind: string; construct: string; mechanism: string; action: string; entity_scope: string; approach: string; supported_languages: string[]; precision_risk: string; input_metrics: string[]; issue_family: string; evidence_role: string; constituent_kinds: string[] };
+export type RawMetricManifestEntry = { name: string; entity_scope: string; unit: string; scale: string; direction: string; description: string };
+export type ChurnSummary = { mode: string; enabled: boolean; status: string; reason?: string | null; window_days: number; max_commit_lines: number };
+export type ScanSummary = { scanned_files: number; finding_count: number; issue_count: number; similar_function_group_count: number; duration_ms: number; churn: ChurnSummary };
+export type ScanStats = { source_files_scanned: number; directories_scanned: number; function_candidates: number };
+export type RawMetrics = { directories: LocatedRawMetric[]; files: FileRawMetric[]; functions: LocatedRawMetric[]; types: LocatedRawMetric[] };
+export type DependencyGraph = { nodes: DependencyGraphNode[]; edges: DependencyGraphEdge[] };
+export type AgentEvidence = { files: FileAgentEvidence[]; issues: IssueAgentEvidence[] };
+export type SuppressionSummary = { suppressed_count: number; suppressed_by_kind: Record<string, number> };
+export type CoverageSummary = { detected_languages?: string[]; unobservable_reasons?: string[]; parse_failures?: unknown[]; unresolved_dependency_edges?: number };
 
 export type ScanReport = {
   schema_version: number;
-  summary?: ScanSummary;
-  stats?: ScanStats;
-  metrics_summary?: MetricsSummaryShape;
-  raw_metrics?: RawMetrics;
-  raw_metric_manifest?: RawMetricManifestEntry[];
-  dependency_graph?: DependencyGraph;
-  agent_evidence?: Record<string, unknown>;
-  unity_project?: UnityProject;
-  hotspots?: Hotspot[];
-  suppression_summary?: SuppressionSummary;
-  coverage_manifest?: CoverageCell[];
-  coverage_summary?: Record<string, unknown>;
-  detector_execution?: DetectorExecutionReceipt[];
-  raw_metric_coverage?: RawMetricCoverage[];
-  scoring_policy?: EffectiveScoringPolicy;
-  issues?: Issue[];
-  detector_manifest?: DetectorManifestEntry[];
-  findings?: Finding[];
+  summary: ScanSummary;
+  stats: ScanStats;
+  metrics_summary: Record<string, Record<string, Percentiles>>;
+  raw_metrics: RawMetrics;
+  raw_metric_manifest: RawMetricManifestEntry[];
+  dependency_graph: DependencyGraph;
+  agent_evidence: AgentEvidence;
+  unity_project: Record<string, unknown>;
+  suppression_summary: SuppressionSummary;
+  coverage_manifest: CoverageCell[];
+  coverage_summary: CoverageSummary;
+  detector_execution: DetectorExecutionReceipt[];
+  raw_metric_coverage: RawMetricCoverage[];
+  issues: Issue[];
+  detector_manifest: DetectorManifestEntry[];
+  findings: Finding[];
 };

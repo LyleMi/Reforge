@@ -37,9 +37,9 @@ If serialized report shape changed:
 - Update README references to the schema version.
 - Add or update output tests.
 
-If only detector behavior or scoring changed without report shape changes, do
-not increment the schema version solely for ranking changes unless consumers
-need a compatibility boundary.
+If only detector behavior or evidence interpretation changed without report
+shape changes, do not increment the schema version unless consumers need a
+compatibility boundary.
 
 ## Documentation Review
 
@@ -72,6 +72,6 @@ reforge scan . --progress never
 Release notes should include:
 
 - New detector or CLI capabilities.
-- Changed thresholds, scoring, output, or schema.
+- Changed thresholds, evidence analysis, output, or schema.
 - Bug fixes that affect scan results.
 - Any compatibility notes for JSON/YAML consumers.

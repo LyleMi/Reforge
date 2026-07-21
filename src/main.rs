@@ -1,11 +1,11 @@
 mod baseline;
 mod cli;
 mod detectors;
+mod evidence_analysis;
 mod lang;
 mod model;
 mod output;
 mod scan;
-mod scoring;
 
 mod concept_drift {
     pub(crate) use crate::detectors::drift::*;
@@ -24,9 +24,9 @@ mod report {
 }
 
 mod scanner {
+    pub(crate) use crate::evidence_analysis::*;
     pub(crate) use crate::model::*;
     pub(crate) use crate::scan::*;
-    pub(crate) use crate::scoring::*;
 }
 
 mod similar_functions {

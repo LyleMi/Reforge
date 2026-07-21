@@ -6,6 +6,7 @@ use crate::model::{
     RelatedLocation,
 };
 
+#[path = "evidence_analysis/clusters.rs"]
 mod clusters;
 
 pub(crate) use clusters::cluster_findings;
@@ -47,11 +48,6 @@ impl FindingInput {
         }
     }
 
-    pub fn with_detection_reliability(self, reliability: f64) -> Self {
-        let _ = reliability;
-        self
-    }
-
     pub fn with_related_locations(mut self, related_locations: Vec<RelatedLocation>) -> Self {
         self.related_locations = related_locations;
         self
@@ -70,34 +66,11 @@ impl From<FindingInput> for Finding {
             construct,
             mechanism,
             issue_id: None,
-            priority: 0,
-            severity: crate::model::Severity::Info,
-            detection_reliability: 1.0,
-            interpretation_reliability: 1.0,
-            priority_factors: crate::model::PriorityFactors::default(),
-            rank_explanation: String::new(),
             message: input.message,
             related_locations: input.related_locations,
         };
         finding.refresh_id();
         finding
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn finalize_scoring(
-    findings: &mut [Finding],
-    raw_metrics: &RawMetrics,
-    _hotspots: &[crate::model::Hotspot],
-) {
-    finalize_metric_context(findings, raw_metrics);
-}
-
-pub fn severity_for_priority(priority: u8) -> crate::model::Severity {
-    match priority {
-        0..=34 => crate::model::Severity::Info,
-        35..=69 => crate::model::Severity::Warning,
-        _ => crate::model::Severity::Critical,
     }
 }
 

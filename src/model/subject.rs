@@ -62,15 +62,6 @@ pub enum FindingKind {
     UnityUnbalancedEventSubscription,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Severity {
-    #[default]
-    Info,
-    Warning,
-    Critical,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QualityConstruct {
@@ -235,9 +226,11 @@ impl FindingMetric {
             threshold: Some(threshold),
             unit: unit.into(),
             excess_ratio: (threshold > 0).then_some(value as f64 / threshold as f64),
-            normalized: (threshold > 0).then_some(crate::scoring::normalized_threshold_excess(
-                value as f64 / threshold as f64,
-            )),
+            normalized: (threshold > 0).then_some(
+                crate::evidence_analysis::normalized_threshold_excess(
+                    value as f64 / threshold as f64,
+                ),
+            ),
             percentile: None,
         }
     }

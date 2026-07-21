@@ -63,6 +63,12 @@ impl std::fmt::Display for IssueKey {
         formatter.write_str(&self.0)
     }
 }
+
+impl From<String> for IssueKey {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(usize)]
 pub enum MetricId {

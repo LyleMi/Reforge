@@ -128,7 +128,7 @@ Name tests by behavior, such as `parses_output_format` or
 ## Style
 
 Use idiomatic Rust formatted by `cargo fmt`. Prefer the existing module split:
-`cli`, `scan`, `model`, `detectors`, `scoring`, and `output`.
+`cli`, `scan`, `model`, `detectors`, `evidence_analysis`, `workflow`, and `output`.
 
 Use `snake_case` for functions, variables, modules, and test names. Use
 `PascalCase` for structs, enums, and traits. Keep CLI flags long,

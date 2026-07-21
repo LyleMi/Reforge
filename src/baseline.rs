@@ -4,13 +4,12 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 
-use crate::cli::{BaselineMode, BaselineShow};
+use crate::cli::BaselineShow;
 use crate::model::{Finding, Issue, SCAN_REPORT_SCHEMA_VERSION, ScanReport};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BaselineIssueStatus {
     New,
-    Worse,
     Same,
 }
 
@@ -23,7 +22,6 @@ pub(crate) struct BaselineIssue<'a> {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BaselineDiffSummary {
     pub new: usize,
-    pub worse: usize,
     pub same: usize,
     pub resolved: usize,
 }
@@ -53,28 +51,6 @@ pub(crate) fn load_baseline(path: &Path) -> Result<ScanReport> {
     };
     validate_issue_ids(path, &report)?;
     Ok(report)
-}
-
-pub(crate) fn selected_issues<'a>(
-    current: &'a [Issue],
-    baseline: Option<&ScanReport>,
-    mode: BaselineMode,
-) -> Vec<&'a Issue> {
-    let Some(baseline) = baseline else {
-        return current.iter().collect();
-    };
-
-    let show = match mode {
-        BaselineMode::New => BaselineShow::New,
-        BaselineMode::NewOrWorse => BaselineShow::New,
-        BaselineMode::All => BaselineShow::All,
-    };
-
-    diff_issues(current, baseline, show)
-        .issues
-        .into_iter()
-        .map(|entry| entry.issue)
-        .collect()
 }
 
 pub(crate) fn diff_issues<'a>(
@@ -110,7 +86,6 @@ pub(crate) fn diff_issues<'a>(
 
         match status {
             BaselineIssueStatus::New => summary.new += 1,
-            BaselineIssueStatus::Worse => {}
             BaselineIssueStatus::Same => summary.same += 1,
         }
 
@@ -200,186 +175,23 @@ fn validate_issue_ids(path: &Path, report: &ScanReport) -> Result<()> {
 fn show_matches(show: BaselineShow, status: BaselineIssueStatus) -> bool {
     match show {
         BaselineShow::New => status == BaselineIssueStatus::New,
-        BaselineShow::NewOrWorse => status == BaselineIssueStatus::New,
         BaselineShow::All => true,
     }
 }
 
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{
-        EvidenceSubject, FindingKind, IssueKey, PriorityFactors, QualityConstruct, RefactorAction,
-        SignalMechanism,
-    };
-
-    fn issue(line: usize, priority: u8, severity: Severity) -> Issue {
-        let subject = EvidenceSubject::File {
-            path: format!("src/{line}.rs"),
-        };
-        Issue {
-            id: IssueKey::from_family_and_subject("size", &subject),
-            family: "size".into(),
-            summary: format!("large file {line}"),
-            construct: QualityConstruct::Modifiability,
-            mechanism: SignalMechanism::ResponsibilityDispersion,
-            action: RefactorAction::DecomposeResponsibility,
-            path: format!("src/{line}.rs"),
-            line: Some(line),
-            primary_finding_id: format!("rf3-{line:032x}").into(),
-            finding_ids: vec![format!("rf3-{line:032x}").into()],
-            kinds: vec![FindingKind::LargeFile],
-            severity,
-            priority,
-            priority_factors: PriorityFactors::default(),
-            subject,
-            detection_reliability: 1.0,
-            interpretation_reliability: 1.0,
-        }
-    }
-
-    fn baseline(issues: Vec<Issue>) -> ScanReport {
-        ScanReport {
-            schema_version: SCAN_REPORT_SCHEMA_VERSION,
-            summary: crate::model::ScanSummary {
-                scanned_files: 0,
-                finding_count: 0,
-                issue_count: issues.len(),
-                hotspot_count: 0,
-                similar_function_group_count: 0,
-                duration_ms: 0,
-                hotspot_model: crate::cli::HotspotModel::Hybrid,
-                churn: crate::model::ChurnSummary {
-                    mode: crate::cli::ChurnMode::Off,
-                    enabled: false,
-                    status: "disabled".to_string(),
-                    reason: None,
-                    window_days: 180,
-                    max_commit_lines: 2_000,
-                },
-            },
-            stats: crate::model::ScanStats::default(),
-            metrics_summary: crate::model::MetricsSummary {
-                directories: BTreeMap::new(),
-                files: BTreeMap::new(),
-                functions: BTreeMap::new(),
-                types: BTreeMap::new(),
-                churn: BTreeMap::new(),
-            },
-            raw_metrics: crate::model::RawMetrics::default(),
-            raw_metric_manifest: Vec::new(),
-            dependency_graph: crate::model::DependencyGraphSnapshot::default(),
-            unity_project: crate::model::UnityProjectReport::default(),
-            hotspots: Vec::new(),
-            suppression_summary: crate::model::SuppressionSummary::default(),
-            coverage_manifest: Vec::new(),
-            coverage_summary: crate::model::CoverageSummary::default(),
-            detector_execution: Vec::new(),
-            raw_metric_coverage: Vec::new(),
-            scoring_policy: crate::model::EffectiveScoringPolicy::builtin(),
-            issues,
-            detector_manifest: Vec::new(),
-            findings: Vec::new(),
-        }
-    }
 
     #[test]
-    fn baseline_mode_new_selects_only_absent_ids() {
-        let old = baseline(vec![issue(1, 50, Severity::Warning)]);
-        let current = vec![
-            issue(1, 70, Severity::Critical),
-            issue(2, 50, Severity::Warning),
-        ];
+    fn rejects_schema_20_baselines_before_deserialization() {
+        let error = validate_baseline_schema(
+            Path::new("baseline.json"),
+            r#"{"schema_version":20,"issues":[],"findings":[]}"#,
+        )
+        .expect_err("schema 20 must not be accepted as a baseline");
 
-        let selected = selected_issues(&current, Some(&old), BaselineMode::New);
-
-        assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0].id, current[1].id);
-    }
-
-    #[test]
-    fn baseline_mode_new_or_worse_selects_absent_and_higher_priority_ids() {
-        let old = baseline(vec![
-            issue(1, 50, Severity::Warning),
-            issue(2, 50, Severity::Warning),
-        ]);
-        let current = vec![
-            issue(1, 50, Severity::Warning),
-            issue(2, 60, Severity::Warning),
-            issue(3, 20, Severity::Info),
-        ];
-
-        let selected = selected_issues(&current, Some(&old), BaselineMode::NewOrWorse);
-
-        assert_eq!(
-            selected
-                .iter()
-                .map(|issue| issue.id.clone())
-                .collect::<Vec<_>>(),
-            vec![current[1].id.clone(), current[2].id.clone()]
-        );
-    }
-
-    #[test]
-    fn diff_classifies_new_worse_same_and_resolved_issues() {
-        let old = baseline(vec![
-            issue(1, 50, Severity::Warning),
-            issue(2, 50, Severity::Warning),
-            issue(3, 50, Severity::Warning),
-            issue(4, 80, Severity::Critical),
-        ]);
-        let current = vec![
-            issue(1, 50, Severity::Warning),
-            issue(2, 60, Severity::Warning),
-            issue(3, 50, Severity::Critical),
-            issue(5, 20, Severity::Info),
-        ];
-
-        let diff = diff_issues(&current, &old, BaselineShow::All);
-
-        assert_eq!(
-            diff.summary,
-            BaselineDiffSummary {
-                new: 1,
-                worse: 2,
-                same: 1,
-                resolved: 1,
-            }
-        );
-        assert_eq!(
-            diff.issues
-                .iter()
-                .map(|entry| entry.status)
-                .collect::<Vec<_>>(),
-            [
-                BaselineIssueStatus::Same,
-                BaselineIssueStatus::Worse,
-                BaselineIssueStatus::Worse,
-                BaselineIssueStatus::New,
-            ]
-        );
-    }
-
-    #[test]
-    fn diff_show_new_or_worse_selects_only_actionable_changes() {
-        let old = baseline(vec![
-            issue(1, 50, Severity::Warning),
-            issue(2, 50, Severity::Warning),
-        ]);
-        let current = vec![
-            issue(1, 50, Severity::Warning),
-            issue(2, 60, Severity::Warning),
-            issue(3, 20, Severity::Info),
-        ];
-
-        let diff = diff_issues(&current, &old, BaselineShow::NewOrWorse);
-
-        assert_eq!(
-            diff.issues
-                .iter()
-                .map(|entry| entry.issue.id.clone())
-                .collect::<Vec<_>>(),
-            vec![current[1].id.clone(), current[2].id.clone()]
-        );
+        assert!(error.to_string().contains("schema version 20"));
+        assert!(error.to_string().contains("schema 21"));
     }
 }

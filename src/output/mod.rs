@@ -16,15 +16,6 @@ pub(crate) use human::{
 };
 pub use sarif::{print_sarif_report, write_sarif_report};
 
-#[cfg(test)]
-pub use html::render_html_report;
-#[cfg(test)]
-pub(crate) use human::render_human_report_with_baseline;
-#[cfg(test)]
-pub use human::{render_human_report, render_human_report_colored};
-#[cfg(test)]
-pub use sarif::render_sarif_report;
-
 pub fn print_json_report(report: &ScanReport) -> Result<()> {
     write_json_report(std::io::stdout().lock(), report)
 }
@@ -49,13 +40,3 @@ pub fn write_yaml_report(mut writer: impl Write, report: &ScanReport) -> Result<
 }
 
 use crate::model::ScanReport;
-
-#[cfg(test)]
-use std::collections::BTreeMap;
-
-#[cfg(test)]
-use crate::model::{Finding, FindingKind, Severity};
-
-#[cfg(any())]
-#[path = "../report_tests.rs"]
-mod tests;

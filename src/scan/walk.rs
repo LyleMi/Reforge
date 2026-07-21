@@ -419,11 +419,3 @@ fn display_path(path: &Path) -> String {
         .unwrap_or(display.as_str())
         .to_string()
 }
-
-#[cfg(any())]
-#[path = "../scanner_tests.rs"]
-mod scanner_tests;
-
-#[cfg(any())]
-#[path = "../scan_documentation_tests.rs"]
-mod scan_documentation_tests;

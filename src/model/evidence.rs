@@ -1,27 +1,15 @@
 use super::*;
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Finding {
     pub id: EvidenceId,
     pub kind: FindingKind,
-    #[serde(default, skip)]
-    pub severity: Severity,
     pub path: String,
     pub line: Option<usize>,
     pub metrics: Vec<FindingMetric>,
     pub construct: QualityConstruct,
     pub mechanism: SignalMechanism,
     pub issue_id: Option<IssueKey>,
-    #[serde(default, skip)]
-    pub priority: u8,
-    #[serde(default, skip)]
-    pub detection_reliability: f64,
-    #[serde(default, skip)]
-    pub interpretation_reliability: f64,
-    #[serde(default, skip)]
-    pub priority_factors: PriorityFactors,
-    #[serde(default, skip)]
-    pub rank_explanation: String,
     pub message: String,
     pub related_locations: Vec<RelatedLocation>,
 }
@@ -176,7 +164,7 @@ const KIND_RECOMMENDATIONS: &[(FindingKind, &str)] = &[
     ),
     (
         FindingKind::MissingMetricsModelDocs,
-        "Document how raw metrics, percentiles, hotspots, and priority factors are computed.",
+        "Document how raw metrics, percentiles, findings, and coverage are computed.",
     ),
     (
         FindingKind::MissingArchitectureDocs,
@@ -332,17 +320,6 @@ pub(super) fn fnv1a64(bytes: &[u8]) -> u64 {
     hash
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct PriorityFactors {
-    pub impact: f64,
-    pub intensity: f64,
-    pub spread: f64,
-    pub change_pressure: f64,
-    pub actionability: f64,
-    pub detection_reliability: f64,
-    pub interpretation_reliability: f64,
-}
-
 impl Serialize for Finding {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
@@ -361,6 +338,48 @@ impl Serialize for Finding {
         state.serialize_field("recommendation", &self.recommendation())?;
         state.serialize_field("related_locations", serialized_related_locations(self))?;
         state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Finding {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct SerializedFinding {
+            id: EvidenceId,
+            kind: FindingKind,
+            path: String,
+            line: Option<usize>,
+            metrics: Vec<FindingMetric>,
+            construct: QualityConstruct,
+            mechanism: SignalMechanism,
+            issue_id: Option<IssueKey>,
+            message: String,
+            recommendation: String,
+            related_locations: Vec<RelatedLocation>,
+        }
+
+        let value = SerializedFinding::deserialize(deserializer)?;
+        if value.recommendation != recommendation_for_kind(value.kind) {
+            return Err(serde::de::Error::custom(
+                "finding recommendation does not match its detector kind",
+            ));
+        }
+        Ok(Self {
+            id: value.id,
+            kind: value.kind,
+            path: value.path,
+            line: value.line,
+            metrics: value.metrics,
+            construct: value.construct,
+            mechanism: value.mechanism,
+            issue_id: value.issue_id,
+            message: value.message,
+            related_locations: value.related_locations,
+        })
     }
 }
 

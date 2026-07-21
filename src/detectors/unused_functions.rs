@@ -238,24 +238,21 @@ fn has_external_reference(
 }
 
 fn unused_function_finding(definition: FunctionDefinition) -> Finding {
-    crate::scanner::Finding::from(
-        FindingInput::new(
-            FindingKind::UnusedFunction,
-            definition.path,
-            Some(definition.line),
-            format!(
-                "function `{}` has no references outside its own body",
-                definition.name
-            ),
-            vec![FindingMetric::threshold(
-                MetricId::FunctionReferences,
-                0,
-                1,
-                "references",
-            )],
-        )
-        .with_detection_reliability(0.65),
-    )
+    crate::scanner::Finding::from(FindingInput::new(
+        FindingKind::UnusedFunction,
+        definition.path,
+        Some(definition.line),
+        format!(
+            "function `{}` has no references outside its own body",
+            definition.name
+        ),
+        vec![FindingMetric::threshold(
+            MetricId::FunctionReferences,
+            0,
+            1,
+            "references",
+        )],
+    ))
 }
 
 fn is_inside_rust_test_module(node: Node<'_>, context: UnusedFunctionContext<'_>) -> bool {

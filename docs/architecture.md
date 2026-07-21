@@ -18,9 +18,10 @@ units, projects coverage and agent context, and renders schema 21 reports.
   evidence subjects, raw metrics, dependency data, and Unity report data.
 - `src/detectors/`: structural, similarity, unused-function, dependency,
   concept-drift, and documentation detectors plus their manifest contracts.
-- `src/scoring/`: metric percentile context and compatible-finding clustering.
-  Legacy scoring types remain internal compatibility details and are not
-  serialized by schema 21.
+- `src/evidence_analysis.rs`: metric percentile context and compatible-finding
+  clustering without a ranking model.
+- `src/workflow.rs`: strict resumable artifacts, approval snapshots, direct
+  checks, rescans, and workflow state transitions.
 - `src/baseline.rs`: schema 21 baseline validation, stable-ID diffing,
   `--show` selection, and new unsuppressed finding selection.
 - `src/unity.rs` and `src/unity/`: Unity project planning, text asset/GUID
@@ -83,13 +84,12 @@ mechanism, message, recommendation, and related locations. Issues carry a
 stable canonical subject, refactor action, family, and member evidence IDs.
 
 Schema 21 does not serialize priority, severity, hotspot ranking, scoring
-policy, or reliability scores. Rust fields retained with Serde `skip` are
-compatibility implementation details and must not be documented as report
-fields. Consumers choose work using the evidence, coverage, project goals, and
-their own policy.
+policy, or reliability scores. Those legacy model and CLI fields are not kept
+in the Rust implementation. Consumers choose work using the evidence,
+coverage, project goals, and their own policy.
 
 See [Report Schema](report-schema.md) for the complete serialized contract and
-[Agent Workflow Research](agent-workflows.md) for the boundary between scanner
+[Agent Workflows](agent-workflows.md) for the boundary between scanner
 facts and proposed agent orchestration.
 
 ## Parser Integration

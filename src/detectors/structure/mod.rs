@@ -638,11 +638,3 @@ mod parameters;
 
 use analysis::*;
 use parameters::*;
-
-#[cfg(any())]
-#[path = "../../structural_tests.rs"]
-mod tests;
-
-#[cfg(any())]
-#[path = "../../structural_regression_tests.rs"]
-mod regression_tests;
