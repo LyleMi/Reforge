@@ -215,7 +215,7 @@ pre,
   border-top: 3px solid var(--reforge-amber);
 }
 
-.signal-key .hotspots {
+.signal-key .coverage {
   border-top: 3px solid var(--reforge-blue);
 }
 

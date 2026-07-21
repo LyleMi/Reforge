@@ -98,9 +98,9 @@ fn render_human_report_view<'report>(
 
     if report.findings.is_empty() {
         context.output.push('\n');
-        context.output.push_str(
-            "No threshold signals found. Watchlist entries are review targets, not findings.\n",
-        );
+        context
+            .output
+            .push_str("No unsuppressed threshold signals found.\n");
         return output;
     }
 

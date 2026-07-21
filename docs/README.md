@@ -21,7 +21,7 @@ detector, or defect probability model.
     <strong>Findings</strong>
     <span>Threshold and detector signals that merit review.</span>
   </div>
-  <div class="hotspots">
+  <div class="coverage">
     <strong>Coverage</strong>
     <span>Execution receipts and explicit observed, partial, or unavailable analysis.</span>
   </div>

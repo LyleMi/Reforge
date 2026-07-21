@@ -8,14 +8,13 @@
   <body>
     <script id="reforge-report-data" type="application/json">
       {
-"schema_version": 21,
+        "schema_version": 21,
         "summary": {
           "scanned_files": 0,
           "finding_count": 0,
-          "hotspot_count": 0,
+          "issue_count": 0,
           "similar_function_group_count": 0,
           "duration_ms": 0,
-          "hotspot_model": "hybrid",
           "churn": {
             "mode": "auto",
             "enabled": false,
@@ -30,16 +29,22 @@
           "directories_scanned": 0,
           "function_candidates": 0
         },
-        "metrics_summary": { "files": {}, "functions": {}, "types": {}, "churn": {} },
-        "raw_metrics": { "files": [], "functions": [], "types": [] },
+        "metrics_summary": { "directories": {}, "files": {}, "functions": {}, "types": {}, "churn": {} },
+        "raw_metrics": { "directories": [], "files": [], "functions": [], "types": [] },
+        "raw_metric_manifest": [],
         "dependency_graph": { "nodes": [], "edges": [] },
-        "hotspots": [],
+        "agent_evidence": { "files": [], "issues": [] },
+        "unity_project": {},
         "suppression_summary": {
           "suppressed_count": 0,
-          "suppressed_by_kind": {},
-          "suppressed_by_severity": {},
-          "highest_suppressed_priority": null
+          "suppressed_by_kind": {}
         },
+        "coverage_manifest": [],
+        "coverage_summary": {},
+        "detector_execution": [],
+        "raw_metric_coverage": [],
+        "issues": [],
+        "detector_manifest": [],
         "findings": []
       }
     </script>
