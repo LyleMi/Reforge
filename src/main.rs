@@ -41,6 +41,7 @@ mod unused_functions {
     pub(crate) use crate::detectors::unused_functions::*;
 }
 mod unity;
+mod workflow;
 
 use anyhow::{Context, Result, bail};
 use std::fs::{File, OpenOptions};
@@ -61,6 +62,7 @@ fn main() -> Result<()> {
         Command::Init(args) => run_init(args)?,
         Command::Config(args) => run_config(args)?,
         Command::Scan(args) => run_scan(*args)?,
+        Command::Workflow(args) => workflow::run(args)?,
     }
 
     Ok(())

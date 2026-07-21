@@ -3,11 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use clap::CommandFactory;
+use clap::{CommandFactory, Parser};
 
 use crate::cli::Cli;
+use crate::evidence_analysis::FindingInput;
 use crate::model::{Finding, FindingKind, FindingMetric, MetricId};
-use crate::scoring::FindingInput;
 
 const PROJECT_MARKERS: &[&str] = &[
     "README.md",
@@ -44,24 +44,25 @@ const REQUIRED_SCHEMA_FIELDS: &[&str] = &[
     "raw_metrics",
     "raw_metric_manifest",
     "dependency_graph",
-    "hotspots",
+    "agent_evidence",
+    "unity_project",
     "suppression_summary",
     "coverage_manifest",
     "coverage_summary",
+    "detector_execution",
+    "raw_metric_coverage",
     "issues",
     "detector_manifest",
     "findings",
     "id",
     "kind",
-    "severity",
     "path",
     "line",
     "metrics",
-    "priority",
-    "detection_reliability",
-    "interpretation_reliability",
-    "priority_factors",
-    "rank_explanation",
+    "construct",
+    "mechanism",
+    "issue_id",
+    "message",
     "recommendation",
     "related_locations",
     "action",
@@ -69,6 +70,17 @@ const REQUIRED_SCHEMA_FIELDS: &[&str] = &[
     "issue_family",
     "evidence_role",
     "constituent_kinds",
+];
+
+const REMOVED_SCHEMA_FIELDS: &[&str] = &[
+    "hotspots",
+    "scoring_policy",
+    "severity",
+    "priority",
+    "detection_reliability",
+    "interpretation_reliability",
+    "priority_factors",
+    "rank_explanation",
 ];
 
 #[derive(Debug)]
@@ -164,7 +176,12 @@ impl DocumentationInventory {
     }
 
     fn read_known_docs(&mut self) -> Result<()> {
-        for path in self.known_doc_paths() {
+        let mut paths = self.known_doc_paths();
+        collect_markdown_files(&self.root.join("docs"), &mut paths)?;
+        collect_markdown_files(&self.root.join("skills"), &mut paths)?;
+        paths.sort();
+        paths.dedup();
+        for path in paths {
             if self.contents.contains_key(&path) {
                 continue;
             }
@@ -210,7 +227,7 @@ impl DocumentationInventory {
         if self.metrics_model.is_none() {
             findings.push(self.missing_doc_finding(
                 FindingKind::MissingMetricsModelDocs,
-                "missing metrics model docs; document raw metrics, findings, hotspots, priority, and confidence",
+                "missing metrics model docs; document raw metrics, percentiles, findings, and coverage",
                 75,
             ));
         }
@@ -307,7 +324,8 @@ impl DocumentationInventory {
             ])
             .to_ascii_lowercase();
         let documented_any_flag = documented_text.contains("--");
-        if !documented_any_flag {
+        let invalid_commands = self.invalid_documented_commands();
+        if !documented_any_flag && invalid_commands.is_empty() {
             return None;
         }
 
@@ -315,8 +333,22 @@ impl DocumentationInventory {
             .into_iter()
             .filter(|flag| !documented_text.contains(&flag.to_ascii_lowercase()))
             .collect::<Vec<_>>();
-        if missing_flags.is_empty() {
+        if missing_flags.is_empty() && invalid_commands.is_empty() {
             return None;
+        }
+
+        let mut problems = Vec::new();
+        if !missing_flags.is_empty() {
+            problems.push(format!(
+                "missing current flags: {}",
+                missing_flags.join(", ")
+            ));
+        }
+        if !invalid_commands.is_empty() {
+            problems.push(format!(
+                "contains commands rejected by the parser: {}",
+                invalid_commands.join(" | ")
+            ));
         }
 
         Some(Finding::from(FindingInput::new(
@@ -328,17 +360,23 @@ impl DocumentationInventory {
                 .map(|path| display_path(path))
                 .unwrap_or_else(|| display_path(&self.root)),
             Some(1),
-            format!(
-                "CLI documentation is missing current flags: {}",
-                missing_flags.join(", ")
-            ),
+            format!("CLI documentation is stale: {}", problems.join("; ")),
             vec![FindingMetric::threshold(
                 MetricId::DocumentationMissingCliFlags,
-                missing_flags.len(),
+                missing_flags.len() + invalid_commands.len(),
                 1,
                 "flags",
             )],
         )))
+    }
+
+    fn invalid_documented_commands(&self) -> Vec<String> {
+        self.contents
+            .values()
+            .flat_map(|contents| executable_reforge_commands(contents))
+            .filter(|command| Cli::try_parse_from(command).is_err())
+            .map(|command| command.join(" "))
+            .collect()
     }
 
     fn stale_schema_documentation(&self) -> Option<Finding> {
@@ -348,26 +386,46 @@ impl DocumentationInventory {
             .get(path)
             .map(|contents| contents.to_ascii_lowercase())
             .unwrap_or_default();
+        let current_contract = text
+            .split("## compatibility notes")
+            .next()
+            .unwrap_or(text.as_str());
         let missing_fields = REQUIRED_SCHEMA_FIELDS
             .iter()
-            .filter(|field| !text.contains(*field))
+            .filter(|field| !declares_schema_field(current_contract, field))
             .copied()
             .collect::<Vec<_>>();
-        if missing_fields.is_empty() {
+        let removed_fields = REMOVED_SCHEMA_FIELDS
+            .iter()
+            .filter(|field| declares_schema_field(current_contract, field))
+            .copied()
+            .collect::<Vec<_>>();
+        if missing_fields.is_empty() && removed_fields.is_empty() {
             return None;
+        }
+
+        let mut problems = Vec::new();
+        if !missing_fields.is_empty() {
+            problems.push(format!(
+                "missing current fields: {}",
+                missing_fields.join(", ")
+            ));
+        }
+        if !removed_fields.is_empty() {
+            problems.push(format!(
+                "declares removed schema 20 fields as current: {}",
+                removed_fields.join(", ")
+            ));
         }
 
         Some(Finding::from(FindingInput::new(
             FindingKind::StaleSchemaDocumentation,
             display_path(path),
             Some(1),
-            format!(
-                "report schema docs are missing current fields: {}",
-                missing_fields.join(", ")
-            ),
+            format!("report schema docs are stale: {}", problems.join("; ")),
             vec![FindingMetric::threshold(
                 MetricId::DocumentationMissingSchemaFields,
-                missing_fields.len(),
+                missing_fields.len() + removed_fields.len(),
                 1,
                 "fields",
             )],
@@ -382,6 +440,97 @@ impl DocumentationInventory {
             .cloned()
             .collect::<Vec<_>>()
             .join("\n")
+    }
+}
+
+fn declares_schema_field(text: &str, field: &str) -> bool {
+    text.contains(&format!("`{field}`")) || text.contains(&format!("\"{field}\""))
+}
+
+fn executable_reforge_commands(contents: &str) -> Vec<Vec<String>> {
+    let mut executable_fence = false;
+    let mut commands = Vec::new();
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if let Some(language) = trimmed.strip_prefix("```") {
+            if executable_fence {
+                executable_fence = false;
+            } else {
+                executable_fence = matches!(
+                    language.trim().to_ascii_lowercase().as_str(),
+                    "" | "bash" | "console" | "powershell" | "sh" | "shell" | "zsh"
+                );
+            }
+            continue;
+        }
+        if !executable_fence {
+            continue;
+        }
+        let command = trimmed.strip_prefix("$ ").unwrap_or(trimmed);
+        if !command.starts_with("reforge ") {
+            continue;
+        }
+        commands.push(command_tokens(command));
+    }
+    commands
+}
+
+fn command_tokens(command: &str) -> Vec<String> {
+    let mut tokenizer = CommandTokenizer::default();
+    for character in command.chars() {
+        tokenizer.consume(character);
+    }
+    tokenizer.finish()
+}
+
+#[derive(Default)]
+struct CommandTokenizer {
+    tokens: Vec<String>,
+    current: String,
+    quote: Option<char>,
+    escaped: bool,
+}
+
+impl CommandTokenizer {
+    fn consume(&mut self, character: char) {
+        if self.escaped {
+            self.current.push(character);
+            self.escaped = false;
+            return;
+        }
+        if character == '\\' && self.quote != Some('\'') {
+            self.escaped = true;
+            return;
+        }
+        if matches!(character, '\'' | '"') {
+            self.consume_quote(character);
+        } else if character.is_whitespace() && self.quote.is_none() {
+            self.flush();
+        } else {
+            self.current.push(character);
+        }
+    }
+
+    fn consume_quote(&mut self, character: char) {
+        match self.quote {
+            Some(quote) if quote == character => self.quote = None,
+            None => self.quote = Some(character),
+            Some(_) => self.current.push(character),
+        }
+    }
+
+    fn flush(&mut self) {
+        if !self.current.is_empty() {
+            self.tokens.push(std::mem::take(&mut self.current));
+        }
+    }
+
+    fn finish(mut self) -> Vec<String> {
+        if self.escaped {
+            self.current.push('\\');
+        }
+        self.flush();
+        self.tokens
     }
 }
 
@@ -406,6 +555,21 @@ fn first_existing(root: &Path, names: &[&str]) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
+fn collect_markdown_files(root: &Path, output: &mut Vec<PathBuf>) -> Result<()> {
+    if !root.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(root)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_markdown_files(&path, output)?;
+        } else if path.extension().is_some_and(|extension| extension == "md") {
+            output.push(path);
+        }
+    }
+    Ok(())
+}
+
 fn display_path(path: &Path) -> String {
     let display = path.to_string_lossy().replace('\\', "/");
     display
@@ -425,5 +589,30 @@ mod tests {
         assert!(flags.contains(&"--output".to_string()));
         assert!(flags.contains(&"--max-file-lines".to_string()));
         assert!(flags.contains(&"--churn-window-days".to_string()));
+    }
+
+    #[test]
+    fn parses_only_executable_reforge_code_blocks() {
+        let commands = executable_reforge_commands(
+            "```bash\nreforge scan . --progress never\n```\n```text\nreforge scan [OPTIONS]\n```\n",
+        );
+        assert_eq!(
+            commands,
+            vec![vec!["reforge", "scan", ".", "--progress", "never"]]
+        );
+        assert!(Cli::try_parse_from(&commands[0]).is_ok());
+    }
+
+    #[test]
+    fn preserves_quoted_command_arguments() {
+        let commands = executable_reforge_commands(
+            "```bash\nreforge workflow select run --issue ri3-example --goal \"desired outcome\"\n```\n",
+        );
+
+        assert_eq!(
+            commands[0].last().map(String::as_str),
+            Some("desired outcome")
+        );
+        assert!(Cli::try_parse_from(&commands[0]).is_ok());
     }
 }
