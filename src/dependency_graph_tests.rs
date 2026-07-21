@@ -77,6 +77,56 @@ fn resolves_imports_from_vue_script_blocks() {
 }
 
 #[test]
+fn resolves_rust_module_layouts_and_ignores_inline_modules() {
+    let sources = vec![
+        source(
+            "project/src/main.rs",
+            "mod direct;\nmod directory;\npub(crate) mod visible;\nmod inline { pub fn value() {} }\n",
+        ),
+        source("project/src/direct.rs", "mod child;\n"),
+        source("project/src/direct/child.rs", "pub fn child() {}\n"),
+        source("project/src/directory/mod.rs", "mod nested;\n"),
+        source("project/src/directory/nested.rs", "pub fn nested() {}\n"),
+        source("project/src/visible.rs", "pub fn visible() {}\n"),
+        source(
+            "project/src/custom.rs",
+            "#[cfg(test)]\n#[path = \"../custom_tests.rs\"]\nmod tests;\n",
+        ),
+        source("project/custom_tests.rs", "#[test] fn works() {}\n"),
+        source(
+            "project/src/container.rs",
+            "include!(\"fragments/types.rs\");\n",
+        ),
+        source("project/src/fragments/types.rs", "mod aggregation;\n"),
+        source(
+            "project/src/container/aggregation.rs",
+            "pub fn aggregate() {}\n",
+        ),
+    ];
+
+    let scan = scan_dependency_graph_report(&sources, Path::new("project"));
+
+    assert_eq!(scan.unresolved_edges, 0, "{:#?}", scan.unresolved_by_file);
+    assert_eq!(scan.snapshot.edges.len(), 8, "{:#?}", scan.snapshot);
+}
+
+#[test]
+fn ignores_javascript_imports_of_non_source_assets() {
+    let sources = vec![
+        source(
+            "project/src/main.tsx",
+            "import { App } from './reportApp';\nimport './styles.css';\n",
+        ),
+        source("project/src/reportApp.tsx", "export const App = {};\n"),
+    ];
+
+    let scan = scan_dependency_graph_report(&sources, Path::new("project"));
+
+    assert_eq!(scan.unresolved_edges, 0);
+    assert_eq!(scan.snapshot.edges.len(), 1, "{:#?}", scan.snapshot);
+}
+
+#[test]
 fn detects_resolved_csharp_namespace_cycle() {
     let sources = vec![
         source(
@@ -138,9 +188,10 @@ fn ignores_unresolved_external_imports() {
         "import express from 'express';\nimport local from './missing';\n",
     )];
 
-    let findings = scan_dependency_graph(&sources, Path::new("project"));
+    let scan = scan_dependency_graph_report(&sources, Path::new("project"));
 
-    assert!(findings.is_empty());
+    assert!(scan.findings.is_empty());
+    assert_eq!(scan.unresolved_edges, 1);
 }
 
 #[test]
@@ -164,6 +215,30 @@ fn detects_dependency_hub_with_high_fan_out() {
         .expect("hub should be reported");
     assert_eq!(hub.path, "project/src/hub.ts");
     assert_eq!(metric_value(hub, "dependency.fan_out"), Some(6));
+}
+
+#[test]
+fn ignores_rust_module_indexes_as_dependency_hubs() {
+    let mut sources = vec![source(
+        "project/src/facade/mod.rs",
+        "mod a;\nmod b;\nmod c;\nmod d;\nmod e;\nmod f;\n",
+    )];
+    for name in ["a", "b", "c", "d", "e", "f", "quiet"] {
+        sources.push(source(
+            &format!("project/src/facade/{name}.rs"),
+            "pub const VALUE: usize = 1;\n",
+        ));
+    }
+
+    let scan = scan_dependency_graph_report(&sources, Path::new("project"));
+
+    assert_eq!(scan.unresolved_edges, 0);
+    assert_eq!(scan.snapshot.edges.len(), 6);
+    assert!(
+        scan.findings
+            .iter()
+            .all(|finding| finding.kind != FindingKind::DependencyHub)
+    );
 }
 
 #[test]

@@ -11,7 +11,7 @@ Push-Location $repoRoot
 try {
     if (-not $SkipSample) {
         New-Item -ItemType Directory -Force "docs/sample" | Out-Null
-        cargo run --locked -- scan . --output html --output-file "docs/sample/index.html" --progress never --color never
+        cargo run "--locked" "--" scan . "--output" html "--output-file" "docs/sample/index.html" "--progress" never "--color" never
         if ($LASTEXITCODE -ne 0) {
             throw "failed to generate the sample report"
         }

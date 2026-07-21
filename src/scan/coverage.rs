@@ -333,7 +333,11 @@ fn coverage_manifest_entry(
     ),
 ) -> CoverageManifestEntry {
             let entries = context.input.manifest.iter().filter(|entry| entry.mechanism == mechanism && entry.entity_scope == entity_scope).collect::<Vec<_>>();
-            let active_entries = entries.iter().copied().filter(|entry| entry.kind != FindingKind::AdapterFlowBypass || context.input.flow_analysis.status != crate::model::FlowAnalysisStatus::Disabled).collect::<Vec<_>>();
+            let active_entries = entries
+                .iter()
+                .copied()
+                .filter(|entry| detector_is_active(entry, context))
+                .collect::<Vec<_>>();
             let applicable = active_entries.iter().copied().filter(|entry| detector_is_applicable(entry, context.detected_languages)).collect::<Vec<_>>();
             let completed_detectors = applicable.iter().map(|entry| entry.kind).collect::<Vec<_>>();
             let unsupported_detectors = active_entries.iter().copied().filter(|entry| !detector_is_applicable(entry, context.detected_languages)).map(|entry| entry.kind).collect::<Vec<_>>();
@@ -599,7 +603,15 @@ fn detector_runtime_applicable(
     entry: &crate::model::DetectorManifestEntry,
     context: &CoverageContext<'_, '_>,
 ) -> bool {
-    detector_is_applicable(entry, context.detected_languages)
+    detector_is_active(entry, context)
+        && detector_is_applicable(entry, context.detected_languages)
+}
+
+fn detector_is_active(
+    entry: &crate::model::DetectorManifestEntry,
+    context: &CoverageContext<'_, '_>,
+) -> bool {
+    (!is_unity_detector(entry.kind) || context.input.unity_observed)
         && (entry.kind != FindingKind::AdapterFlowBypass
             || context.input.flow_analysis.status != crate::model::FlowAnalysisStatus::Disabled)
 }
@@ -725,6 +737,14 @@ sink-symbols = ["crate::transport::send"]
             receipt.final_findings == 0
                 && receipt.observations.iter().any(|observation| observation.count > 0)
         }));
+        assert!(report
+            .coverage_manifest
+            .iter()
+            .all(|cell| cell.status != CoverageStatus::PartiallyObserved));
+        assert!(report.coverage_manifest.iter().all(|cell| cell
+            .unobservable_reasons
+            .iter()
+            .all(|reason| !reason.contains("unity_"))));
 
         let json = serde_json::to_string(&report)?;
         let decoded: ScanReport = serde_json::from_str(&json)?;

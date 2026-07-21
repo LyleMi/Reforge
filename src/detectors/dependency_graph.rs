@@ -174,8 +174,13 @@ fn dependency_hub_findings(graph: &DependencyGraph) -> Vec<Finding> {
     graph
         .nodes
         .values()
+        .filter(|node| !is_rust_module_index(&node.path))
         .filter_map(|node| dependency_hub_finding(graph, node, &context))
         .collect()
+}
+
+fn is_rust_module_index(path: &str) -> bool {
+    Path::new(path).file_name().and_then(|name| name.to_str()) == Some("mod.rs")
 }
 
 struct HubContext {

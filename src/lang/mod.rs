@@ -448,6 +448,31 @@ const identity = <T>(value: T): T => value;
     }
 
     #[test]
+    fn parses_bundled_powershell_scripts() {
+        for (path, source) in [
+            (
+                "scripts/build-docs.ps1",
+                include_str!("../../scripts/build-docs.ps1"),
+            ),
+            (
+                "scripts/serve-docs.ps1",
+                include_str!("../../scripts/serve-docs.ps1"),
+            ),
+        ] {
+            let adapter = adapter_for_source(Path::new(path), source).unwrap();
+            let mut parser = tree_sitter::Parser::new();
+            parser.set_language(&adapter.language()).unwrap();
+            let tree = parser.parse(source, None).unwrap();
+
+            assert!(
+                !tree.root_node().has_error(),
+                "{path}: {}",
+                tree.root_node().to_sexp()
+            );
+        }
+    }
+
+    #[test]
     fn ignores_elements_whose_names_only_start_with_script() {
         let source =
             "<template><scripture>text</scripture></template>\n<script>const value = 1</script>";

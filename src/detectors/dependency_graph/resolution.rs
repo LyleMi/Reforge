@@ -7,16 +7,22 @@ use super::DependencyGraph;
 
 pub(super) fn build_dependency_graph(
     sources: &[SourceFile],
-    root: &Path,
+    _root: &Path,
 ) -> (DependencyGraph, BTreeMap<String, usize>) {
-    let root = normalize_path(root);
     let index = source_index(sources);
+    let rust_include_contexts = rust_include_contexts(sources, &index);
     let csharp_types = csharp_type_index(sources);
     let mut graph = DependencyGraph::default();
     let mut unresolved_by_file = BTreeMap::new();
 
     for source in sources {
-        let unresolved = add_source_dependencies(source, &root, &index, &csharp_types, &mut graph);
+        let unresolved = add_source_dependencies(
+            source,
+            &index,
+            &rust_include_contexts,
+            &csharp_types,
+            &mut graph,
+        );
         if unresolved > 0 {
             unresolved_by_file.insert(source.display_path.clone(), unresolved);
         }
@@ -27,13 +33,16 @@ pub(super) fn build_dependency_graph(
 
 fn add_source_dependencies(
     source: &SourceFile,
-    root: &Path,
     index: &BTreeMap<PathBuf, String>,
+    rust_include_contexts: &BTreeMap<PathBuf, PathBuf>,
     csharp_types: &CSharpTypeIndex,
     graph: &mut DependencyGraph,
 ) -> usize {
     graph.add_node(source.display_path.clone());
     let language = Language::for_path(&source.path);
+    if language == Language::Rust {
+        return add_rust_dependencies(source, index, rust_include_contexts, graph);
+    }
     if language == Language::CSharp {
         for target in resolve_csharp_dependencies(source, csharp_types) {
             if target != source.display_path {
@@ -46,13 +55,86 @@ fn add_source_dependencies(
     let dependency_source = vue_source.as_deref().unwrap_or(&source.source);
     let mut unresolved = 0;
     for specifier in import_specifiers(dependency_source, language) {
-        match resolve_import(source, &specifier, language, root, index) {
+        match resolve_import(source, &specifier, language, index) {
             Some(target) => graph.add_edge(source.display_path.clone(), target),
-            None if is_local_specifier(&specifier, language) => unresolved += 1,
+            None if is_unresolved_local_specifier(&specifier, language) => unresolved += 1,
             None => {}
         }
     }
     unresolved
+}
+
+fn add_rust_dependencies(
+    source: &SourceFile,
+    index: &BTreeMap<PathBuf, String>,
+    include_contexts: &BTreeMap<PathBuf, PathBuf>,
+    graph: &mut DependencyGraph,
+) -> usize {
+    let mut unresolved = 0;
+    for included in rust_include_specifiers(&source.source) {
+        match source.path.parent().and_then(|parent| {
+            resolve_file_candidate(&parent.join(included), Language::Rust, index)
+        }) {
+            Some(target) => graph.add_edge(source.display_path.clone(), target),
+            None => unresolved += 1,
+        }
+    }
+    for module in rust_module_specifiers(&source.source) {
+        let target = match module {
+            RustModuleSpecifier::Standard(module) => {
+                resolve_rust_module(source, &module, index, include_contexts)
+            }
+            RustModuleSpecifier::PathOverride(path) => source.path.parent().and_then(|parent| {
+                resolve_file_candidate(&parent.join(path), Language::Rust, index)
+            }),
+        };
+        match target {
+            Some(target) => graph.add_edge(source.display_path.clone(), target),
+            None => unresolved += 1,
+        }
+    }
+    unresolved
+}
+
+fn rust_include_contexts(
+    sources: &[SourceFile],
+    index: &BTreeMap<PathBuf, String>,
+) -> BTreeMap<PathBuf, PathBuf> {
+    let mut contexts = BTreeMap::new();
+    for source in sources
+        .iter()
+        .filter(|source| Language::for_path(&source.path) == Language::Rust)
+    {
+        let Some(parent) = source.path.parent() else {
+            continue;
+        };
+        let context = rust_module_directory(&source.path);
+        for included in rust_include_specifiers(&source.source) {
+            let included = normalize_path(&parent.join(included));
+            if index.contains_key(&included) {
+                contexts.insert(included, context.clone());
+            }
+        }
+    }
+    contexts
+}
+
+fn rust_include_specifiers(source: &str) -> Vec<String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let include = line.trim().strip_prefix("include!(")?;
+            quoted_after(include)
+        })
+        .collect()
+}
+
+fn is_unresolved_local_specifier(specifier: &str, language: Language) -> bool {
+    is_local_specifier(specifier, language)
+        && Path::new(specifier)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_none_or(|extension| language_extensions(language).contains(&extension))
 }
 
 fn is_local_specifier(specifier: &str, language: Language) -> bool {
@@ -90,7 +172,7 @@ impl Language {
             }
             Some("py") => Self::Python,
             Some("rb") => Self::Ruby,
-            Some("c" | "cc" | "cpp") => Self::CLike,
+            Some("c" | "h" | "cc" | "cpp" | "cxx" | "hh" | "hpp" | "hxx") => Self::CLike,
             Some("cs" | "csx") => Self::CSharp,
             _ => Self::Other,
         }
@@ -116,7 +198,7 @@ fn import_specifier_from_line(line: &str, language: Language) -> Option<String> 
     }
 
     match language {
-        Language::Rust => rust_import_specifier(trimmed),
+        Language::Rust => None,
         Language::JavaScript => javascript_import_specifier(trimmed),
         Language::Python => python_import_specifier(trimmed),
         Language::Ruby => ruby_import_specifier(trimmed),
@@ -126,14 +208,52 @@ fn import_specifier_from_line(line: &str, language: Language) -> Option<String> 
     }
 }
 
-fn rust_import_specifier(line: &str) -> Option<String> {
-    let rest = line.strip_prefix("mod ")?;
-    let module = rest
-        .trim()
-        .trim_end_matches(';')
-        .split_whitespace()
-        .next()?;
-    identifier_like(module).then(|| format!("./{module}"))
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RustModuleSpecifier {
+    Standard(String),
+    PathOverride(String),
+}
+
+fn rust_module_specifiers(source: &str) -> Vec<RustModuleSpecifier> {
+    let mut modules = Vec::new();
+    let mut path_override = None;
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("#[") {
+            if trimmed.starts_with("#[path") {
+                path_override = quoted_after(trimmed);
+            }
+            continue;
+        }
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        if let Some(module) = rust_external_module(trimmed) {
+            modules.push(path_override.take().map_or(
+                RustModuleSpecifier::Standard(module),
+                RustModuleSpecifier::PathOverride,
+            ));
+        } else {
+            path_override = None;
+        }
+    }
+
+    modules
+}
+
+fn rust_external_module(line: &str) -> Option<String> {
+    let declaration = line.split_once("//").map_or(line, |(code, _)| code).trim();
+    let declaration = declaration.strip_suffix(';')?.trim();
+    let declaration = if let Some(rest) = declaration.strip_prefix("pub ") {
+        rest
+    } else if let Some(rest) = declaration.strip_prefix("pub(") {
+        rest.split_once(')')?.1.trim()
+    } else {
+        declaration
+    };
+    let module = declaration.strip_prefix("mod ")?.trim();
+    identifier_like(module).then(|| module.to_string())
 }
 
 fn javascript_import_specifier(line: &str) -> Option<String> {
@@ -495,11 +615,10 @@ fn resolve_import(
     source: &SourceFile,
     specifier: &str,
     language: Language,
-    root: &Path,
     index: &BTreeMap<PathBuf, String>,
 ) -> Option<String> {
     match language {
-        Language::Rust => resolve_rust_import(source, specifier, root, index),
+        Language::Rust => None,
         Language::JavaScript | Language::Ruby | Language::CLike => {
             resolve_relative_import(source.path.parent()?, specifier, language, index)
         }
@@ -509,23 +628,26 @@ fn resolve_import(
     }
 }
 
-fn resolve_rust_import(
+fn resolve_rust_module(
     source: &SourceFile,
-    specifier: &str,
-    root: &Path,
+    module: &str,
     index: &BTreeMap<PathBuf, String>,
+    include_contexts: &BTreeMap<PathBuf, PathBuf>,
 ) -> Option<String> {
-    if specifier.starts_with("./") {
-        return resolve_relative_import(source.path.parent()?, specifier, Language::Rust, index);
-    }
+    let normalized = normalize_path(&source.path);
+    let module_directory = include_contexts
+        .get(&normalized)
+        .cloned()
+        .unwrap_or_else(|| rust_module_directory(&source.path));
+    resolve_file_candidate(&module_directory.join(module), Language::Rust, index)
+}
 
-    let module = specifier.strip_prefix("crate::")?;
-    let crate_root = if root.join("src").is_dir() {
-        root.join("src")
-    } else {
-        root.to_path_buf()
-    };
-    resolve_module_path(&crate_root, module.split("::"), Language::Rust, index)
+fn rust_module_directory(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    match path.file_stem().and_then(|stem| stem.to_str()) {
+        Some("main" | "lib" | "mod") | None => parent.to_path_buf(),
+        Some(stem) => parent.join(stem),
+    }
 }
 
 fn resolve_python_import(
@@ -596,27 +718,34 @@ fn resolve_file_candidate(
     index: &BTreeMap<PathBuf, String>,
 ) -> Option<String> {
     let candidate = normalize_path(candidate);
-    if let Some(path) = index.get(&candidate) {
-        return Some(path.clone());
+    if candidate.extension().is_some() {
+        return indexed_path(&candidate, index);
     }
+    std::iter::once(candidate.clone())
+        .chain(extensionless_file_candidates(&candidate, language))
+        .find_map(|path| indexed_path(&path, index))
+}
 
-    if candidate.extension().is_none() {
-        for extension in language_extensions(language) {
-            let with_extension = candidate.with_extension(extension);
-            if let Some(path) = index.get(&normalize_path(&with_extension)) {
-                return Some(path.clone());
-            }
-        }
+fn indexed_path(candidate: &Path, index: &BTreeMap<PathBuf, String>) -> Option<String> {
+    index.get(&normalize_path(candidate)).cloned()
+}
 
-        for extension in language_extensions(language) {
-            let index_candidate = candidate.join(format!("index.{extension}"));
-            if let Some(path) = index.get(&normalize_path(&index_candidate)) {
-                return Some(path.clone());
-            }
-        }
+fn extensionless_file_candidates(candidate: &Path, language: Language) -> Vec<PathBuf> {
+    let extensions = language_extensions(language);
+    let mut candidates = extensions
+        .iter()
+        .map(|extension| candidate.with_extension(extension))
+        .collect::<Vec<_>>();
+    if language == Language::Rust {
+        candidates.push(candidate.join("mod.rs"));
+    } else {
+        candidates.extend(
+            extensions
+                .iter()
+                .map(|extension| candidate.join(format!("index.{extension}"))),
+        );
     }
-
-    None
+    candidates
 }
 
 fn language_extensions(language: Language) -> &'static [&'static str] {
@@ -625,7 +754,7 @@ fn language_extensions(language: Language) -> &'static [&'static str] {
         Language::JavaScript => &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "vue"],
         Language::Python => &["py"],
         Language::Ruby => &["rb"],
-        Language::CLike => &["c", "cc", "cpp"],
+        Language::CLike => &["c", "h", "cc", "cpp", "cxx", "hh", "hpp", "hxx"],
         Language::CSharp => &["cs", "csx"],
         Language::Other => &[],
     }
