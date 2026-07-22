@@ -2,10 +2,10 @@
 
 This checklist is for maintainers preparing a Reforge release.
 
-Schema 23 is a hard compatibility break for reports and baselines: only schema
-23 baselines are accepted. Workflow artifacts likewise move to v2 and cannot
-reuse v1 run directories. The `rf3-*` finding and `ri3-*` issue Stable ID
-algorithms are unchanged.
+Schema 24 is a hard compatibility break for reports and baselines: only schema
+24 baselines are accepted. Workflow artifacts likewise move to v3 and cannot
+reuse v2 run directories. The new Stable ID algorithms use `rf4-*` finding and
+`ri4-*` issue prefixes.
 
 ## Pre-Release Checks
 

@@ -16,7 +16,8 @@ pub struct ScanSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ScanStats {
-    pub source_files_scanned: usize,
+    pub source_files_discovered: usize,
+    pub source_files_analyzed: usize,
     pub directories_scanned: usize,
     pub function_candidates: usize,
 }

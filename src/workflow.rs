@@ -23,7 +23,7 @@ use crate::model::{
 };
 use crate::scan::{self, NoopProgress};
 
-const ARTIFACT_SCHEMA_VERSION: u8 = 2;
+const ARTIFACT_SCHEMA_VERSION: u8 = 3;
 const OUTPUT_SUMMARY_LIMIT: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

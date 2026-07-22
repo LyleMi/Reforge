@@ -3,6 +3,7 @@ use super::*;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Finding {
     pub id: EvidenceId,
+    pub anchor: String,
     pub kind: FindingKind,
     pub path: String,
     pub line: Option<usize>,
@@ -17,6 +18,12 @@ pub struct Finding {
 
 impl Finding {
     pub fn refresh_id(&mut self) {
+        if let Some(witness) = &self.flow_witness {
+            self.anchor = format!(
+                "flow:{}:{}:{}",
+                witness.policy, witness.source.id, witness.sink.id
+            );
+        }
         self.id = stable_finding_id(self);
     }
 
@@ -266,50 +273,12 @@ const KIND_RECOMMENDATIONS: &[(FindingKind, &str)] = &[
 ];
 
 pub fn stable_finding_id(finding: &Finding) -> EvidenceId {
-    let mut input = String::new();
-    input.push_str("rf3\0");
-    input.push_str(&serialized_finding_kind(finding.kind));
-
-    let mut metric_names = finding
-        .metrics
-        .iter()
-        .map(|metric| metric.name.as_str())
-        .collect::<Vec<_>>();
-    metric_names.sort_unstable();
-    metric_names.dedup();
-    for name in metric_names {
-        input.push('\0');
-        input.push_str(name);
-    }
-
-    if let Some(witness) = &finding.flow_witness {
-        input.push('\0');
-        input.push_str(&witness.policy);
-        input.push('\0');
-        input.push_str(&witness.source.id);
-        input.push('\0');
-        input.push_str(&witness.sink.id);
-        return EvidenceId(format!("rf3-{:016x}", fnv1a64(input.as_bytes())));
-    }
-
-    let mut locations = finding
-        .related_locations
-        .iter()
-        .map(|location| identity_location(&location.path, Some(location.line)))
-        .collect::<Vec<_>>();
-    locations.push(identity_location(&finding.path, finding.line));
-    locations.sort_unstable();
-    locations.dedup();
-    for location in locations {
-        input.push('\0');
-        input.push_str(&location);
-    }
-
-    EvidenceId(format!("rf3-{:016x}", fnv1a64(input.as_bytes())))
-}
-
-fn identity_location(path: &str, line: Option<usize>) -> String {
-    format!("{}:{}", normalize_identity_path(path), line.unwrap_or(0))
+    let input = format!(
+        "rf4\0{}\0{}",
+        serialized_finding_kind(finding.kind),
+        finding.anchor
+    );
+    EvidenceId(format!("rf4-{:016x}", fnv1a64(input.as_bytes())))
 }
 
 pub fn serialized_finding_kind(kind: FindingKind) -> String {
@@ -340,8 +309,9 @@ impl Serialize for Finding {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("Finding", 12)?;
+        let mut state = serializer.serialize_struct("Finding", 13)?;
         state.serialize_field("id", &self.id)?;
+        state.serialize_field("anchor", &self.anchor)?;
         state.serialize_field("kind", &self.kind)?;
         state.serialize_field("path", &self.path)?;
         state.serialize_field("line", &self.line)?;
@@ -366,6 +336,7 @@ impl<'de> Deserialize<'de> for Finding {
         #[serde(deny_unknown_fields)]
         struct SerializedFinding {
             id: EvidenceId,
+            anchor: String,
             kind: FindingKind,
             path: String,
             line: Option<usize>,
@@ -388,6 +359,7 @@ impl<'de> Deserialize<'de> for Finding {
         }
         Ok(Self {
             id: value.id,
+            anchor: value.anchor,
             kind: value.kind,
             path: value.path,
             line: value.line,

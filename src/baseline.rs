@@ -114,7 +114,16 @@ pub(crate) fn compare_reports(
     propagate_finding_changes(&mut issues, &findings, &current.issues, &previous.issues)?;
     let lineage_candidates = lineage_candidates(current, previous, &findings, &issues);
     Ok(BaselineComparison {
-        baseline_path: baseline_path.map(|path| path.to_string_lossy().to_string()),
+        baseline_path: baseline_path.map(|path| {
+            if path.is_absolute() {
+                path.file_name()
+                    .unwrap_or(path.as_os_str())
+                    .to_string_lossy()
+                    .to_string()
+            } else {
+                crate::pathing::normalize_path_text(&path.to_string_lossy())
+            }
+        }),
         baseline_provenance: previous.provenance.clone(),
         provenance_changed: dimensions
             .iter()
@@ -348,180 +357,7 @@ fn propagate_finding_changes(
     Ok(())
 }
 
-fn lineage_candidates(
-    current: &ScanReport,
-    previous: &ScanReport,
-    finding_diff: &BaselineDifferenceSet,
-    issue_diff: &BaselineDifferenceSet,
-) -> Vec<LineageCandidate> {
-    let removed_finding_ids = change_ids(&finding_diff.removed);
-    let added_finding_ids = change_ids(&finding_diff.added);
-    let mut finding_candidates = Vec::new();
-    for old in previous
-        .findings
-        .iter()
-        .filter(|item| removed_finding_ids.contains(item.id.as_str()))
-    {
-        for new in current
-            .findings
-            .iter()
-            .filter(|item| added_finding_ids.contains(item.id.as_str()) && item.kind == old.kind)
-        {
-            if let Some((confidence, reasons)) = finding_lineage_score(old, new) {
-                finding_candidates.push(candidate(
-                    LineageEntity::Finding,
-                    old.id.as_str(),
-                    new.id.as_str(),
-                    confidence,
-                    reasons,
-                ));
-            }
-        }
-    }
-
-    let removed_issue_ids = change_ids(&issue_diff.removed);
-    let added_issue_ids = change_ids(&issue_diff.added);
-    let finding_scores = lineage_score_map(&finding_candidates);
-    let mut issue_candidates = Vec::new();
-    for old in previous
-        .issues
-        .iter()
-        .filter(|item| removed_issue_ids.contains(item.id.as_str()))
-    {
-        for new in current
-            .issues
-            .iter()
-            .filter(|item| added_issue_ids.contains(item.id.as_str()) && item.family == old.family)
-        {
-            let scores = old
-                .finding_ids
-                .iter()
-                .flat_map(|old_id| {
-                    new.finding_ids.iter().filter_map(|new_id| {
-                        finding_scores
-                            .get(&(old_id.as_str(), new_id.as_str()))
-                            .copied()
-                    })
-                })
-                .collect::<Vec<_>>();
-            if let Some(confidence) = scores.iter().max().copied() {
-                issue_candidates.push(candidate(
-                    LineageEntity::Issue,
-                    old.id.as_str(),
-                    new.id.as_str(),
-                    confidence,
-                    vec![
-                        format!("{} supporting finding match(es)", scores.len()),
-                        "same issue family".into(),
-                    ],
-                ));
-            }
-        }
-    }
-    finding_candidates.extend(issue_candidates);
-    finding_candidates.sort_by(|left, right| left.id.cmp(&right.id));
-    finding_candidates
-}
-
-fn change_ids(changes: &[BaselineChange]) -> BTreeSet<&str> {
-    changes.iter().map(|item| item.id.as_str()).collect()
-}
-
-fn lineage_score_map(candidates: &[LineageCandidate]) -> BTreeMap<(&str, &str), u8> {
-    candidates
-        .iter()
-        .map(|item| {
-            (
-                (item.previous_id.as_str(), item.current_id.as_str()),
-                item.confidence_percent,
-            )
-        })
-        .collect()
-}
-
-fn finding_lineage_score(old: &Finding, new: &Finding) -> Option<(u8, Vec<String>)> {
-    let old_paths = finding_paths(old);
-    let new_paths = finding_paths(new);
-    let path_overlap = !old_paths.is_disjoint(&new_paths);
-    let old_symbols = finding_symbols(old);
-    let new_symbols = finding_symbols(new);
-    let symbol_overlap = !old_symbols.is_disjoint(&new_symbols);
-    if !path_overlap && !symbol_overlap {
-        return None;
-    }
-    let mut score = 0u8;
-    let mut reasons = Vec::new();
-    if path_overlap {
-        score += 35;
-        reasons.push("overlapping paths".into());
-    }
-    if symbol_overlap {
-        score += 35;
-        reasons.push("overlapping symbols".into());
-    }
-    let old_metrics = old
-        .metrics
-        .iter()
-        .map(|metric| metric.name)
-        .collect::<BTreeSet<_>>();
-    let new_metrics = new
-        .metrics
-        .iter()
-        .map(|metric| metric.name)
-        .collect::<BTreeSet<_>>();
-    if !old_metrics.is_disjoint(&new_metrics) {
-        score += 20;
-        reasons.push("overlapping metric names".into());
-    }
-    if Path::new(&old.path).file_name() == Path::new(&new.path).file_name() {
-        score += 10;
-        reasons.push("same primary basename".into());
-    }
-    (score >= 60).then_some((score, reasons))
-}
-
-fn finding_paths(finding: &Finding) -> BTreeSet<String> {
-    std::iter::once(finding.path.replace('\\', "/"))
-        .chain(
-            finding
-                .related_locations
-                .iter()
-                .map(|location| location.path.replace('\\', "/")),
-        )
-        .collect()
-}
-
-fn finding_symbols(finding: &Finding) -> BTreeSet<String> {
-    let mut symbols = finding
-        .related_locations
-        .iter()
-        .filter_map(|location| location.name.clone())
-        .collect::<BTreeSet<_>>();
-    if let Some(witness) = &finding.flow_witness {
-        symbols.insert(witness.source.name.clone());
-        symbols.insert(witness.sink.name.clone());
-    }
-    symbols
-}
-
-fn candidate(
-    entity: LineageEntity,
-    previous_id: &str,
-    current_id: &str,
-    confidence_percent: u8,
-    reasons: Vec<String>,
-) -> LineageCandidate {
-    let key = serde_json::json!({"algorithm": "lineage-v1", "entity": entity, "previous": previous_id, "current": current_id});
-    let digest = fingerprint_json(&key);
-    LineageCandidate {
-        id: format!("rl1-{}", &digest[7..23]),
-        entity,
-        previous_id: previous_id.into(),
-        current_id: current_id.into(),
-        confidence_percent,
-        reasons,
-    }
-}
+include!("baseline_lineage.rs");
 
 fn validate_baseline_schema(path: &Path, contents: &str) -> Result<()> {
     let version = if is_json(path) {
@@ -539,7 +375,7 @@ fn validate_baseline_schema(path: &Path, contents: &str) -> Result<()> {
     };
     ensure!(
         version == Some(u64::from(SCAN_REPORT_SCHEMA_VERSION)),
-        "baseline {} uses unsupported schema version {}; schema 23 baselines are required and schema 22 or earlier reports are not compatible",
+        "baseline {} uses unsupported schema version {}; schema 24 baselines are required, schema 23 baselines are incompatible, and the baseline must be regenerated",
         path.display(),
         version.map_or_else(|| "unknown".into(), |value| value.to_string())
     );
@@ -550,16 +386,16 @@ fn validate_stable_ids(path: &Path, report: &ScanReport) -> Result<()> {
     if report
         .issues
         .iter()
-        .all(|issue| valid_stable_id(issue.id.as_str(), "ri3-"))
+        .all(|issue| valid_stable_id(issue.id.as_str(), "ri4-"))
         && report
             .findings
             .iter()
-            .all(|finding| valid_stable_id(finding.id.as_str(), "rf3-"))
+            .all(|finding| valid_stable_id(finding.id.as_str(), "rf4-"))
     {
         return Ok(());
     }
     bail!(
-        "baseline {} contains invalid Stable IDs; schema 23 requires ri3-* issues and rf3-* findings",
+        "baseline {} contains invalid Stable IDs; schema 24 requires ri4-* issues and rf4-* findings",
         path.display()
     )
 }
@@ -576,7 +412,7 @@ fn validate_provenance(path: &Path, report: &ScanReport) -> Result<()> {
             && report.provenance.configuration.effective.is_object()
             && valid_sha256(&report.provenance.configuration.hash)
             && valid_sha256(&report.provenance.detector_policy_hash),
-        "baseline {} contains incomplete or invalid schema 23 provenance",
+        "baseline {} contains incomplete or invalid schema 24 provenance",
         path.display()
     );
     Ok(())
@@ -601,12 +437,17 @@ mod tests {
     use crate::scan::NoopProgress;
 
     #[test]
-    fn rejects_schema_22_baselines_before_deserialization() {
+    fn rejects_schema_23_baselines_before_deserialization() {
         let error =
-            validate_baseline_schema(Path::new("baseline.json"), r#"{"schema_version":22}"#)
+            validate_baseline_schema(Path::new("baseline.json"), r#"{"schema_version":23}"#)
                 .unwrap_err();
-        assert!(error.to_string().contains("schema 23"));
-        assert!(error.to_string().contains("schema 22 or earlier"));
+        assert!(error.to_string().contains("schema 24"));
+        assert!(
+            error
+                .to_string()
+                .contains("schema 23 baselines are incompatible")
+        );
+        assert!(error.to_string().contains("regenerated"));
     }
 
     #[test]
@@ -638,7 +479,13 @@ mod tests {
     fn lineage_candidate_is_deterministic_for_a_moved_function() -> Result<()> {
         let (root, previous) = test_report("lineage")?;
         let mut current = previous.clone();
-        current.findings[0].line = current.findings[0].line.map(|line| line + 1);
+        current.findings[0].path = "moved/lib.rs".into();
+        current.findings[0].anchor = current.findings[0]
+            .anchor
+            .replace("src/lib.rs", "moved/lib.rs");
+        for location in &mut current.findings[0].related_locations {
+            location.path = "moved/lib.rs".into();
+        }
         current.findings[0].refresh_id();
         current.issues = crate::evidence_analysis::cluster_findings(&mut current.findings);
 

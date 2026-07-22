@@ -1,4 +1,5 @@
 churn = "auto"
+max-file-lines = 600
 ignore-paths = [
   "assets/report-app.js",
   "web/report-app/src/vite-env.d.ts",
@@ -8,3 +9,8 @@ ignore-paths = [
 kind = "dependency_hub"
 path = "src/main.rs"
 reason = "The binary crate root intentionally wires the CLI, scan, workflow, and output ownership boundaries."
+
+[[suppressions]]
+kind = "dependency_hub"
+path = "src/detectors/similarity.rs"
+reason = "The similarity facade intentionally coordinates language parsing, token extraction, lossless indexing, exact comparison, and detector reporting modules."

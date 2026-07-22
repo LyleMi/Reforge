@@ -59,6 +59,7 @@ impl From<FindingInput> for Finding {
         let (construct, mechanism) = classification(input.kind);
         let mut finding = Finding {
             id: Default::default(),
+            anchor: format!("path:{}", crate::pathing::normalize_path_text(&input.path)),
             kind: input.kind,
             path: input.path,
             line: input.line,

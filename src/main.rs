@@ -184,7 +184,7 @@ fn run_scan(args: ScanArgs) -> Result<()> {
     let stderr_is_tty = std::io::stderr().is_terminal();
     let settings = output_settings(&args);
     if args.ci.fail_on_findings && args.ci.baseline.is_none() {
-        bail!("--fail-on-findings requires --baseline with a schema 23 Reforge report");
+        bail!("--fail-on-findings requires --baseline with a schema 24 Reforge report");
     }
     let baseline_report = args
         .ci

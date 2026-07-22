@@ -27,12 +27,13 @@ fn scan_sources(
     scan: &mut SourceScan,
 ) -> Result<()> {
     scan.stats.directories_scanned = source_plan.directories_scanned;
-    for path in &source_plan.source_files {
+    scan.stats.source_files_discovered = source_plan.source_files.len();
+    for (index, path) in source_plan.source_files.iter().enumerate() {
         let file_options = FileScanOptions {
             max_file_lines: args.max_file_lines,
         };
         scan_file(path, file_options, scan)?;
-        report_file_scan_progress(progress, &scan.stats, total_source_files, path);
+        report_file_scan_progress(progress, index + 1, total_source_files, path);
     }
 
     scan_directories(
@@ -46,14 +47,14 @@ fn scan_sources(
 
 fn report_file_scan_progress(
     progress: &mut dyn ProgressSink,
-    stats: &ScanStats,
+    completed: usize,
     total_source_files: Option<usize>,
     path: &Path,
 ) {
     if let Some(total) = total_source_files {
         let detail = display_path(path);
         progress.report_scan_progress(ProgressEvent {
-            completed: stats.source_files_scanned,
+            completed,
             total,
             detail: &detail,
         });
@@ -137,19 +138,43 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
         return Ok(());
     }
 
-    scan.stats.source_files_scanned += 1;
-
-    let source = fs::read_to_string(path)
-        .with_context(|| format!("failed to read source file {}", path.display()))?;
+    let source = match source::read_source(path) {
+        Ok(source) => source,
+        Err(reason) => {
+            scan.source_failures.push(SourceFailure {
+                path: display_path(path),
+                reason,
+            });
+            return Ok(());
+        }
+    };
+    scan.stats.source_files_analyzed += 1;
     let source: Arc<str> = Arc::from(source);
-    let line_count = source.lines().count();
     let display_path = display_path(path);
     let is_test = is_test_source(path)
         || (path.extension().and_then(|value| value.to_str()) == Some("cs")
             && (source.contains("[Test]") || source.contains("[UnityTest]")));
 
+    record_file_observations(
+        &display_path,
+        &source,
+        is_test,
+        options,
+        scan,
+    );
+    scan_structure_source(path, display_path, source, scan)
+}
+
+fn record_file_observations(
+    display_path: &str,
+    source: &str,
+    is_test: bool,
+    options: FileScanOptions,
+    scan: &mut SourceScan,
+) {
+    let line_count = source.lines().count();
     scan.raw_metrics.files.push(FileRawMetric {
-        path: display_path.clone(),
+        path: display_path.to_string(),
         loc: line_count,
         imports: 0,
         public_items: 0,
@@ -160,7 +185,7 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
     if line_count > options.max_file_lines {
         scan.findings.push(Finding::from(FindingInput::new(
             FindingKind::LargeFile,
-            display_path.clone(),
+            display_path,
             Some(1),
             format!("file has {line_count} lines; consider splitting responsibilities"),
             vec![FindingMetric::threshold(
@@ -176,14 +201,21 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
         if has_debt_marker(line) {
             scan.findings.push(Finding::from(FindingInput::new(
                 FindingKind::DebtMarker,
-                display_path.clone(),
+                display_path,
                 Some(index + 1),
                 "technical-debt marker found",
                 Vec::new(),
             )));
         }
     }
+}
 
+fn scan_structure_source(
+    path: &Path,
+    display_path: String,
+    source: Arc<str>,
+    scan: &mut SourceScan,
+) -> Result<()> {
     if is_supported_structure_source(path) {
         let source_file = SourceFile {
             path: path.to_path_buf(),
@@ -202,7 +234,6 @@ fn scan_file(path: &Path, options: FileScanOptions, scan: &mut SourceScan) -> Re
 
         scan.structure_sources.push(source_file);
     }
-
     Ok(())
 }
 

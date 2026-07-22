@@ -22,21 +22,24 @@ use crate::model::{
     EvidenceRole, FileRawMetric, Finding, FindingKind, FindingMetric, FlowAnalysisSummary,
     FunctionRawMetric, MetricId, ParseFailure, ParseFailureReason, RawMetricCoverage,
     RawMetricCoverageStatus, RawMetrics, SCAN_REPORT_SCHEMA_VERSION, ScanReport, ScanStats,
-    ScanSummary, SuppressionSummary, TypeRawMetric, serialized_finding_kind,
+    ScanSummary, SourceFailure, SuppressionSummary, TypeRawMetric, serialized_finding_kind,
 };
 use crate::similar_functions::{
-    ParsedSourceFile, SimilarFunctionOptions, SimilarFunctionProgress, SourceFile,
-    parse_source_file, scan_parsed_similar_functions_report_with_progress,
+    ParsedSourceFile, SimilarFunctionOptions, SimilarFunctionProgress, SimilarityComparisonStats,
+    SourceFile, parse_source_file, scan_parsed_similar_functions_report_with_progress,
 };
 use crate::structural::{
     StructureOptions, collect_raw_structure_metrics, is_supported_structure_source,
 };
 use crate::unused_functions::{UnusedFunctionOptions, scan_parsed_unused_functions};
 
+mod anchors;
 mod churn;
 pub(crate) mod config;
 mod finding_control;
+mod paths;
 mod progress;
+mod source;
 mod thresholds;
 
 use churn::collect_churn_metrics;
@@ -74,9 +77,11 @@ struct SourceScan {
     dependency_graph: DependencyGraphSnapshot,
     stats: ScanStats,
     parse_failures: Vec<ParseFailure>,
+    source_failures: Vec<SourceFailure>,
     unresolved_dependency_edges: usize,
     unresolved_dependency_edges_by_file: BTreeMap<String, usize>,
     flow_analysis: FlowAnalysisSummary,
+    similarity_comparisons: SimilarityComparisonStats,
     emitted_by_kind: BTreeMap<FindingKind, usize>,
 }
 
@@ -107,6 +112,12 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
     let effective_args = effective.args;
     let (mut scan, unity_scan, churn_summary) =
         collect_scan_observations(&root, &effective_args, &effective.data_flow, progress)?;
+    anchors::assign_stable_anchors(
+        &mut scan.findings,
+        &scan.raw_metrics,
+        &scan.structure_sources,
+        &scan.parsed_sources,
+    );
     let metrics_summary = summarize_raw_metrics(&scan.raw_metrics);
     scan.findings
         .retain(|finding| evidence_role(finding.kind) != EvidenceRole::CompositeSummary);
@@ -195,8 +206,10 @@ fn project_scan_coverage(
         unity_assets: unity_report.stats.assets,
         unity_assemblies: unity_report.stats.assemblies,
         parse_failures: &scan.parse_failures,
+        source_failures: &scan.source_failures,
         unresolved_dependency_edges: scan.unresolved_dependency_edges,
         flow_analysis: &scan.flow_analysis,
+        similarity_comparisons: &scan.similarity_comparisons,
         churn,
         unity_observed: matches!(
             unity_report.status,
@@ -229,6 +242,7 @@ fn collect_scan_observations(
     scan.findings.extend(scan_documentation(root)?);
     merge_structure_raw_metrics(&mut scan.raw_metrics, &scan.parsed_sources);
     let churn = collect_churn_metrics(root, args, &mut scan.raw_metrics)?;
+    paths::relativize_scan_paths(root, &mut scan);
     Ok((scan, unity_scan, churn))
 }
 
@@ -242,7 +256,7 @@ struct ScanSummaryInput<'a> {
 
 fn build_scan_summary(input: ScanSummaryInput<'_>) -> ScanSummary {
     ScanSummary {
-        scanned_files: input.scan.stats.source_files_scanned,
+        scanned_files: input.scan.stats.source_files_analyzed,
         finding_count: input.scan.findings.len(),
         issue_count: input.issues.len(),
         similar_function_group_count: input.controls.similar_function_group_count,
@@ -487,6 +501,7 @@ impl ScanSignalContext<'_> {
             &mut similarity_progress,
         )?;
         self.scan.stats.function_candidates = similarity_scan.candidate_count;
+        self.scan.similarity_comparisons = similarity_scan.comparison_stats;
         self.scan.findings.extend(similarity_scan.findings);
 
         Ok(self

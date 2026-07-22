@@ -36,6 +36,7 @@ pub struct CoverageManifestEntry {
 #[serde(rename_all = "snake_case")]
 pub enum DetectorExecutionStatus {
     Completed,
+    PartiallyObserved,
     NotApplicable,
 }
 
@@ -86,6 +87,20 @@ pub enum ParseFailureReason {
     ParserFailure,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceFailureReason {
+    IoError,
+    UnsupportedEncoding,
+    InvalidEncoding,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceFailure {
+    pub path: String,
+    pub reason: SourceFailureReason,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParseFailure {
     pub path: String,
@@ -99,6 +114,7 @@ pub struct CoverageSummary {
     pub applicable_detectors: Vec<FindingKind>,
     pub analyzed_entities: BTreeMap<EntityScope, usize>,
     pub parse_failures: Vec<ParseFailure>,
+    pub source_failures: Vec<SourceFailure>,
     pub unresolved_dependency_edges: usize,
     pub unobservable_reasons: Vec<String>,
 }

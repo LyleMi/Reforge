@@ -228,9 +228,22 @@ It does not prove code quality, rule out bugs, or mean raw metrics are empty.
 When suppressions are used, keep the suppression summary visible so reviewers
 can distinguish zero unsuppressed findings from zero observed signals.
 
-Every finding in JSON and YAML has a stable evidence `id` with an `rf3-` prefix.
-The ID is derived from the finding kind, primary location, related locations,
-and metric names so it can be used for baseline comparison.
+Every finding in JSON and YAML has a stable evidence `id` with an `rf4-` prefix.
+Its explicit `anchor` uses checkout-relative semantic identity rather than a
+display line number. Functions and types use symbol identity plus a same-name
+declaration ordinal; groups use sorted member anchors; textual evidence uses
+normalized content and a same-content ordinal.
+
+All serialized source paths are relative to the scan root and use `/`, so the
+same checkout at a different absolute location produces the same paths and
+Stable IDs.
+
+Source files are read as bytes. Reforge accepts UTF-8, UTF-8 with BOM, and
+BOM-marked UTF-16 LE/BE. A file-level I/O or encoding failure does not stop the
+scan: the file is skipped, `stats` distinguishes discovered from successfully
+analyzed files, and `coverage_summary.source_failures` records `io_error`,
+`unsupported_encoding`, or `invalid_encoding` while affected coverage becomes
+partially observed.
 
 Filtering and suppression preserve stable IDs, so baseline comparison remains
 consistent whether or not a finding appears in the final report.
@@ -282,16 +295,20 @@ ignored so large mechanical changes do not dominate results.
 ## CI Gates and Baselines
 
 Use `--fail-on-findings` with `--baseline <PATH>` to make a scan exit nonzero
-when unsuppressed evidence IDs are absent from a prior schema 23 JSON or YAML
+when unsuppressed evidence IDs are absent from a prior schema 24 JSON or YAML
 report. Reforge writes the requested report before returning the failing exit
-status. The gate requires a baseline because v23 does not assign severity,
+status. The gate requires a baseline because schema 24 does not assign severity,
 priority, or a readiness score.
 
-Schema 23 compares engine/build/policy, effective configuration, and source
+Schema 24 compares engine/build/policy, effective configuration, and source
 provenance independently. Engine, policy, or configuration mismatches write the
 requested report and then fail closed before the finding gate. Pass
 `--accept-baseline-provenance-change` to acknowledge that mismatch and continue
 to the selected finding gate. Source revision changes are normal baseline input.
+
+Schema 23 baselines are rejected with regeneration guidance. File moves remain
+visible as removed/added evidence with lineage candidates; lineage never changes
+Stable IDs or silently bypasses a gate.
 
 `--baseline-mode` controls the selected findings:
 
@@ -363,7 +380,7 @@ git churn.
 | `--min-data-clump-occurrences` | `4` | Report repeated parameter groups seen at least this many times. |
 | `--include-test-structure` | `false` | Include tests in general structural checks. |
 | `--config` | discovered | Read a specific configuration file. |
-| `--baseline` | none | Read a prior schema 23 JSON/YAML report for gate comparison. |
+| `--baseline` | none | Read a prior schema 24 JSON/YAML report for gate comparison. |
 | `--baseline-mode` | `new` | Select `new` or `all` findings when a baseline is present. |
 | `--show` | `all` | Display `new` or `all` current findings in human baseline reports. |
 | `--fail-on-findings` | false | Exit nonzero when unsuppressed finding IDs are new relative to the baseline. |

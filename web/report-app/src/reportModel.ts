@@ -2,14 +2,14 @@ import type { FileAgentEvidence, FileRawMetric, Finding, Issue, ScanReport } fro
 import type { EvidenceSort, MapLayer } from "./viewState";
 export { normalizeReportPath, toDisplayReport } from "./pathModel";
 
-export const REPORT_SCHEMA_VERSION = 23;
+export const REPORT_SCHEMA_VERSION = 24;
 export type FileView = { path: string; loc: number; imports: number; publicItems: number; churn: number; findings: number; issues: number; coverageStatus: string; isTest: boolean };
 export type FileInspector = FileView & { metrics?: FileRawMetric; fileFindings: Finding[]; fileIssues: Issue[]; relatedLocations: string[]; incoming: string[]; outgoing: string[]; agent?: FileAgentEvidence };
 
 export function validateReport(value: unknown): ScanReport {
   if (!value || typeof value !== "object") throw new Error("Report data must be a JSON object.");
   const report = value as Partial<ScanReport>;
-  if (report.schema_version !== REPORT_SCHEMA_VERSION) throw new Error(`Unsupported Reforge report schema ${String(report.schema_version ?? "missing")}; this report app requires schema 23.`);
+  if (report.schema_version !== REPORT_SCHEMA_VERSION) throw new Error(`Unsupported Reforge report schema ${String(report.schema_version ?? "missing")}; this report app requires schema 24.`);
   return value as ScanReport;
 }
 

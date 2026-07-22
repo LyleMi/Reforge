@@ -1,7 +1,7 @@
 # Metrics and Evidence Model
 
 Reforge separates observations, detector evidence, issue decision units, and
-coverage. Schema 23 does not emit a quality score, priority, severity, hotspot
+coverage. Schema 24 does not emit a quality score, priority, severity, hotspot
 rank, defect probability, or refactor-readiness score.
 
 ## Raw Metrics
@@ -47,11 +47,11 @@ turn a heuristic into higher-confidence evidence.
 
 ## Findings and Issues
 
-A finding is atomic detector evidence with a stable `rf3-...` ID. It records
+A finding is atomic detector evidence with a stable `rf4-...` ID. It records
 its detector kind, primary and related locations, metrics, maintainability
 construct, observable mechanism, message, and recommendation.
 
-An issue is a stable `ri3-...` decision unit. Compatible atomic findings are
+An issue is a stable `ri4-...` decision unit. Compatible atomic findings are
 clustered by issue family and canonical subject so correlated evidence can be
 reviewed together without discarding detector-level details. An issue records
 its refactor action and all member finding IDs; findings remain available for
@@ -83,11 +83,12 @@ vocabulary and [Detector Reference](detectors.md) for detector mappings.
 ## Coverage and Execution Receipts
 
 An absent finding is meaningful only when the corresponding analysis could run.
-Schema 23 therefore records:
+Schema 24 therefore records:
 
 - `coverage_manifest`: expected mechanism/entity-scope cells and their runtime
   status;
 - `coverage_summary`: detected languages, analyzed entities, parse failures,
+  source read/encoding failures,
   unresolved dependency edges, and unobservable reasons;
 - `detector_execution`: one receipt per detector, including completed
   zero-finding runs, with staged/unit-qualified observations, pre-threshold
@@ -129,7 +130,7 @@ otherwise. `--churn on` requires history; `--churn off` skips it. The window and
 maximum commit-size settings determine which history contributes to raw churn
 metrics.
 
-Churn is context for maintainers and downstream consumers. Schema 23 does not
+Churn is context for maintainers and downstream consumers. Schema 24 does not
 combine it with structural observations into a hotspot or finding score.
 Disabled or unavailable churn is recorded as unavailable coverage, never as
 observed zero change pressure.

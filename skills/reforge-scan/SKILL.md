@@ -1,6 +1,6 @@
 ---
 name: reforge-scan
-description: Run the Reforge Rust CLI against source repositories to collect maintainability and refactoring evidence, including structural thresholds, similarity, dependency and concept drift, documentation drift, Unity project signals, coverage receipts, and agent context/test-reachability evidence. Use when Codex is asked to audit a repository, explain Reforge findings, produce human/HTML/JSON/YAML/SARIF output, tune reforge.toml, or configure schema 23 baseline gates.
+description: Run the Reforge Rust CLI against source repositories to collect maintainability and refactoring evidence, including structural thresholds, similarity, dependency and concept drift, documentation drift, Unity project signals, coverage receipts, and agent context/test-reachability evidence. Use when Codex is asked to audit a repository, explain Reforge findings, produce human/HTML/JSON/YAML/SARIF output, tune reforge.toml, or configure schema 24 baseline gates.
 ---
 
 # Reforge Scan
@@ -95,8 +95,8 @@ reforge scan . --exclude-tests --progress never
 
 ## Baseline Gates
 
-Schema 23 gates compare stable finding IDs. A blocking gate requires a current
-schema 23 JSON or YAML baseline:
+Schema 24 gates compare stable finding IDs. A blocking gate requires a current
+schema 24 JSON or YAML baseline:
 
 ```bash
 reforge scan . --baseline baseline.json --baseline-mode new --fail-on-findings --output json --progress never
@@ -110,7 +110,7 @@ selected. For human review, `--show new` limits the displayed finding list:
 reforge scan . --baseline baseline.json --show new --output human --progress never
 ```
 
-Schema 23 does not serialize priority, severity, a readiness score, or hotspot
+Schema 24 does not serialize priority, severity, a readiness score, or hotspot
 ranking. Do not invent those values and do not use removed options such as
 `--fail-on`, `--severity`, `--min-priority`, or `--hotspot-model`.
 
@@ -136,7 +136,7 @@ ranking. Do not invent those values and do not use removed options such as
 - Tune thresholds only after reviewing a representative sample. Do not change
   thresholds merely to force `findings=0`.
 
-## Reading Schema 23
+## Reading Schema 24
 
 Read a JSON or YAML report in this order:
 
@@ -145,9 +145,9 @@ Read a JSON or YAML report in this order:
    what was observable, and which detectors completed.
 2. `suppression_summary`: distinguish zero unsuppressed findings from zero
    observed signals.
-3. `issues`: use stable `ri3-...` decision units, their refactor action,
+3. `issues`: use stable `ri4-...` decision units, their refactor action,
    canonical subject, and member finding IDs to organize review.
-4. `findings`: inspect stable `rf3-...` atomic evidence, metrics, messages,
+4. `findings`: inspect stable `rf4-...` atomic evidence, metrics, messages,
    recommendations, and related locations.
 5. `agent_evidence`: estimate inspection and verification scope from evidence
    dispersion, context closure size, unresolved local dependencies, and test
@@ -157,7 +157,7 @@ Read a JSON or YAML report in this order:
 
 Choose what to address using user impact, affected scope, threshold excess,
 cross-file evidence, test reachability, detector precision risk, and repository
-constraints. Schema 23 intentionally does not collapse those judgments into a
+constraints. Schema 24 intentionally does not collapse those judgments into a
 single numeric rank.
 
 `findings=0` means no unsuppressed findings remain after detector filters and

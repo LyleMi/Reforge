@@ -284,7 +284,7 @@ audits, and use `--churn off --reproducible` when comparing byte-stable
 source-only reports.
 Review findings with maintainers across several representative repositories,
 then validate proposed changes on a holdout repository. For CI, capture a
-schema 23 baseline and use `--baseline-mode new --fail-on-findings` so
+schema 24 baseline and use `--baseline-mode new --fail-on-findings` so
 unchanged legacy evidence remains visible without blocking every change.
 
 ## Ignored Paths

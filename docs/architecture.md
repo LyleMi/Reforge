@@ -2,7 +2,7 @@
 
 Reforge is a single Rust CLI crate. The scan pipeline observes source trees,
 collects raw metrics, runs detectors, groups atomic findings into decision
-units, projects coverage and agent context, and renders schema 23 reports.
+units, projects coverage and agent context, and renders schema 24 reports.
 
 ## Module Boundaries
 
@@ -10,11 +10,12 @@ units, projects coverage and agent context, and renders schema 23 reports.
   baseline loading, new-finding gate evaluation, and broken-pipe handling.
 - `src/cli/`: Clap commands, scan argument groups, thresholds, output inference,
   progress/color/churn modes, and value parsers.
-- `src/scan/`: scan orchestration, config discovery, source walking, git churn,
-  finding controls, coverage projection, agent evidence, and final
+- `src/scan/`: scan orchestration, config discovery, tolerant source decoding,
+  source walking, stable-anchor projection, git churn, finding controls,
+  coverage/receipt projection, agent evidence, and final
   `ScanReport` assembly.
 - `src/lang/`: Tree-sitter language adapters and shared syntax classification.
-- `src/model/`: schema 23 report data, finding/issue identity, coverage,
+- `src/model/`: schema 24 report data, finding/issue identity, coverage,
   evidence subjects, raw metrics, dependency data, and Unity report data.
 - `src/pathing.rs`: shared portable display normalization for Windows verbatim,
   UNC, and platform-native paths used by findings, policies, and suppressions.
@@ -25,7 +26,7 @@ units, projects coverage and agent context, and renders schema 23 reports.
   clustering without a ranking model.
 - `src/workflow.rs`: strict resumable artifacts, approval snapshots, direct
   checks, rescans, and workflow state transitions.
-- `src/baseline.rs`: schema 23 baseline validation, stable-ID diffing,
+- `src/baseline.rs`: schema 24 baseline validation, stable-ID diffing,
   `--show` selection, and new unsuppressed finding selection.
 - `src/unity.rs` and `src/unity/`: Unity project planning, text asset/GUID
   indexing, asmdef analysis, and Unity-aware C# signals.
@@ -57,22 +58,22 @@ crate.
    context to findings.
 9. Remove composite summaries, apply detector filters and suppressions, and
    record `suppression_summary`.
-10. Cluster compatible atomic findings into stable `ri3-...` issues while
-    retaining their stable `rf3-...` evidence IDs.
+10. Cluster compatible atomic findings into stable `ri4-...` issues while
+    retaining their stable `rf4-...` evidence IDs.
 11. Build `agent_evidence` from dependency closure, unresolved local edges,
     evidence dispersion, and direct/reachable tests.
 12. Project coverage manifests, run-specific coverage summary, detector
     execution receipts, and raw metric coverage.
 13. Render human, HTML, JSON, YAML, or SARIF output to stdout or
     `--output-file`.
-14. When a schema 23 baseline is present, embed finding and issue
+14. When a schema 24 baseline is present, embed finding and issue
     added/removed/changed/unchanged diffs, provenance attribution, and lineage
     candidates in the report. Fail closed after output on unaccepted
     engine/policy/config drift, then apply the selected finding gate.
 
 ## Data Contract
 
-`ScanArgs` is the resolved execution input. `scan_report` produces a schema 23
+`ScanArgs` is the resolved execution input. `scan_report` produces a schema 24
 `ScanReport`. The serialized layers are:
 
 - observations: `stats`, `raw_metrics`, `metrics_summary`,
@@ -107,7 +108,7 @@ heap aliases, fields, methods, dynamic dispatch, external crates, runtime
 middleware, persistence, queues, or service hops. Unsupported constructs add
 coverage reasons and cannot appear in a conservative finding witness.
 
-Schema 23 does not serialize priority, severity, hotspot ranking, scoring
+Schema 24 does not serialize priority, severity, hotspot ranking, scoring
 policy, or reliability scores. Those legacy model and CLI fields are not kept
 in the Rust implementation. Consumers choose work using the evidence,
 coverage, project goals, and their own policy.
@@ -132,12 +133,12 @@ mistake unsupported or partial analysis for an observed absence.
 
 ## Stable Identity and Baselines
 
-Finding IDs use detector kind, metric names, and canonicalized evidence
-locations. Issue IDs use issue family and canonical subject. They intentionally
-exclude messages, metric values, and traversal order so the same evidence can
-survive harmless rendering or ordering changes.
+Finding IDs use detector kind plus an explicit checkout-relative semantic
+anchor. Issue IDs use issue family and an anchor-backed canonical subject.
+Display lines, messages, metric values, and traversal order are excluded so the
+same evidence survives harmless comments, formatting, and checkout relocation.
 
-Schema 23 baselines expose finding and issue added, removed, changed, and
+Schema 24 baselines expose finding and issue added, removed, changed, and
 unchanged states. Same-ID semantic changes list their changed fields. Each
 change is attributed to engine, configuration, source, mixed, or unknown
 provenance, and removed/added pairs may produce deterministic lineage
@@ -160,7 +161,7 @@ only to human output.
 `--output html` and `.html`/`.htm` output-file extensions produce one offline
 artifact. The packaging flow is:
 
-1. The Rust scanner builds a schema 23 `ScanReport`.
+1. The Rust scanner builds a schema 24 `ScanReport`.
 2. HTML output serializes the report as JSON into an HTML shell.
 3. The shell inlines the compiled React bundle and CSS.
 4. The browser renders locally without a server or network dependency.

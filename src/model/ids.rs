@@ -2,7 +2,7 @@ use super::*;
 
 use super::evidence::fnv1a64;
 
-pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 23;
+pub const SCAN_REPORT_SCHEMA_VERSION: u8 = 24;
 pub(crate) const SERIALIZED_SIMILAR_LOCATION_LIMIT: usize = 50;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -45,8 +45,8 @@ impl IssueKey {
     }
 
     pub fn from_family_and_subject(issue_family: &str, subject: &EvidenceSubject) -> Self {
-        let input = format!("issue-v3\0{issue_family}\0{}", subject.identity());
-        Self(format!("ri3-{:016x}", fnv1a64(input.as_bytes())))
+        let input = format!("issue-v4\0{issue_family}\0{}", subject.identity());
+        Self(format!("ri4-{:016x}", fnv1a64(input.as_bytes())))
     }
 }
 

@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_23_serialization_has_no_schema_20_ranking_fields() -> Result<()> {
+    fn schema_24_serialization_has_no_schema_20_ranking_fields() -> Result<()> {
         let root = temp_root("schema");
         fs::create_dir_all(root.join("src"))?;
         fs::write(root.join("src/lib.rs"), "one\ntwo\n")?;
@@ -189,6 +189,15 @@ mod tests {
         assert!(serde_json::from_value::<ScanReport>(stale).is_err());
         fs::remove_dir_all(root)?;
         Ok(())
+    }
+
+    #[test]
+    fn workflow_v2_run_directories_require_a_new_run() {
+        let error = validate_schema_version(2, "run.json").unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("artifact schema v3"));
+        assert!(message.contains("older run directories cannot be continued"));
+        assert!(message.contains("start a new run"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
 interface:
   display_name: "Reforge Scan"
   short_description: "Collect and explain refactoring evidence"
-  default_prompt: "Use $reforge-scan to scan this repository and explain schema 23 evidence and coverage limitations."
+  default_prompt: "Use $reforge-scan to scan this repository and explain schema 24 evidence and coverage limitations."

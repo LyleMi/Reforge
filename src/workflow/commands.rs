@@ -428,7 +428,7 @@ fn confirm_lineage(args: WorkflowConfirmLineageArgs) -> Result<()> {
     let removed = rescan.selected_issues_removed.iter().map(|id| id.as_str()).collect::<BTreeSet<_>>();
     let unobservable = rescan.selected_issues_unobservable.iter().map(|id| id.as_str()).collect::<BTreeSet<_>>();
     for id in &args.remediated {
-        ensure!(id.starts_with("ri3-"), "invalid remediated issue Stable ID {id}");
+        ensure!(id.starts_with("ri4-"), "invalid remediated issue Stable ID {id}");
         ensure!(removed.contains(id.as_str()), "remediated issue {id} was not selected and observably removed");
         ensure!(!unobservable.contains(id.as_str()), "remediated issue {id} is unobservable in the rescan");
         ensure!(seen_previous.insert(id.as_str()), "issue {id} has more than one lineage disposition");

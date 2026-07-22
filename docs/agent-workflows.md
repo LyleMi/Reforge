@@ -1,6 +1,6 @@
 # Agent Workflows
 
-Reforge ships a deterministic, resumable workflow around schema 23 evidence. The scanner does not assign quality, priority, severity, readiness, or hotspot scores. Selection and refactoring judgment remain review decisions.
+Reforge ships a deterministic, resumable workflow around schema 24 evidence. The scanner does not assign quality, priority, severity, readiness, or hotspot scores. Selection and refactoring judgment remain review decisions.
 
 ## Commands and phases
 
@@ -12,7 +12,7 @@ scanned -> selected -> investigated -> planned -> approved -> applied -> verifie
 
 ```bash
 reforge workflow start . --progress never
-reforge workflow select .reforge/runs/run-... --issue ri3-... --goal "split the parser boundary"
+reforge workflow select .reforge/runs/run-... --issue ri4-... --goal "split the parser boundary"
 reforge workflow status .reforge/runs/run-...
 reforge workflow validate .reforge/runs/run-...
 reforge workflow advance .reforge/runs/run-...
@@ -21,11 +21,11 @@ reforge workflow mark-applied .reforge/runs/run-...
 reforge workflow check .reforge/runs/run-... --kind test -- cargo test
 reforge workflow rescan .reforge/runs/run-...
 reforge workflow confirm-lineage .reforge/runs/run-... --candidate rl1-...
-reforge workflow confirm-lineage .reforge/runs/run-... --remediated ri3-...
+reforge workflow confirm-lineage .reforge/runs/run-... --remediated ri4-...
 reforge workflow finish .reforge/runs/run-...
 ```
 
-`start` runs a complete schema 23 scan and stores the effective scan command and report, config, and source fingerprints. The default run directory is `.reforge/runs/run-<epoch>-<report-hash>/`; `--run-dir` selects an exact external or project-local directory.
+`start` runs a complete schema 24 scan and stores the effective scan command and report, config, and source fingerprints. The default run directory is `.reforge/runs/run-<epoch>-<report-hash>/`; `--run-dir` selects an exact external or project-local directory.
 
 `select` accepts only issue IDs present in `scan.json`. `advance` validates one immutable investigation per selected issue, then validates `plan.json`. `status` and `validate` never mutate artifacts.
 
@@ -44,13 +44,15 @@ change Stable IDs or gate results.
 
 ## Artifacts
 
-All workflow JSON uses artifact schema v2, rejects unknown fields, and is written through a temporary sibling followed by rename.
+All workflow JSON uses artifact schema v3, rejects unknown fields, and is written through a temporary sibling followed by rename.
+Artifact v2 run directories cannot be continued; start a new workflow run so
+the stored schema 24 report and `rf4-*` / `ri4-*` identities stay coherent.
 
 ```text
 run.json
 scan.json
 selection.json
-investigations/ri3-<id>.json
+investigations/ri4-<id>.json
 plan.json
 approval.json
 application.json

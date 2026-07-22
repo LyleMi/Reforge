@@ -96,7 +96,7 @@ fn parse_stored_scan_command(command: &[String]) -> Result<ScanArgs> {
 fn validate_schema_version(version: u8, artifact: &str) -> Result<()> {
     ensure!(
         version == ARTIFACT_SCHEMA_VERSION,
-        "{artifact} uses unsupported artifact schema {version}"
+        "{artifact} uses unsupported artifact schema {version}; workflow artifact schema v3 is required and older run directories cannot be continued; start a new run"
     );
     Ok(())
 }

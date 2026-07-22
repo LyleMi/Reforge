@@ -48,31 +48,14 @@ fn subject(finding: &Finding) -> EvidenceSubject {
         },
         EntityScope::Function => EvidenceSubject::Function {
             path: finding.path.clone(),
-            line: finding.line.unwrap_or(0),
+            anchor: finding.anchor.clone(),
         },
         EntityScope::Type => EvidenceSubject::Type {
             path: finding.path.clone(),
-            line: finding.line.unwrap_or(0),
+            anchor: finding.anchor.clone(),
         },
         EntityScope::FindingGroup => EvidenceSubject::Group {
-            locations: finding.flow_witness.as_ref().map_or_else(
-                || {
-                    std::iter::once(format!("{}:{}", finding.path, finding.line.unwrap_or(0)))
-                        .chain(
-                            finding
-                                .related_locations
-                                .iter()
-                                .map(|location| format!("{}:{}", location.path, location.line)),
-                        )
-                        .collect()
-                },
-                |witness| {
-                    vec![
-                        witness.source.id.clone(),
-                        format!("{}:policy:{}", witness.sink.id, witness.policy),
-                    ]
-                },
-            ),
+            anchors: vec![finding.anchor.clone()],
         },
     }
 }

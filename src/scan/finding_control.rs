@@ -101,7 +101,12 @@ impl Suppressions {
         findings: &[Finding],
         config_suppressions: &[ConfigSuppression],
     ) -> Result<Self> {
-        let root = normalize_path(&display_path(root));
+        let suppression_root = if root.is_file() {
+            root.parent().unwrap_or(root)
+        } else {
+            root
+        };
+        let root = normalize_control_path(&display_path(suppression_root));
         let mut rules = Vec::new();
 
         for suppression in config_suppressions {
@@ -118,7 +123,7 @@ impl Suppressions {
                 );
             }
             rules.push(SuppressionRule {
-                path: normalize_path(&suppression.path),
+                path: normalize_control_path(&suppression.path),
                 kinds,
                 line: suppression.line,
                 scope: SuppressionScope::Config,
@@ -154,7 +159,7 @@ impl InlineRuleLoader {
 
     fn load(&mut self, findings: &[Finding]) -> Result<Vec<SuppressionRule>> {
         for finding in findings {
-            let path = normalize_path(&finding.path);
+            let path = normalize_control_path(&finding.path);
             if self.by_path.contains_key(&path) {
                 continue;
             }
@@ -322,14 +327,17 @@ fn looks_like_kind_list(text: &str) -> bool {
 }
 
 fn path_matches(rule_path: &str, finding_path: &str, root: &str) -> bool {
-    let rule_path = normalize_path(rule_path);
-    let finding_path = normalize_path(finding_path);
+    let rule_path = normalize_control_path(rule_path);
+    let finding_path = normalize_control_path(finding_path);
     let finding_relative = relative_to_root(finding_path.as_str(), root);
 
     rule_path == finding_path || rule_path == finding_relative
 }
 
 fn source_path_for_finding(root: &str, finding_path: &str) -> PathBuf {
+    if !Path::new(finding_path).is_absolute() {
+        return Path::new(root).join(finding_path);
+    }
     let relative = relative_to_root(finding_path, root);
     if relative == finding_path {
         PathBuf::from(finding_path)
@@ -344,7 +352,7 @@ fn relative_to_root<'a>(path: &'a str, root: &str) -> &'a str {
         .unwrap_or(path)
 }
 
-fn normalize_path(path: &str) -> String {
+fn normalize_control_path(path: &str) -> String {
     crate::pathing::normalize_path_text(path)
         .trim_start_matches("./")
         .trim_end_matches('/')

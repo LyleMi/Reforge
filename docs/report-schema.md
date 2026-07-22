@@ -1,12 +1,11 @@
 # Report Schema
 
-Schema 23 adds reproducible scan provenance, explainable same-version baseline
-diffs, structured detector execution receipts, and deterministic remediation
-lineage candidates while preserving the `rf3-*` and `ri3-*` Stable ID
-algorithms. It does not serialize a priority, severity, hotspot, scoring-policy,
-or readiness model.
+Schema 24 makes report paths checkout-relative, introduces explicit stable
+anchors and the `rf4-*` / `ri4-*` identity algorithms, records source decoding
+failures, and adds lossless similarity comparison receipts. It does not
+serialize a priority, severity, hotspot, scoring-policy, or readiness model.
 
-JSON and YAML reports use schema version `23`. Schema 22 and earlier baselines
+JSON and YAML reports use schema version `24`. Schema 23 and earlier baselines
 are rejected and must be regenerated. The same Rust data model
 is serialized for both formats. SARIF output is a separate SARIF 2.1.0 document
 whose results represent issue decision units.
@@ -15,7 +14,7 @@ whose results represent issue decision units.
 
 ```json
 {
-  "schema_version": 23,
+  "schema_version": 24,
   "provenance": {},
   "baseline_comparison": null,
   "summary": {},
@@ -40,7 +39,7 @@ whose results represent issue decision units.
 
 Top-level fields:
 
-- `schema_version`: report schema version. Current value is `23`.
+- `schema_version`: report schema version. Current value is `24`.
 - `provenance`: engine version/build revision, target Git revision/dirty state,
   canonical effective configuration plus its `sha256-*` hash, and the
   versioned detector-policy hash.
@@ -54,7 +53,8 @@ Top-level fields:
   suppression removals, final count, and unobservable reasons.
 - `raw_metric_coverage`: observation state for all 18 canonical raw metrics. Disabled churn is `unavailable`, never observed zero pressure.
 - `summary`: scan totals, duration, and churn status.
-- `stats`: source files, directories, and function candidates counted.
+- `stats`: discovered and successfully analyzed source files, directories, and
+  function candidates counted.
 - `metrics_summary`: percentile distributions for raw metrics.
 - `raw_metrics`: directory, file, function, type, and churn measurements.
 - `raw_metric_manifest`: scale, unit, scope, direction, and meaning of every
@@ -104,7 +104,8 @@ Fields:
 
 Fields:
 
-- `source_files_scanned`: source files scanned.
+- `source_files_discovered`: supported source files found by the walker.
+- `source_files_analyzed`: discovered source files successfully read and decoded.
 - `directories_scanned`: directories visited.
 - `function_candidates`: function bodies considered for similarity analysis.
 
@@ -213,7 +214,7 @@ imports are not included.
 `agent_evidence.issues` uses the same closure and test-reachability fields and
 adds:
 
-- `issue_id`: stable `ri3-...` issue identity.
+- `issue_id`: stable `ri4-...` issue identity.
 - `evidence_dispersion.evidence_files`
 - `evidence_dispersion.evidence_directories`
 - `evidence_dispersion.evidence_languages`
@@ -235,7 +236,8 @@ test paths was serialized.
 Finding fields:
 
 - `kind`: detector-specific finding kind.
-- `id`: stable evidence identifier in the form `rf3-<hex>`.
+- `id`: stable evidence identifier in the form `rf4-<hex>`.
+- `anchor`: explicit checkout-relative semantic identity used to derive `id`.
 - `path`: primary path.
 - `line`: primary line or `null`.
 - `metrics`: finding-specific measurements.
@@ -272,16 +274,15 @@ Finding fields:
 Very large `similar_functions` groups serialize at most 50 related locations
 to keep reports bounded.
 
-Finding IDs are deterministic for the same evidence identity. The `rf3-` ID
-uses the finding kind, metric names, and the normalized, sorted, deduplicated
-set of primary and related path/line locations. It intentionally does not
-include the representative location choice, related-location order, names,
-message text, or metric values. Baseline comparison therefore recognizes the
-same evidence group when detector traversal order or ranking changes.
-For `adapter_flow_bypass`, identity instead uses the detector kind, metric
-names, policy name, and stable source/sink node IDs. Ordered witness detail,
-messages, metric values, comments, formatting, and intermediate wrappers do
-not define the finding identity.
+Finding IDs are deterministic for the same evidence identity. The `rf4-` ID
+uses only the finding kind and explicit `anchor`. Function and type anchors use
+the checkout-relative path, symbol name, and same-name declaration ordinal;
+file and directory anchors use relative paths; group anchors use the detector
+semantic key and sorted member anchors; textual point evidence uses normalized
+content and its same-content ordinal. Display line numbers are never identity.
+For `adapter_flow_bypass`, the anchor uses policy name and stable source/sink
+node IDs. Ordered witness detail, messages, metric values, comments,
+formatting, and intermediate wrappers do not define identity.
 
 ## `flow_analysis`
 
@@ -303,8 +304,8 @@ interpreted as an observed absence of paths.
 
 Issues contain `id`, `family`, `summary`, `construct`, `mechanism`, `action`,
 `path`, `line`, `primary_finding_id`, `finding_ids`, `kinds`, and `subject`.
-Finding `id` values are stable `EvidenceId` values (`rf3-...`). Issue `id`
-values are stable `IssueKey` values (`ri3-...`) derived only from the issue
+Finding `id` values are stable `EvidenceId` values (`rf4-...`). Issue `id`
+values are stable `IssueKey` values (`ri4-...`) derived only from the issue
 family and canonical subject, not from evidence membership or input order.
 Every compatible atomic evidence group emits an issue. Member findings remain
 in `findings` for baselines and detector-specific filtering.
@@ -330,6 +331,20 @@ raw_emitted = cli_filtered + suppression_removed + final_findings
 
 Zero final findings therefore do not erase evidence that a detector analyzed
 nonzero inputs.
+
+The `similar_functions` receipt includes `candidate_pairs`,
+`indexed_candidate_pairs`, `multiset_pruned_pairs`, and `lcs_comparisons`.
+These counters make the lossless candidate index auditable without imposing a
+comparison budget or changing the detector threshold.
+
+## `coverage_summary`
+
+`coverage_summary` records detected languages, applicable detectors, analyzed
+entity counts, syntax `parse_failures`, unresolved dependency edges, and
+structured `source_failures`. A source failure contains a checkout-relative
+`path` and a `reason`: `io_error`, `unsupported_encoding`, or
+`invalid_encoding`. Any detector or raw metric that depends on unavailable
+source content is reported as partially observed.
 
 ## `raw_metric_manifest`
 
@@ -375,7 +390,7 @@ Each issue result contains:
 
 - `ruleId`: issue family.
 - `ruleIndex`: index into the run's rule table.
-- `level`: `note`; schema 23 does not assign severity.
+- `level`: `note`; schema 24 does not assign severity.
 - `message.text`: issue summary.
 - `locations[].physicalLocation`: primary path and line.
 - `partialFingerprints.reforgeIssueId`: stable issue `id`.
@@ -436,8 +451,11 @@ Current `kind` values:
 ## Compatibility Notes
 
 Consumers should check `schema_version` before assuming field shape. Schema
-version `23` adds provenance, embedded baseline comparison, structured
-execution receipts, and lineage candidates. Schema version `22` added
+version `24` adds relative paths, stable anchors, `rf4-*` / `ri4-*` IDs,
+source-failure receipts, and similarity comparison counters. Schema 23 reports
+and baselines use the old identity contract and are deliberately rejected;
+regenerate them. Schema version `23` added provenance, embedded baseline
+comparison, structured execution receipts, and lineage candidates. Schema version `22` added
 `flow_analysis`, typed optional `flow_witness` evidence,
 `adapter_flow_bypass`, six `flow.*` finding metrics, and witness-aware SARIF
 locations. Schema version `21` added `agent_evidence`, removed serialized
@@ -450,10 +468,8 @@ findings; consumers must not infer replacements for those removed fields.
 Baselines from older schemas are rejected and should be regenerated. Schema
 version `20` added `unity_project`, Unity detector records, and Unity asset
 paths without changing the source dependency graph. Schema version `19`
-retains `rf3-`
-EvidenceIds and `ri3-` IssueKeys over canonical
-subjects. Issue identity is independent of alternative evidence membership and
-input ordering. Schema
+retained the identity contract current at that time. Issue identity is
+independent of alternative evidence membership and input ordering. Schema
 version `16` gives every finding metric a canonical dotted ID, adds directory
 raw metrics and percentile summaries, and removes repeated parent-directory
 counts from file raw metrics. Schema

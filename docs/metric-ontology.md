@@ -8,7 +8,7 @@ software quality.
 
 ## Normative Coverage Matrix
 
-Schema 23 declares coverage independently of detector registration. Its stable
+Schema 24 declares coverage independently of detector registration. Its stable
 7 mechanisms × 6 entity scopes form 42 cells: required combinations plus
 explicitly out-of-scope combinations. Runtime status distinguishes observed,
 partially observed, unsupported, no-entity, planned, and intentionally out-of-
@@ -53,15 +53,15 @@ Reforge uses these layers:
 
 1. Raw metrics record observations such as LOC, complexity, fan-out, and churn.
 2. Findings interpret observations through one detector and keep stable
-   `rf3-...` evidence identity.
+   `rf4-...` evidence identity.
 3. Constructs and mechanisms explain the maintainability concern represented
    by the evidence.
 4. Issue clusters join compatible findings by issue family, canonical subject,
-   and typed refactoring action under stable `ri3-...` identity.
+   and typed refactoring action under stable `ri4-...` identity.
 5. Coverage, optional exact-flow witnesses, and agent evidence explain what
    could be observed and the likely inspection/test surface.
 
-There is no priority or readiness layer in schema 23. For example, complexity
+There is no priority or readiness layer in schema 24. For example, complexity
 and nesting findings on one function remain independently filterable while a
 compatible issue presents their shared decision surface. Neither observation
 automatically outweighs another issue.

@@ -118,9 +118,9 @@ pub enum EvidenceSubject {
     Repository,
     Directory { path: String },
     File { path: String },
-    Function { path: String, line: usize },
-    Type { path: String, line: usize },
-    Group { locations: Vec<String> },
+    Function { path: String, anchor: String },
+    Type { path: String, anchor: String },
+    Group { anchors: Vec<String> },
 }
 
 impl EvidenceSubject {
@@ -129,18 +129,20 @@ impl EvidenceSubject {
             Self::Repository => "repository".into(),
             Self::Directory { path } => format!("directory:{}", normalize_identity_path(path)),
             Self::File { path } => format!("file:{}", normalize_identity_path(path)),
-            Self::Function { path, line } => {
-                format!("function:{}:{line}", normalize_identity_path(path))
+            Self::Function { path, anchor } => {
+                format!("function:{}:{anchor}", normalize_identity_path(path))
             }
-            Self::Type { path, line } => format!("type:{}:{line}", normalize_identity_path(path)),
-            Self::Group { locations } => {
-                let mut locations = locations
+            Self::Type { path, anchor } => {
+                format!("type:{}:{anchor}", normalize_identity_path(path))
+            }
+            Self::Group { anchors } => {
+                let mut anchors = anchors
                     .iter()
                     .map(|value| normalize_identity_path(value))
                     .collect::<Vec<_>>();
-                locations.sort();
-                locations.dedup();
-                format!("group:{}", locations.join("|"))
+                anchors.sort();
+                anchors.dedup();
+                format!("group:{}", anchors.join("|"))
             }
         }
     }

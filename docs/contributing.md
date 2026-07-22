@@ -149,7 +149,7 @@ removed, or renamed:
 
 Consumers should rely on stable finding and issue IDs, typed metrics,
 construct/mechanism/action metadata, coverage receipts, and agent evidence.
-Schema 23 does not emit priority, confidence, severity, or hotspot ranking.
+Schema 24 does not emit priority, confidence, severity, or hotspot ranking.
 
 ## Commits and Pull Requests
 
