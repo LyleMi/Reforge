@@ -5,51 +5,6 @@ ignore-paths = [
 ]
 
 [[suppressions]]
-kind = "repeated_literal"
-path = "src/cli/commands.rs"
-reason = "Clap command metadata repeats the CLI name in tests and help assertions."
-
-[[suppressions]]
-kind = "similar_functions"
-path = "src/cli/values.rs"
-line = 543
-reason = "Parser tests intentionally repeat option-shape assertions."
-
-[[suppressions]]
-kind = "similar_functions"
-path = "src/scan/config.rs"
-line = 518
-reason = "Configuration tests intentionally repeat setup shapes across precedence cases."
-
-[[suppressions]]
-kind = "similar_functions"
-path = "src/scan/finding_control.rs"
-line = 460
-reason = "Suppression tests intentionally repeat fixture construction patterns."
-
-[[suppressions]]
-kind = "complex_function"
-path = "scripts/install-agent-workflow.ps1"
-line = 156
-reason = "Installer script intentionally centralizes portable install branching for distribution compatibility."
-
-[[suppressions]]
-kind = "complex_function"
-path = "scripts/install-agent-workflow.sh"
-line = 179
-reason = "Installer script intentionally centralizes portable install branching for distribution compatibility."
-
-[[suppressions]]
-kind = "similar_functions"
-path = "src/detectors/data_flow/tests.rs"
-reason = "Data-flow contract fixtures intentionally repeat the same policy/source/sink shape across semantic variants."
-
-[[suppressions]]
 kind = "dependency_hub"
 path = "src/main.rs"
 reason = "The binary crate root intentionally wires the CLI, scan, workflow, and output ownership boundaries."
-
-[[suppressions]]
-kind = "dependency_hub"
-path = "src/model/mod.rs"
-reason = "The model facade intentionally re-exports the independent schema domains consumed across the crate."

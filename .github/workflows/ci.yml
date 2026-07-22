@@ -136,6 +136,11 @@ jobs:
       - name: Run tests
         run: cargo test --locked --all-targets --all-features
 
+      - name: Test PowerShell agent workflow distribution
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\scripts\test-install-agent-workflow.ps1
+
       - name: Build
         run: cargo build --locked
 

@@ -359,7 +359,8 @@ pub(crate) fn is_test_source(path: &Path) -> bool {
         return false;
     };
 
-    if file_name.starts_with("test_")
+    if file_name == "tests.rs"
+        || file_name.starts_with("test_")
         || file_name.contains(".test.")
         || file_name.contains(".spec.")
         || file_name.ends_with("_test.go")
@@ -418,4 +419,19 @@ fn directory_has_test_asmdef(directory: &Path) -> bool {
 
 fn display_path(path: &Path) -> String {
     crate::pathing::display_path(path)
+}
+
+#[cfg(test)]
+mod walk_tests {
+    use super::is_test_source;
+    use std::path::Path;
+
+    #[test]
+    fn recognizes_rust_external_test_modules() {
+        assert!(is_test_source(Path::new(
+            "src/detectors/data_flow/tests.rs"
+        )));
+        assert!(is_test_source(Path::new("src/scanner_tests.rs")));
+        assert!(!is_test_source(Path::new("src/contests.rs")));
+    }
 }

@@ -153,40 +153,63 @@ function Install-InstructionFile([string]$TargetFile, [string]$TargetAgent) {
     Write-Host "Installed $TargetFile"
 }
 
-function Install-PortableAgent([string]$TargetAgent) {
+function Get-PortableAgentBase([string]$TargetAgent) {
     if ($ProjectDir) {
-        $base = $ProjectDir
-    } else {
-        switch ($TargetAgent) {
-            "claude" { $base = if ($RootDir) { $RootDir } else { Join-Path $HOME ".claude" } }
-            "gemini" { $base = if ($RootDir) { $RootDir } else { Join-Path $HOME ".gemini" } }
-            "opencode" { $base = if ($RootDir) { $RootDir } elseif ($env:XDG_CONFIG_HOME) { Join-Path $env:XDG_CONFIG_HOME "opencode" } else { Join-Path $HOME ".config\opencode" } }
-            "codebuddy" { $base = if ($RootDir) { $RootDir } else { Join-Path $HOME ".codebuddy" } }
-            "cursor" { $base = if ($RootDir) { $RootDir } else { Join-Path $HOME ".cursor" } }
-            "generic" { $base = if ($RootDir) { $RootDir } else { Join-Path $HOME ".agents" } }
-            "codex" { $base = $codexRoot }
-        }
+        return $ProjectDir
+    }
+    if ($RootDir) {
+        return $RootDir
     }
 
-    switch ("$TargetAgent|$([bool]$ProjectDir)") {
-        "claude|False" { $instructions = Join-Path $base "CLAUDE.md"; $skills = Join-Path $base "skills" }
-        "claude|True" { $instructions = Join-Path $base "CLAUDE.md"; $skills = Join-Path $base ".claude\skills" }
-        "gemini|False" { $instructions = Join-Path $base "GEMINI.md"; $skills = $null }
-        "gemini|True" { $instructions = Join-Path $base "GEMINI.md"; $skills = $null }
-        "opencode|False" { $instructions = Join-Path $base "AGENTS.md"; $skills = Join-Path $base "skills" }
-        "opencode|True" { $instructions = Join-Path $base "AGENTS.md"; $skills = Join-Path $base ".opencode\skills" }
-        "codebuddy|False" { $instructions = Join-Path $base "CODEBUDDY.md"; $skills = Join-Path $base "skills" }
-        "codebuddy|True" { $instructions = Join-Path $base "CODEBUDDY.md"; $skills = Join-Path $base ".codebuddy\skills" }
-        "cursor|False" { $instructions = Join-Path $base "rules\reforge.mdc"; $skills = $null }
-        "cursor|True" { $instructions = Join-Path $base ".cursor\rules\reforge.mdc"; $skills = $null }
-        "generic|False" { $instructions = Join-Path $base "AGENTS.md"; $skills = Join-Path $base "skills" }
-        "generic|True" { $instructions = Join-Path $base "AGENTS.md"; $skills = Join-Path $base ".agents\skills" }
-        "codex|False" { $instructions = Join-Path $base "AGENTS.md"; $skills = Join-Path $base "skills" }
-        "codex|True" { $instructions = Join-Path $base "AGENTS.md"; $skills = Join-Path $base ".agents\skills" }
+    switch ($TargetAgent) {
+        "claude" { Join-Path $HOME ".claude" }
+        "gemini" { Join-Path $HOME ".gemini" }
+        "opencode" { if ($env:XDG_CONFIG_HOME) { Join-Path $env:XDG_CONFIG_HOME "opencode" } else { Join-Path $HOME ".config\opencode" } }
+        "codebuddy" { Join-Path $HOME ".codebuddy" }
+        "cursor" { Join-Path $HOME ".cursor" }
+        "generic" { Join-Path $HOME ".agents" }
+        "codex" { $codexRoot }
     }
+}
 
-    Install-InstructionFile $instructions $TargetAgent
-    if ($skills) { Install-SkillSet $skills }
+function Get-PortableAgentLayout([string]$TargetAgent, [string]$Base) {
+    $scope = if ($ProjectDir) { "project" } else { "global" }
+    $instructionPaths = @{
+        "claude" = "CLAUDE.md"
+        "gemini" = "GEMINI.md"
+        "opencode" = "AGENTS.md"
+        "codebuddy" = "CODEBUDDY.md"
+        "cursor|global" = "rules\reforge.mdc"
+        "cursor|project" = ".cursor\rules\reforge.mdc"
+        "generic" = "AGENTS.md"
+        "codex" = "AGENTS.md"
+    }
+    $skillPaths = @{
+        "claude|global" = "skills"
+        "claude|project" = ".claude\skills"
+        "opencode|global" = "skills"
+        "opencode|project" = ".opencode\skills"
+        "codebuddy|global" = "skills"
+        "codebuddy|project" = ".codebuddy\skills"
+        "generic|global" = "skills"
+        "generic|project" = ".agents\skills"
+        "codex|global" = "skills"
+        "codex|project" = ".agents\skills"
+    }
+    $instructionKey = if ($TargetAgent -eq "cursor") { "$TargetAgent|$scope" } else { $TargetAgent }
+    $skillKey = "$TargetAgent|$scope"
+    [pscustomobject]@{
+        Instructions = Join-Path $Base $instructionPaths[$instructionKey]
+        Skills = if ($skillPaths.ContainsKey($skillKey)) { Join-Path $Base $skillPaths[$skillKey] } else { $null }
+    }
+}
+
+function Install-PortableAgent([string]$TargetAgent) {
+    $base = Get-PortableAgentBase $TargetAgent
+    $layout = Get-PortableAgentLayout $TargetAgent $base
+
+    Install-InstructionFile $layout.Instructions $TargetAgent
+    if ($layout.Skills) { Install-SkillSet $layout.Skills }
 }
 
 if ($Agent -eq "all") {

@@ -66,6 +66,23 @@ test -f "$test_root/all-project/.codebuddy/skills/reforge-scan/SKILL.md"
 test -f "$test_root/all-project/.agents/skills/reforge-scan/SKILL.md"
 grep -q 'schema 23' "$test_root/all-project/.agents/skills/reforge-scan/SKILL.md"
 
+for portable_agent in claude gemini opencode codebuddy cursor generic; do
+    portable_root="$test_root/$portable_agent-global"
+    run_workflow_installer --agent "$portable_agent" --root-dir "$portable_root" --skip-cli
+done
+test -f "$test_root/claude-global/CLAUDE.md"
+test -f "$test_root/claude-global/skills/reforge-scan/SKILL.md"
+test -f "$test_root/gemini-global/GEMINI.md"
+test ! -e "$test_root/gemini-global/skills"
+test -f "$test_root/opencode-global/AGENTS.md"
+test -f "$test_root/opencode-global/skills/reforge-scan/SKILL.md"
+test -f "$test_root/codebuddy-global/CODEBUDDY.md"
+test -f "$test_root/codebuddy-global/skills/reforge-scan/SKILL.md"
+test -f "$test_root/cursor-global/rules/reforge.mdc"
+test ! -e "$test_root/cursor-global/skills"
+test -f "$test_root/generic-global/AGENTS.md"
+test -f "$test_root/generic-global/skills/reforge-scan/SKILL.md"
+
 "$script_dir/install-agent-skill.sh" --skills-dir "$test_root/legacy" --skip-cli
 test -f "$test_root/legacy/reforge-scan/SKILL.md"
 

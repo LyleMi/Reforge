@@ -176,38 +176,76 @@ install_skill_set() {
     done
 }
 
-install_portable_agent() {
+portable_agent_base() {
     target_agent=$1
     if [ -n "$project_dir" ]; then
-        base=$project_dir
-    else
-        case "$target_agent" in
-            claude) base="${root_dir:-${HOME:?HOME is required}/.claude}" ;;
-            gemini) base="${root_dir:-${HOME:?HOME is required}/.gemini}" ;;
-            opencode) base="${root_dir:-${XDG_CONFIG_HOME:-${HOME:?HOME is required}/.config}/opencode}" ;;
-            codebuddy) base="${root_dir:-${HOME:?HOME is required}/.codebuddy}" ;;
-            cursor) base="${root_dir:-${HOME:?HOME is required}/.cursor}" ;;
-            generic) base="${root_dir:-${HOME:?HOME is required}/.agents}" ;;
-            codex) base="${root_dir:-$codex_root}" ;;
-        esac
+        printf '%s\n' "$project_dir"
+        return
+    fi
+    if [ -n "$root_dir" ]; then
+        printf '%s\n' "$root_dir"
+        return
     fi
 
-    case "$target_agent:$project_dir" in
-        claude:) instructions="$base/CLAUDE.md"; skills="$base/skills" ;;
-        claude:*) instructions="$base/CLAUDE.md"; skills="$base/.claude/skills" ;;
-        gemini:) instructions="$base/GEMINI.md"; skills="" ;;
-        gemini:*) instructions="$base/GEMINI.md"; skills="" ;;
-        opencode:) instructions="$base/AGENTS.md"; skills="$base/skills" ;;
-        opencode:*) instructions="$base/AGENTS.md"; skills="$base/.opencode/skills" ;;
-        codebuddy:) instructions="$base/CODEBUDDY.md"; skills="$base/skills" ;;
-        codebuddy:*) instructions="$base/CODEBUDDY.md"; skills="$base/.codebuddy/skills" ;;
-        cursor:) instructions="$base/rules/reforge.mdc"; skills="" ;;
-        cursor:*) instructions="$base/.cursor/rules/reforge.mdc"; skills="" ;;
-        generic:) instructions="$base/AGENTS.md"; skills="$base/skills" ;;
-        generic:*) instructions="$base/AGENTS.md"; skills="$base/.agents/skills" ;;
-        codex:) instructions="$base/AGENTS.md"; skills="$base/skills" ;;
-        codex:*) instructions="$base/AGENTS.md"; skills="$base/.agents/skills" ;;
+    case "$target_agent" in
+        claude) printf '%s\n' "${HOME:?HOME is required}/.claude" ;;
+        gemini) printf '%s\n' "${HOME:?HOME is required}/.gemini" ;;
+        opencode) printf '%s\n' "${XDG_CONFIG_HOME:-${HOME:?HOME is required}/.config}/opencode" ;;
+        codebuddy) printf '%s\n' "${HOME:?HOME is required}/.codebuddy" ;;
+        cursor) printf '%s\n' "${HOME:?HOME is required}/.cursor" ;;
+        generic) printf '%s\n' "${HOME:?HOME is required}/.agents" ;;
+        codex) printf '%s\n' "$codex_root" ;;
     esac
+}
+
+portable_agent_instruction_path() {
+    target_agent=$1
+    base=$2
+    case "$target_agent" in
+        claude) printf '%s\n' "$base/CLAUDE.md" ;;
+        gemini) printf '%s\n' "$base/GEMINI.md" ;;
+        opencode|generic|codex) printf '%s\n' "$base/AGENTS.md" ;;
+        codebuddy) printf '%s\n' "$base/CODEBUDDY.md" ;;
+        cursor)
+            if [ -n "$project_dir" ]; then
+                printf '%s\n' "$base/.cursor/rules/reforge.mdc"
+            else
+                printf '%s\n' "$base/rules/reforge.mdc"
+            fi
+            ;;
+    esac
+}
+
+global_agent_skills_path() {
+    case "$1" in
+        claude|opencode|codebuddy|generic|codex) printf '%s\n' "$2/skills" ;;
+        gemini|cursor) printf '\n' ;;
+    esac
+}
+
+project_agent_skills_path() {
+    case "$1" in
+        claude) printf '%s\n' "$2/.claude/skills" ;;
+        opencode) printf '%s\n' "$2/.opencode/skills" ;;
+        codebuddy) printf '%s\n' "$2/.codebuddy/skills" ;;
+        generic|codex) printf '%s\n' "$2/.agents/skills" ;;
+        gemini|cursor) printf '\n' ;;
+    esac
+}
+
+portable_agent_skills_path() {
+    if [ -n "$project_dir" ]; then
+        project_agent_skills_path "$1" "$2"
+    else
+        global_agent_skills_path "$1" "$2"
+    fi
+}
+
+install_portable_agent() {
+    target_agent=$1
+    base=$(portable_agent_base "$target_agent")
+    instructions=$(portable_agent_instruction_path "$target_agent" "$base")
+    skills=$(portable_agent_skills_path "$target_agent" "$base")
 
     if [ -e "$instructions" ] && [ "$force" -ne 1 ]; then
         if grep -q "Reforge Agent Workflow" "$instructions" 2>/dev/null; then
