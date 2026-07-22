@@ -86,7 +86,8 @@ Fields:
 - `finding_count`: number of findings emitted after filters and suppressions.
 - `issue_count`: findings after clustered secondary facets are counted once.
 - `similar_function_group_count`: number of similar-function findings.
-- `duration_ms`: scan duration in milliseconds.
+- `duration_ms`: scan duration in milliseconds, or `0` when
+  `--reproducible` removes volatile runtime measurements.
 - `churn`: churn collection details.
 
 `summary.churn` fields:

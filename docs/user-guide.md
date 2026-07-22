@@ -97,16 +97,16 @@ Scan the current repository:
 cargo run -- scan .
 ```
 
-Produce stable machine-readable output:
+Produce machine-readable output:
 
 ```powershell
 cargo run -- scan . --output json --progress never
 ```
 
-Disable git churn when you want deterministic output without repository history:
+Disable git churn and volatile timing when you want reproducible output:
 
 ```powershell
-cargo run -- scan . --churn off --output json --progress never
+cargo run -- scan . --churn off --reproducible --output json --progress never
 ```
 
 Write a report to disk:
@@ -373,6 +373,7 @@ git churn.
 | `--churn-max-commit-lines` | `2000` | Skip commits above this added+deleted line count. |
 | `--output` | inferred | Use `human`, `html`, `json`, `yaml`, or `sarif`. |
 | `--output-file` | stdout | Write the report to a file. |
+| `--reproducible` | `false` | Set volatile runtime measurements such as `duration_ms` to zero. Use with `--churn off` for byte-stable reports. |
 | `--progress` | `auto` | Use `auto`, `always`, or `never` for progress output. |
 | `--color` | `auto` | Use `auto`, `always`, or `never` for human-output color. |
 | `--help` | none | Print generated help. |

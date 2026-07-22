@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Reforge is a Rust 2024 CLI crate for detecting refactoring signals in source trees. Core code lives in `src/`: `main.rs` wires CLI parsing to scanning and reporting, `cli.rs` defines Clap arguments, `scan/` handles project walking and scan orchestration, `detectors/` owns structural, similarity, dependency, drift, and documentation analysis, `lang/` contains Tree-sitter adapters, `model/` defines report data, `scoring/` ranks findings and hotspots, and `output/` renders human, HTML, JSON, YAML, and SARIF output. Unit tests are colocated under `#[cfg(test)]` or in module-specific test files included from the owning module; there is currently no separate `tests/` directory. Frontend source lives in `web/report-app`. Its generated `assets/report-app.js` and `assets/report-app.css` bundles are intentionally committed because the Rust HTML renderer embeds them. Other build output belongs in `target/` and should not be committed.
+Reforge is a Rust 2024 CLI crate for detecting refactoring signals in source trees. Core code lives in `src/`: `main.rs` wires CLI parsing to scanning and reporting, `cli.rs` defines Clap arguments, `scan/` handles project walking and scan orchestration, `detectors/` owns structural, similarity, dependency, drift, data-flow, and documentation analysis, `lang/` contains Tree-sitter adapters, `model/` defines report data, `evidence_analysis.rs` adds metric context and clusters compatible findings into issues, and `output/` renders human, HTML, JSON, YAML, and SARIF output. Unit tests are colocated under `#[cfg(test)]` or in module-specific test files included from the owning module; there is currently no separate `tests/` directory. Frontend source lives in `web/report-app`. Its generated `assets/report-app.js` and `assets/report-app.css` bundles are intentionally committed because the Rust HTML renderer embeds them. Other build output belongs in `target/` and should not be committed.
 
 ## Build, Test, and Development Commands
 
@@ -15,7 +15,7 @@ Reforge is a Rust 2024 CLI crate for detecting refactoring signals in source tre
 
 ## Coding Style & Naming Conventions
 
-Use idiomatic Rust formatted by `cargo fmt`; keep four-space indentation and avoid manual alignment churn. Prefer small modules with clear ownership boundaries matching the existing `cli`, `scan`, `detectors`, `lang`, `model`, `scoring`, and `output` split. Use `snake_case` for functions, variables, modules, and test names; use `PascalCase` for structs, enums, and traits. Keep CLI flags long, descriptive, and kebab-case, for example `--max-file-lines` and `--function-similarity`.
+Use idiomatic Rust formatted by `cargo fmt`; keep four-space indentation and avoid manual alignment churn. Prefer small modules with clear ownership boundaries matching the existing `cli`, `scan`, `detectors`, `lang`, `model`, `evidence_analysis`, and `output` split. Use `snake_case` for functions, variables, modules, and test names; use `PascalCase` for structs, enums, and traits. Keep CLI flags long, descriptive, and kebab-case, for example `--max-file-lines` and `--function-similarity`.
 
 ## Testing Guidelines
 

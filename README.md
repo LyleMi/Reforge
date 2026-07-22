@@ -50,7 +50,7 @@ safe.
 cargo run -- scan .
 ```
 
-Stable machine-readable output:
+Machine-readable output:
 
 ```powershell
 cargo run -- scan . --output json --progress never
@@ -59,7 +59,7 @@ cargo run -- scan . --output json --progress never
 Reproducible source-only output without git history:
 
 ```powershell
-cargo run -- scan . --churn off --output json --progress never
+cargo run -- scan . --churn off --reproducible --output json --progress never
 ```
 
 Write JSON or an offline HTML report:
@@ -89,7 +89,7 @@ reforge scan D:\path\to\project
 
 The standard `reforge` plugin bundles `reforge-scan`, `reforge-plan`,
 `reforge-apply`, and `reforge-verify`, plus an optional read-only investigator.
-The workflow keeps durable schema-v1 artifacts and requires an explicit
+The workflow keeps durable schema-v2 artifacts and requires an explicit
 `reforge workflow approve` before source changes.
 
 Install the plugin and CLI for Codex on Windows:

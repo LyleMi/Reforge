@@ -1,6 +1,6 @@
 ---
 name: reforge-scan
-description: Run the Reforge Rust CLI against source repositories to collect maintainability and refactoring evidence, including structural thresholds, similarity, dependency and concept drift, documentation drift, Unity project signals, coverage receipts, and agent context/test-reachability evidence. Use when Codex is asked to audit a repository, explain Reforge findings, produce human/HTML/JSON/YAML/SARIF output, tune reforge.toml, or configure schema 21 baseline gates.
+description: Run the Reforge Rust CLI against source repositories to collect maintainability and refactoring evidence, including structural thresholds, similarity, dependency and concept drift, documentation drift, Unity project signals, coverage receipts, and agent context/test-reachability evidence. Use when Codex is asked to audit a repository, explain Reforge findings, produce human/HTML/JSON/YAML/SARIF output, tune reforge.toml, or configure schema 23 baseline gates.
 ---
 
 # Reforge Scan
@@ -75,7 +75,7 @@ reforge scan . --output sarif --output-file reforge-report.sarif --progress neve
 Disable git history for a reproducible source-only observation pass:
 
 ```bash
-reforge scan . --churn off --output json --progress never
+reforge scan . --churn off --reproducible --output json --progress never
 ```
 
 For Unity projects, keep automatic root detection for normal audits:
@@ -95,8 +95,8 @@ reforge scan . --exclude-tests --progress never
 
 ## Baseline Gates
 
-Schema 21 gates compare stable finding IDs. A blocking gate requires a current
-schema 21 JSON or YAML baseline:
+Schema 23 gates compare stable finding IDs. A blocking gate requires a current
+schema 23 JSON or YAML baseline:
 
 ```bash
 reforge scan . --baseline baseline.json --baseline-mode new --fail-on-findings --output json --progress never
@@ -110,15 +110,15 @@ selected. For human review, `--show new` limits the displayed finding list:
 reforge scan . --baseline baseline.json --show new --output human --progress never
 ```
 
-Schema 21 does not serialize priority, severity, a readiness score, or hotspot
+Schema 23 does not serialize priority, severity, a readiness score, or hotspot
 ranking. Do not invent those values and do not use removed options such as
 `--fail-on`, `--severity`, `--min-priority`, or `--hotspot-model`.
 
 ## Option Guidance
 
 - Keep `--churn auto` for normal repository audits. Use `--churn on` only when
-  missing git history should fail the scan, and `--churn off` for reproducible
-  source-only comparisons.
+  missing git history should fail the scan, and `--churn off --reproducible`
+  for byte-stable source-only comparisons.
 - Use `--config <path>` for an explicit configuration, or rely on discovery of
   `reforge.toml` from the scan root upward.
 - Use `reforge init`, `reforge config validate`, and `reforge config show` to
@@ -136,7 +136,7 @@ ranking. Do not invent those values and do not use removed options such as
 - Tune thresholds only after reviewing a representative sample. Do not change
   thresholds merely to force `findings=0`.
 
-## Reading Schema 21
+## Reading Schema 23
 
 Read a JSON or YAML report in this order:
 
@@ -157,7 +157,7 @@ Read a JSON or YAML report in this order:
 
 Choose what to address using user impact, affected scope, threshold excess,
 cross-file evidence, test reachability, detector precision risk, and repository
-constraints. Schema 21 intentionally does not collapse those judgments into a
+constraints. Schema 23 intentionally does not collapse those judgments into a
 single numeric rank.
 
 `findings=0` means no unsuppressed findings remain after detector filters and
@@ -181,7 +181,7 @@ cargo run -- scan . --progress never
 For a stable self-scan artifact:
 
 ```bash
-cargo run -- scan . --output json --output-file reforge-self-report.json --progress never --churn off
+cargo run -- scan . --output json --output-file reforge-self-report.json --progress never --churn off --reproducible
 ```
 
 Report the command, artifact path, schema version, churn state, coverage or

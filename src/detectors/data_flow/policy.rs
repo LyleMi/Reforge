@@ -104,12 +104,10 @@ fn policy_sinks(policy: &EffectiveBoundary<'_>, graph: &FlowGraph) -> Vec<usize>
         .filter(|call| policy.config.sink_symbols.contains(&call.target))
         .filter(|call| !policy.exempt.matches(&call.path))
         .flat_map(|call| {
-            graph
-                .functions_by_symbol
-                .get(&call.target)
-                .into_iter()
-                .flatten()
-                .flat_map(|index| graph.functions[*index].parameter_nodes.iter().copied())
+            graph.functions[call.function_index]
+                .parameter_nodes
+                .iter()
+                .copied()
         })
         .collect::<Vec<_>>();
     sinks.sort_unstable();
@@ -336,5 +334,24 @@ fn module_hops(path: &ExactPath, graph: &FlowGraph) -> usize {
 }
 
 fn normalize(path: &str) -> String {
-    path.replace('\\', "/").trim_start_matches("./").to_string()
+    crate::pathing::normalize_path_text(path)
+        .trim_start_matches("./")
+        .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_sets_match_display_paths_without_windows_verbatim_prefixes() -> Result<()> {
+        let paths = PathSet::new(
+            Path::new(r"\\?\C:\project"),
+            &["src/application".to_string()],
+        )?;
+
+        assert!(paths.matches("C:/project/src/application/mod.rs"));
+        assert!(!paths.matches("C:/project/src/transport.rs"));
+        Ok(())
+    }
 }

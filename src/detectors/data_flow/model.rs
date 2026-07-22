@@ -27,6 +27,7 @@ pub(super) struct FlowEdge {
 #[derive(Debug, Clone)]
 pub(super) struct FunctionRecord {
     pub symbol: String,
+    pub crate_key: String,
     pub module: String,
     pub start_byte: usize,
     pub end_byte: usize,
@@ -39,6 +40,7 @@ pub(super) struct FunctionRecord {
 #[derive(Debug, Clone)]
 pub(super) struct CallRecord {
     pub target: String,
+    pub function_index: usize,
     pub path: String,
     pub line: usize,
 }

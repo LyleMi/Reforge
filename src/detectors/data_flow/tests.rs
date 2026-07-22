@@ -8,6 +8,7 @@ use crate::scan::config::{DataFlowBoundaryConfig, DataFlowConfig, DataFlowMode};
 use super::scan_data_flow;
 
 const PROJECT_ROOT: &str = "/project";
+const ACCEPTING_SINK: &str = "pub fn send(value: String) { let _accepted = value; }";
 
 fn parsed(path: &str, source: &str) -> crate::detectors::similarity::ParsedSourceFile {
     parse_source_file(SourceFile {
@@ -89,6 +90,59 @@ fn resolves_crate_root_callers_and_sinks_in_lib_and_main() {
         assert_eq!(witness.source.function, "crate::route");
         assert_eq!(witness.sink.function, "crate::transport::send");
     }
+}
+
+#[test]
+fn resolves_workspace_crates_without_cross_crate_symbol_collisions() -> anyhow::Result<()> {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("reforge-flow-workspace-{suffix}"));
+    let api = root.join("crates/api");
+    let other = root.join("crates/other");
+    std::fs::create_dir_all(api.join("src/application"))?;
+    std::fs::create_dir_all(other.join("src"))?;
+    std::fs::write(
+        api.join("Cargo.toml"),
+        "[package]\nname='api'\nversion='0.1.0'\n",
+    )?;
+    std::fs::write(
+        other.join("Cargo.toml"),
+        "[package]\nname='other'\nversion='0.1.0'\n",
+    )?;
+
+    let files = vec![
+        parsed(
+            &api.join("src/application/mod.rs").to_string_lossy(),
+            "pub fn route(input: String) { crate::transport::send(input); }",
+        ),
+        parsed(
+            &api.join("src/transport.rs").to_string_lossy(),
+            ACCEPTING_SINK,
+        ),
+        parsed(
+            &other.join("src/transport.rs").to_string_lossy(),
+            ACCEPTING_SINK,
+        ),
+    ];
+    let mut config = policy(4);
+    config.boundaries[0].protected_paths = vec!["crates/api/src/application".into()];
+
+    let scan = scan_data_flow(&root, &files, &[], &config)?;
+
+    assert_eq!(scan.findings.len(), 1);
+    assert_eq!(scan.summary.unresolved_edges, 0);
+    assert_eq!(
+        scan.findings[0]
+            .flow_witness
+            .as_ref()
+            .unwrap()
+            .sink
+            .function,
+        "crate::transport::send"
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
 }
 
 #[test]
@@ -256,7 +310,21 @@ fn resolves_imports_reexports_self_and_super_paths() {
         ),
     ];
     let scan = scan_data_flow(Path::new(PROJECT_ROOT), &files, &[], &policy(4)).unwrap();
-    assert_eq!(scan.findings.len(), 2);
+    let mut source_functions = scan
+        .findings
+        .iter()
+        .filter_map(|finding| finding.flow_witness.as_ref())
+        .map(|witness| witness.source.function.as_str())
+        .collect::<Vec<_>>();
+    source_functions.sort_unstable();
+    assert_eq!(
+        source_functions,
+        [
+            "crate::application::helper",
+            "crate::application::imported",
+            "crate::application::local",
+        ]
+    );
     assert!(scan.findings.iter().all(|finding| {
         finding
             .flow_witness

@@ -345,17 +345,14 @@ fn relative_to_root<'a>(path: &'a str, root: &str) -> &'a str {
 }
 
 fn normalize_path(path: &str) -> String {
-    let normalized = path.replace('\\', "/");
-    normalized
-        .strip_prefix("//?/")
-        .unwrap_or(normalized.as_str())
+    crate::pathing::normalize_path_text(path)
         .trim_start_matches("./")
         .trim_end_matches('/')
         .to_string()
 }
 
 fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    crate::pathing::display_path(path)
 }
 
 fn known_finding_kinds() -> Vec<String> {

@@ -53,6 +53,9 @@ fn effective_scan_command(
     if let Some(path) = config_path {
         command.extend(["--config".to_string(), portable_path(path)]);
     }
+    if original.reproducible {
+        command.push("--reproducible".to_string());
+    }
     command.extend(["--progress".to_string(), "never".to_string()]);
     Ok(command)
 }

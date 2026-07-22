@@ -771,4 +771,25 @@ sink-symbols = ["crate::transport::send"]
         std::fs::remove_dir_all(root)?;
         Ok(())
     }
+
+    #[test]
+    fn reproducible_scans_are_byte_identical_without_churn() -> anyhow::Result<()> {
+        let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let root = std::env::temp_dir().join(format!("reforge-reproducible-{suffix}"));
+        std::fs::create_dir_all(root.join("src"))?;
+        std::fs::write(root.join("src/lib.rs"), "pub fn value() -> usize { 1 }\n")?;
+
+        let mut args = ScanArgs::defaults_for_path(root.clone());
+        args.churn = Some(ChurnMode::Off);
+        args.reproducible = true;
+        let mut first_progress = NoopProgress;
+        let first = scan_report(&args, &mut first_progress)?;
+        let mut second_progress = NoopProgress;
+        let second = scan_report(&args, &mut second_progress)?;
+
+        assert_eq!(first.summary.duration_ms, 0);
+        assert_eq!(serde_json::to_vec(&first)?, serde_json::to_vec(&second)?);
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
 }

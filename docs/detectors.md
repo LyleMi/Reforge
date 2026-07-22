@@ -182,7 +182,8 @@ witness edge is unresolved, unsupported, or beyond `max-hops`. Findings carry
 `flow.unresolved_edges`, `flow.policy_conforming_paths`, and
 `flow.policy_bypass_paths`, plus a typed `flow_witness`. A conforming comparison
 path is retained when observed but is not required before an exact bypass can
-be reported.
+be reported. Workspace scans scope `crate::...` resolution to the nearest
+owning Cargo package, while policy sink symbols remain source-level Rust paths.
 
 ## Documentation Signals
 

@@ -112,6 +112,7 @@ impl ScanArgs {
             churn_max_commit_lines: None,
             output: None,
             output_file: None,
+            reproducible: false,
             progress: ProgressMode::Auto,
             color: ColorMode::Auto,
         }

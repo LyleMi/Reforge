@@ -135,7 +135,11 @@ pub(crate) fn scan_report(args: &ScanArgs, progress: &mut dyn ProgressSink) -> R
         issues: &issues,
         controls: &post_score_controls,
         churn: churn_summary,
-        duration_ms: started_at.elapsed().as_millis(),
+        duration_ms: if args.reproducible {
+            0
+        } else {
+            started_at.elapsed().as_millis()
+        },
     });
 
     finish_progress(progress, &summary);

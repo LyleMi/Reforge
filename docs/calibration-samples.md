@@ -21,7 +21,7 @@ coverage summary, suppressions, and parse/unresolved-dependency context.
 Use source-only JSON for a reproducible detector pass:
 
 ```bash
-reforge scan <sample> --output json --output-file <artifact>.json --progress never --churn off
+reforge scan <sample> --output json --output-file <artifact>.json --progress never --churn off --reproducible
 ```
 
 Run a separate `--churn auto` pass when repository-history behavior is part of

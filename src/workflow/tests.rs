@@ -14,6 +14,24 @@ mod tests {
     }
 
     #[test]
+    fn stored_scan_command_preserves_reproducible_mode() -> Result<()> {
+        let mut args = ScanArgs::defaults_for_path(PathBuf::from("."));
+        args.reproducible = true;
+
+        let command = effective_scan_command(
+            Path::new("."),
+            &serde_json::json!({}),
+            &args,
+            None,
+        )?;
+        let parsed = parse_stored_scan_command(&command)?;
+
+        assert!(command.iter().any(|argument| argument == "--reproducible"));
+        assert!(parsed.reproducible);
+        Ok(())
+    }
+
+    #[test]
     fn rejects_root_escaping_paths_and_symlinks() -> Result<()> {
         let root = temp_root("paths");
         fs::create_dir_all(root.join("src"))?;

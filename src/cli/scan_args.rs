@@ -81,6 +81,10 @@ pub struct ScanArgs {
     #[arg(long)]
     pub output_file: Option<PathBuf>,
 
+    /// Zero volatile runtime measurements for reproducible serialized reports.
+    #[arg(long)]
+    pub reproducible: bool,
+
     /// Progress reporting mode. Auto writes to stderr only when stderr is a TTY.
     #[arg(long, value_enum, default_value_t = ProgressMode::Auto)]
     pub progress: ProgressMode,

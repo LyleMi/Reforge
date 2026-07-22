@@ -571,11 +571,7 @@ fn collect_markdown_files(root: &Path, output: &mut Vec<PathBuf>) -> Result<()> 
 }
 
 fn display_path(path: &Path) -> String {
-    let display = path.to_string_lossy().replace('\\', "/");
-    display
-        .strip_prefix("//?/")
-        .unwrap_or(display.as_str())
-        .to_string()
+    crate::pathing::display_path(path)
 }
 
 #[cfg(test)]

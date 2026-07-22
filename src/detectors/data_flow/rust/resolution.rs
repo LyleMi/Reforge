@@ -1,10 +1,17 @@
 use std::collections::BTreeSet;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use super::FlowGraph;
 
-pub(super) fn file_module(root: &Path, path: &Path) -> String {
-    let relative = path.strip_prefix(root).unwrap_or(path);
+#[derive(Debug, Clone)]
+pub(super) struct FileModule {
+    pub crate_key: String,
+    pub symbol: String,
+}
+
+pub(super) fn file_module(root: &Path, path: &Path) -> FileModule {
+    let crate_root = nearest_cargo_root(root, path).unwrap_or_else(|| root.to_path_buf());
+    let relative = path.strip_prefix(&crate_root).unwrap_or(path);
     let mut parts = relative
         .components()
         .filter_map(|component| match component {
@@ -16,21 +23,29 @@ pub(super) fn file_module(root: &Path, path: &Path) -> String {
         parts.remove(0);
     }
     let Some(file) = parts.pop() else {
-        return "crate".into();
+        return FileModule {
+            crate_key: crate_key(root, &crate_root),
+            symbol: "crate".into(),
+        };
     };
     let stem = file.strip_suffix(".rs").unwrap_or(&file);
     if !matches!(stem, "lib" | "main" | "mod") {
         parts.push(stem.to_string());
     }
-    if parts.is_empty() {
+    let symbol = if parts.is_empty() {
         "crate".into()
     } else {
         format!("crate::{}", parts.join("::"))
+    };
+    FileModule {
+        crate_key: crate_key(root, &crate_root),
+        symbol,
     }
 }
 
 pub(super) fn resolve_function(
     raw: &str,
+    crate_key: &str,
     module: &str,
     graph: &FlowGraph,
 ) -> Option<(String, usize)> {
@@ -53,23 +68,34 @@ pub(super) fn resolve_function(
     }
     let resolved = candidates
         .into_iter()
-        .filter_map(|candidate| resolve_candidate(&candidate, graph))
+        .filter_map(|candidate| resolve_candidate(&candidate, crate_key, graph))
         .collect::<Vec<_>>();
     (resolved.len() == 1).then(|| resolved[0].clone())
 }
 
-fn resolve_candidate(candidate: &str, graph: &FlowGraph) -> Option<(String, usize)> {
+fn resolve_candidate(
+    candidate: &str,
+    crate_key: &str,
+    graph: &FlowGraph,
+) -> Option<(String, usize)> {
     let mut current = candidate.to_string();
     let mut seen = BTreeSet::new();
     loop {
         if !seen.insert(current.clone()) {
             return None;
         }
-        if let Some(indices) = graph.functions_by_symbol.get(&current) {
+        if let Some(indices) = graph
+            .functions_by_symbol
+            .get(&resolution_key(crate_key, &current))
+        {
             return (indices.len() == 1).then_some((current, indices[0]));
         }
         let (module, name) = current.rsplit_once("::")?;
-        current = graph.imports.get(module)?.get(name)?.clone();
+        current = graph
+            .imports
+            .get(&resolution_key(crate_key, module))?
+            .get(name)?
+            .clone();
     }
 }
 
@@ -116,4 +142,31 @@ pub(super) fn stable_path(root: &Path, path: &Path) -> String {
         .replace('\\', "/")
         .trim_start_matches("./")
         .to_string()
+}
+
+pub(super) fn resolution_key(crate_key: &str, symbol: &str) -> String {
+    format!("{crate_key}\0{symbol}")
+}
+
+fn nearest_cargo_root(root: &Path, path: &Path) -> Option<PathBuf> {
+    let boundary = if root.is_file() { root.parent()? } else { root };
+    let mut current = path.parent()?;
+    loop {
+        if current.join("Cargo.toml").is_file() {
+            return Some(current.to_path_buf());
+        }
+        if current == boundary || !current.starts_with(boundary) {
+            return None;
+        }
+        current = current.parent()?;
+    }
+}
+
+fn crate_key(root: &Path, crate_root: &Path) -> String {
+    let relative = stable_path(root, crate_root);
+    if relative.is_empty() {
+        ".".into()
+    } else {
+        relative
+    }
 }

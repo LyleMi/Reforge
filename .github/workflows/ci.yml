@@ -77,6 +77,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Test agent workflow distribution
+        run: sh scripts/test-install-agent-workflow.sh
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 

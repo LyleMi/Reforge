@@ -18,10 +18,10 @@ For a quick end-to-end smoke test:
 cargo run -- scan . --progress never
 ```
 
-For stable machine-readable output:
+For reproducible machine-readable output:
 
 ```powershell
-cargo run -- scan . --output json --progress never
+cargo run -- scan . --churn off --reproducible --output json --progress never
 ```
 
 ## Development Workflow

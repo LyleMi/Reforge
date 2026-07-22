@@ -66,8 +66,8 @@ Boolean flags such as `--include-hidden`, `--include-generated`,
 `reforge.toml`.
 
 CI workflow flags such as `--baseline`, `--baseline-mode`, `--show`,
-`--fail-on-findings`, `--output`, `--output-file`, `--progress`, and `--color`
-are also CLI-only.
+`--fail-on-findings`, `--output`, `--output-file`, `--reproducible`, `--progress`,
+and `--color` are also CLI-only.
 
 Finding filters `--only` and `--exclude-detector` are CLI-only. Long-lived
 suppressions can be recorded in `reforge.toml`.
@@ -280,7 +280,8 @@ fast-moving products, lengthen it for stable libraries, and adjust the commit
 limit when legitimate repository changes are routinely larger or smaller.
 
 For a new policy, begin with `balanced`, keep `--churn auto` for exploratory
-audits, and use `--churn off` when comparing reproducible source-only reports.
+audits, and use `--churn off --reproducible` when comparing byte-stable
+source-only reports.
 Review findings with maintainers across several representative repositories,
 then validate proposed changes on a holdout repository. For CI, capture a
 schema 23 baseline and use `--baseline-mode new --fail-on-findings` so

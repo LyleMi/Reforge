@@ -6,6 +6,7 @@ mod fingerprint;
 mod lang;
 mod model;
 mod output;
+mod pathing;
 mod scan;
 
 mod concept_drift {

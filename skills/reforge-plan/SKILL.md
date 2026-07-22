@@ -1,6 +1,6 @@
 ---
 name: reforge-plan
-description: Investigate user-selected Reforge schema 21 issues and produce validated, resumable workflow investigation and plan artifacts without editing source. Use when Codex is asked to analyze Reforge issue IDs, estimate refactor scope and tests, build conflict-aware batches, or prepare work for explicit approval with `reforge workflow`.
+description: Investigate user-selected Reforge schema 23 issues and produce validated, resumable workflow investigation and plan artifacts without editing source. Use when Codex is asked to analyze Reforge issue IDs, estimate refactor scope and tests, build conflict-aware batches, or prepare work for explicit approval with `reforge workflow`.
 ---
 
 # Reforge Plan

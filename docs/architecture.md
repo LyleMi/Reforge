@@ -16,6 +16,8 @@ units, projects coverage and agent context, and renders schema 23 reports.
 - `src/lang/`: Tree-sitter language adapters and shared syntax classification.
 - `src/model/`: schema 23 report data, finding/issue identity, coverage,
   evidence subjects, raw metrics, dependency data, and Unity report data.
+- `src/pathing.rs`: shared portable display normalization for Windows verbatim,
+  UNC, and platform-native paths used by findings, policies, and suppressions.
 - `src/detectors/`: structural, similarity, unused-function, dependency,
   concept-drift, documentation, and detector-owned exact Rust data-flow
   analysis plus their manifest contracts.
@@ -96,7 +98,9 @@ policy matching, and capability receipts. The analysis retains only assignment,
 argument-to-parameter, and return-to-result edges it can prove. Call/return
 search state tracks call sites, so recursive components are bounded without
 enumerating cyclic paths. At most one shortest deterministic path is retained
-per source/sink/policy tuple.
+per source/sink/policy tuple. In Cargo workspaces, the nearest owning
+`Cargo.toml` scopes internal symbol resolution so equal `crate::...` symbols in
+different member crates cannot collide; witnesses retain source-level symbols.
 
 The layer is deliberately not a whole-program taint engine. It does not model
 heap aliases, fields, methods, dynamic dispatch, external crates, runtime

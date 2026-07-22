@@ -18,6 +18,13 @@ run_workflow_installer -h >/dev/null
 run_workflow_installer --skills-only --skills-dir "$test_root/skills" --agent-dir "$test_root/agents" --skip-cli
 for skill in reforge-scan reforge-plan reforge-apply reforge-verify; do test -f "$test_root/skills/$skill/SKILL.md"; done
 test -f "$test_root/agents/reforge-investigator.toml"
+grep -q 'schema 23' "$test_root/skills/reforge-scan/SKILL.md"
+grep -q 'schema 23' "$test_root/skills/reforge-plan/SKILL.md"
+grep -q 'schema-v2 InvestigationArtifact' "$test_root/agents/reforge-investigator.toml"
+if grep -Eqi 'schema 21|schema-v1' "$test_root/skills/reforge-scan/SKILL.md" "$test_root/skills/reforge-plan/SKILL.md" "$test_root/agents/reforge-investigator.toml"; then
+    echo "installed workflow contains a stale schema contract" >&2
+    exit 1
+fi
 
 if run_workflow_installer --skills-only --skills-dir "$test_root/skills" --agent-dir "$test_root/agents" --skip-cli 2>/dev/null; then
     echo "update without --force unexpectedly succeeded" >&2
@@ -57,6 +64,7 @@ test -f "$test_root/all-project/.claude/skills/reforge-scan/SKILL.md"
 test -f "$test_root/all-project/.opencode/skills/reforge-scan/SKILL.md"
 test -f "$test_root/all-project/.codebuddy/skills/reforge-scan/SKILL.md"
 test -f "$test_root/all-project/.agents/skills/reforge-scan/SKILL.md"
+grep -q 'schema 23' "$test_root/all-project/.agents/skills/reforge-scan/SKILL.md"
 
 "$script_dir/install-agent-skill.sh" --skills-dir "$test_root/legacy" --skip-cli
 test -f "$test_root/legacy/reforge-scan/SKILL.md"
