@@ -1,0 +1,19 @@
+[package]
+name = "reforge-workflow"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Approval-gated workflow for schema 26 Reforge reports"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+reforge-schema = { path = "../../crates/reforge-schema" }
+reforge-output = { path = "../../crates/reforge-output" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

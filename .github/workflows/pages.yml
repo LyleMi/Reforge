@@ -61,11 +61,10 @@ jobs:
       - name: Generate current sample report
         run: |
           mkdir -p docs/sample
-          cargo run --locked --release -- scan . \
+          cargo run --locked --release -p reforge -- analyze . \
             --output html \
             --output-file docs/sample/index.html \
-            --progress never \
-            --color never
+            --reproducible
 
       - name: Build documentation
         run: mdbook build --dest-dir _site

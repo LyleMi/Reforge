@@ -8,48 +8,24 @@
   <body>
     <script id="reforge-report-data" type="application/json">
       {
-        "schema_version": 24,
-        "provenance": { "engine": { "version": "test", "build_revision": null }, "source": { "git_revision": null, "dirty": null }, "configuration": { "effective": {}, "hash": "sha256-test" }, "detector_policy_hash": "sha256-test" },
-        "baseline_comparison": null,
-        "summary": {
-          "scanned_files": 0,
-          "finding_count": 0,
-          "issue_count": 0,
-          "similar_function_group_count": 0,
-          "duration_ms": 0,
-          "churn": {
-            "mode": "auto",
-            "enabled": false,
-            "status": "unavailable",
-            "reason": "development fixture has no git history",
-            "window_days": 180,
-            "max_commit_lines": 2000
+        "schema_version": 26,
+        "producer": { "name": "reforge.analyze", "version": "test" },
+        "target": {
+          "root": ".",
+          "workspace_identity": "development-fixture"
+        },
+        "summary": { "issue_count": 0, "evidence_count": 0, "scanned_files": 0 },
+        "suppression": { "evidence_count": 0, "by_rule": {} },
+        "coverage": {
+          "codebase": {
+            "status": "observed",
+            "scanned_files": 0,
+            "languages": {},
+            "rules": {},
+            "limitations": []
           }
         },
-        "stats": {
-          "source_files_discovered": 0,
-          "source_files_analyzed": 0,
-          "directories_scanned": 0,
-          "function_candidates": 0
-        },
-        "metrics_summary": { "directories": {}, "files": {}, "functions": {}, "types": {}, "churn": {} },
-        "raw_metrics": { "directories": [], "files": [], "functions": [], "types": [] },
-        "raw_metric_manifest": [],
-        "dependency_graph": { "nodes": [], "edges": [] },
-        "agent_evidence": { "files": [], "issues": [] },
-        "unity_project": {},
-        "suppression_summary": {
-          "suppressed_count": 0,
-          "suppressed_by_kind": {}
-        },
-        "flow_analysis": { "status": "disabled", "functions_analyzed": 0, "exact_edges": 0, "unresolved_edges": 0, "truncated_paths": 0, "capabilities": [] },
-        "coverage_manifest": [],
-        "coverage_summary": {},
-        "detector_execution": [],
-        "raw_metric_coverage": [],
-        "issues": [],
-        "detector_manifest": [],
-        "findings": []
+        "issues": []
       }
     </script>
     <div id="reforge-report-root"></div>

@@ -1,0 +1,21 @@
+[package]
+name = "reforge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Codebase and dataflow analyzer for source trees"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+reforge-engine = { path = "../../crates/reforge-engine" }
+reforge-output = { path = "../../crates/reforge-output" }
+reforge-schema = { path = "../../crates/reforge-schema" }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true

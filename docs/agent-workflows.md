@@ -1,93 +1,34 @@
-# Agent Workflows
+# Optional agent guard
 
-Reforge ships a deterministic, resumable workflow around schema 24 evidence. The scanner does not assign quality, priority, severity, readiness, or hotspot scores. Selection and refactoring judgment remain review decisions.
-
-## Commands and phases
-
-```text
-scanned -> selected -> investigated -> planned -> approved -> applied -> verified
-                                      |                     |          |
-                                      +-> needs_input       +-> failed
-```
+`reforge-workflow` is optional; normal analysis does not require it. It consumes reports and never invokes another Reforge tool. All input reports must
+be schema 26 and share workspace identity and source revision. Conflicting content for one Issue ID
+is rejected.
 
 ```bash
-reforge workflow start . --progress never
-reforge workflow select .reforge/runs/run-... --issue ri4-... --goal "split the parser boundary"
-reforge workflow status .reforge/runs/run-...
-reforge workflow validate .reforge/runs/run-...
-reforge workflow advance .reforge/runs/run-...
-reforge workflow approve .reforge/runs/run-...
-reforge workflow mark-applied .reforge/runs/run-...
-reforge workflow check .reforge/runs/run-... --kind test -- cargo test
-reforge workflow rescan .reforge/runs/run-...
-reforge workflow confirm-lineage .reforge/runs/run-... --candidate rl1-...
-reforge workflow confirm-lineage .reforge/runs/run-... --remediated ri4-...
-reforge workflow finish .reforge/runs/run-...
+reforge analyze . --output json --output-file report.json --reproducible
+reforge-workflow start --report report.json --goal "split the boundary"
+reforge-workflow plan --artifact plan.json
+reforge-workflow approve
+reforge-workflow mark-applied
+reforge-workflow check --kind lint -- cargo clippy --workspace
+reforge-workflow check --kind test -- cargo test --workspace
+reforge-workflow verify --report report-after.json
 ```
 
-`start` runs a complete schema 24 scan and stores the effective scan command and report, config, and source fingerprints. The default run directory is `.reforge/runs/run-<epoch>-<report-hash>/`; `--run-dir` selects an exact external or project-local directory.
+Commands accept `--run <directory>` and otherwise use `.reforge-workflow`. `status` and `validate`
+are read-only.
 
-`select` accepts only issue IDs present in `scan.json`. `advance` validates one immutable investigation per selected issue, then validates `plan.json`. `status` and `validate` never mutate artifacts.
+Artifact v5 has five phases: `Imported -> Planned -> Approved -> Applied -> Verified`. The imported
+plan contains selection, notes, changes, a target-relative write set, and required checks. Artifact
+v5 files using the earlier migration shape must be regenerated. Approval freezes the plan hash,
+write set, and workspace snapshot.
+`mark-applied` rejects any changed path outside that set. Checks execute a program directly with a
+timeout and no shell.
 
-`approve` is the only approval entry point. It freezes the canonical plan hash, target-relative write set, and a hash snapshot of the workspace. Invoking the apply skill is not approval. `mark-applied` compares the approved snapshot with the current workspace and rejects every changed file outside the write set.
+Verification passes only when selected Issues disappear, every required check succeeds, at least
+one test check succeeds, relevant coverage does not degrade, no new Issue appears, and workspace
+scope remains consistent. Missing reports/producers or unobservable coverage produces
+`needs_input`; remaining/new Issues, failed checks, or coverage downgrade produces `failed`.
 
-`check` executes its program directly without a shell. It records arguments,
-exit status, duration, timeout state, and a short redacted output summary. It
-does not persist full command output. `rescan` reuses the stored effective scan
-command, classifies selected evidence, and stores deterministic issue lineage
-candidates. `confirm-lineage` writes immutable `lineage.json`: a candidate
-creates a `supersedes` record, while `--remediated` records an observably
-disappeared selected issue without a successor. Automatic candidates never
-change Stable IDs or gate results.
-
-`finish` requires unchanged approval scope, every required check to pass, a required test check, and a completed observable rescan. A failed check produces `failed`. Missing tests or degraded selected evidence produces `needs_input`.
-
-## Artifacts
-
-All workflow JSON uses artifact schema v3, rejects unknown fields, and is written through a temporary sibling followed by rename.
-Artifact v2 run directories cannot be continued; start a new workflow run so
-the stored schema 24 report and `rf4-*` / `ri4-*` identities stay coherent.
-
-```text
-run.json
-scan.json
-selection.json
-investigations/ri4-<id>.json
-plan.json
-approval.json
-application.json
-rescan.json
-lineage.json (optional)
-verification.json
-```
-
-Paths in investigation and plan artifacts are target-relative. Existing paths are canonicalized; missing write targets are checked through their nearest existing ancestor. Parent traversal, absolute paths, and symlink escape are rejected.
-
-Investigations separate repository facts, analysis, unknowns, and rejected alternatives. They declare inspected, read, and candidate write sets, coverage limitations, and checks. Plans declare the intended outcome, exact selected IDs, conflict-free batches, write set, behavior assumptions, checks, unresolved risks, and conflict graph.
-
-The conflict graph includes shared evidence or write files, dependency boundaries, reachable tests, and Unity `.meta` or asmdef surfaces. Read-only investigation may use up to four `reforge-investigator` agents. The coordinator is the sole writer of shared workflow artifacts. Apply remains sequential.
-
-## Skills and trust boundary
-
-- `reforge-scan` collects and explains evidence.
-- `reforge-plan` investigates selected issues and stops in `planned` without source edits.
-- `reforge-apply` is explicit-only and requires an already `approved` run.
-- `reforge-verify` records checks, rescan comparison, and the terminal result.
-
-The project agent `.codex/agents/reforge-investigator.toml` is read-only, has no configured network MCP servers, and returns one investigation JSON object to the coordinator. It cannot edit source, configuration, suppressions, or workflow state.
-
-No workflow command installs dependencies, changes thresholds, adds suppressions, commits, pushes, opens a pull request, or modifies project ignore files.
-
-## Installation
-
-```bash
-scripts/install-agent-workflow.sh
-scripts/install-agent-workflow.sh --skills-only --skip-cli
-scripts/install-agent-workflow.sh --agent claude --project-dir /path/to/project --skip-cli
-scripts/install-agent-workflow.sh --agent all --project-dir /path/to/project --skip-cli
-```
-
-PowerShell and batch equivalents are `install-agent-workflow.ps1` and `install-agent-workflow.bat`. All installers support custom destinations, `--skip-agent`, `--skip-cli`, and atomic `--force` updates. Use `--agent codex|claude|gemini|opencode|codebuddy|cursor|generic|all` to choose the target assistant. Without `--project-dir`, the installer uses that assistant's user root/config directory; with `--project-dir`, it writes project-local instruction files and skill directories where supported. Use `--root-dir` to override the inferred user root/config directory. The older `install-agent-skill.*` entry points install only `reforge-scan` through the compatibility path.
-
-Run any installer with `-h` or `--help` to list its available options without
-performing installation or validating destination paths.
+The run contains only `run.json`, `reports/`, `plan.json`, `approval.json`, `application.json`,
+`checks.json`, and `verification.json`. Older artifact versions are rejected.

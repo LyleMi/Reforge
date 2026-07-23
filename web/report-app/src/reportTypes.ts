@@ -1,58 +1,70 @@
-export type Percentiles = { p50: number; p75: number; p90: number; p95: number; max: number };
-export type ChurnFileMetric = { commits_touched: number; lines_added: number; lines_deleted: number; authors_count: number; recent_weighted_churn: number };
-export type FileRawMetric = { path: string; loc: number; imports: number; public_items: number; is_test: boolean; churn: ChurnFileMetric };
-export type LocatedRawMetric = Record<string, unknown> & { path: string; name?: string; line?: number };
-export type FindingMetric = { name: string; value: number; threshold?: number | null; excess_ratio?: number | null; unit: string; normalized?: number | null; percentile?: number | null };
-export type RelatedLocation = { path: string; line: number; name?: string | null };
-type FlowLocation = { id: string; kind: string; path: string; line: number; function: string; module: string; name: string };
-type FlowWitnessStep = { kind: string; resolution: string; from: string; to: string; path: string; line: number; name: string };
-type FlowWitness = { policy: string; source: FlowLocation; ordered_steps: FlowWitnessStep[]; sink: FlowLocation; module_hops: number; call_edges: number; path_steps: number; truncated: boolean; conforming_path?: RelatedLocation[] | null };
-export type Finding = { id: string; anchor: string; kind: string; path: string; line?: number | null; metrics: FindingMetric[]; construct: string; mechanism: string; issue_id?: string | null; message: string; recommendation: string; related_locations: RelatedLocation[]; flow_witness?: FlowWitness | null };
-export type Issue = { id: string; family: string; summary: string; construct: string; mechanism: string; action: string; path: string; line?: number | null; primary_finding_id: string; finding_ids: string[]; kinds: string[]; subject: Record<string, unknown> };
-export type DependencyGraphNode = { path: string; fan_in: number; fan_out: number };
-export type DependencyGraphEdge = { from: string; to: string };
-export type AgentTestReachability = { direct_test_files: string[]; reachable_test_files: string[]; reachable_test_file_count: number; nearest_test_distance?: number | null; nearest_test_paths: string[]; paths_truncated: boolean };
-export type FileAgentEvidence = AgentTestReachability & { path: string; coverage_status: string; context_closure_files: number; context_closure_loc: number; unresolved_local_dependencies: number };
-export type IssueAgentEvidence = AgentTestReachability & { issue_id: string; coverage_status: string; evidence_dispersion: { evidence_files: string[]; evidence_directories: string[]; evidence_languages: string[] }; context_closure_files: number; context_closure_loc: number; unresolved_local_dependencies: number };
-export type CoverageCell = { mechanism: string; entity_scope: string; expectation: string; status: string; reason: string; detectors: string[]; completed_detectors: string[]; entity_count: number; unobservable_reasons: string[] };
-export type DetectorObservation = { stage: string; unit: string; count: number };
-export type DetectorExecutionReceipt = { kind: string; status: string; observations: DetectorObservation[]; candidate_groups_before_threshold: number; raw_emitted: number; cli_filtered: number; suppression_removed: number; final_findings: number; unobservable_count: number; unobservable_reasons: string[] };
-export type RawMetricCoverage = { metric: string; status: string; entity_count: number; reason: string; unobservable_reasons: string[] };
-export type DetectorManifestEntry = { kind: string; construct: string; mechanism: string; action: string; entity_scope: string; approach: string; supported_languages: string[]; precision_risk: string; input_metrics: string[]; issue_family: string; evidence_role: string; constituent_kinds: string[] };
-export type RawMetricManifestEntry = { name: string; entity_scope: string; unit: string; scale: string; direction: string; description: string };
-export type ChurnSummary = { mode: string; enabled: boolean; status: string; reason?: string | null; window_days: number; max_commit_lines: number };
-export type ScanSummary = { scanned_files: number; finding_count: number; issue_count: number; similar_function_group_count: number; duration_ms: number; churn: ChurnSummary };
-export type ScanStats = { source_files_discovered: number; source_files_analyzed: number; directories_scanned: number; function_candidates: number };
-export type RawMetrics = { directories: LocatedRawMetric[]; files: FileRawMetric[]; functions: LocatedRawMetric[]; types: LocatedRawMetric[] };
-export type DependencyGraph = { nodes: DependencyGraphNode[]; edges: DependencyGraphEdge[] };
-export type AgentEvidence = { files: FileAgentEvidence[]; issues: IssueAgentEvidence[] };
-export type SuppressionSummary = { suppressed_count: number; suppressed_by_kind: Record<string, number> };
-export type SourceFailure = { path: string; reason: "io_error" | "unsupported_encoding" | "invalid_encoding" };
-export type CoverageSummary = { detected_languages?: string[]; unobservable_reasons?: string[]; parse_failures?: unknown[]; source_failures?: SourceFailure[]; unresolved_dependency_edges?: number };
-type FlowCapability = { language: string; local_def_use: string; direct_calls: string; fields: string; dynamic_dispatch: string; library_models: string; reasons: string[] };
-type FlowAnalysis = { status: string; functions_analyzed: number; exact_edges: number; unresolved_edges: number; truncated_paths: number; capabilities: FlowCapability[] };
-
-export type ScanReport = {
-  schema_version: number;
-  provenance: ReportProvenance;
-  baseline_comparison?: BaselineComparison | null;
-  summary: ScanSummary;
-  stats: ScanStats;
-  metrics_summary: Record<string, Record<string, Percentiles>>;
-  raw_metrics: RawMetrics;
-  raw_metric_manifest: RawMetricManifestEntry[];
-  dependency_graph: DependencyGraph;
-  agent_evidence: AgentEvidence;
-  unity_project: Record<string, unknown>;
-  suppression_summary: SuppressionSummary;
-  flow_analysis: FlowAnalysis;
-  coverage_manifest: CoverageCell[];
-  coverage_summary: CoverageSummary;
-  detector_execution: DetectorExecutionReceipt[];
-  raw_metric_coverage: RawMetricCoverage[];
-  issues: Issue[];
-  detector_manifest: DetectorManifestEntry[];
-  findings: Finding[];
+export type CoverageStatus = "observed" | "partial" | "unsupported" | "not_applicable";
+export type Producer = { name: string; version: string; revision?: string };
+export type Target = { root: string; workspace_identity: string; source_revision?: string };
+export type Subject =
+  | { kind: "repository" }
+  | { kind: "directory" | "file"; path: string }
+  | { kind: "symbol"; path: string; symbol: string }
+  | { kind: "group"; members: string[] };
+export type Location = { path: string; line?: number; symbol?: string };
+export type Measurement = { name: string; value: number; threshold?: number; unit: string };
+export type FlowResolution = "exact" | "partial" | "unresolved" | "unsupported";
+export type FlowEndpoint = { path: string; symbol: string; language: string; line?: number };
+export type FlowStep = { path: string; symbol: string; line?: number; operation: string; resolution: FlowResolution };
+export type FlowWitness = {
+  source: FlowEndpoint;
+  sink: FlowEndpoint;
+  ordered_steps: FlowStep[];
+  function_hops: number;
+  module_hops: number;
+  resolution: FlowResolution;
 };
-import type { BaselineComparison, ReportProvenance } from "./baselineTypes";
-export type { BaselineComparison, DifferenceSet, LineageCandidate, ReportProvenance } from "./baselineTypes";
+export type Evidence = {
+  id: string;
+  rule: string;
+  message: string;
+  measurements?: Measurement[];
+  locations?: Location[];
+  witness?: FlowWitness;
+};
+export type Issue = {
+  id: string;
+  analysis: string;
+  family: string;
+  subject: Subject;
+  title: string;
+  guidance: string;
+  evidence: Evidence[];
+};
+export type AnalysisCoverage = {
+  status: CoverageStatus;
+  scanned_files: number;
+  languages?: Record<string, {
+    status: CoverageStatus;
+    files: number;
+    functions: number;
+    limitations?: CoverageLimitation[];
+  }>;
+  rules?: Record<string, {
+    status: CoverageStatus;
+    observations?: CoverageObservation[];
+    limitations?: CoverageLimitation[];
+  }>;
+  limitations?: CoverageLimitation[];
+};
+export type CoverageObservation = { name: string; count: number; unit: string };
+export type CoverageLimitation = { code: string; count: number; message: string };
+export type Report = {
+  schema_version: 26;
+  producer: Producer;
+  target: Target;
+  summary: { issue_count: number; evidence_count: number; scanned_files: number };
+  suppression: { evidence_count: number; by_rule: Record<string, number> };
+  coverage: Record<string, AnalysisCoverage>;
+  issues: Issue[];
+  baseline_comparison?: {
+    new_issue_ids: string[];
+    resolved_issue_ids: string[];
+    unchanged_issue_count: number;
+  };
+};

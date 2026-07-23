@@ -1,7 +1,7 @@
 {
   "name": "reforge",
-  "version": "0.1.0",
-  "description": "Evidence-driven, approval-gated refactoring workflows for Codex",
+  "version": "0.2.0",
+  "description": "Codebase and Dataflow refactoring analysis for Codex",
   "author": {
     "name": "Reforge contributors",
     "url": "https://github.com/LyleMi/Reforge"
@@ -9,19 +9,18 @@
   "homepage": "https://lylemi.github.io/Reforge/",
   "repository": "https://github.com/LyleMi/Reforge",
   "license": "Apache-2.0",
-  "keywords": ["refactoring", "evidence", "workflow", "rust"],
+  "keywords": ["refactoring", "codebase", "dataflow", "evidence", "rust"],
   "skills": "./skills/",
   "interface": {
     "displayName": "Reforge",
-    "shortDescription": "Evidence-driven refactoring workflows",
-    "longDescription": "Scan repositories, investigate selected evidence, apply an explicitly approved plan, and verify the result with durable local artifacts.",
+    "shortDescription": "Codebase and Dataflow analysis",
+    "longDescription": "Run Reforge analyses and inspect schema 26 Issues, Evidence, typed Dataflow witnesses, and coverage limitations.",
     "developerName": "Reforge contributors",
     "category": "Developer Tools",
-    "capabilities": ["Read", "Write"],
+    "capabilities": ["Read"],
     "defaultPrompt": [
-      "Scan this repository for refactoring evidence.",
-      "Plan a safe fix for selected Reforge issues.",
-      "Verify this approved Reforge workflow."
+      "Analyze this repository with Reforge's Codebase and Dataflow analyses.",
+      "Explain selected Reforge Issues, witnesses, and coverage limitations."
     ]
   }
 }

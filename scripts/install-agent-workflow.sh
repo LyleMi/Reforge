@@ -5,11 +5,11 @@ mode=plugin
 force=0
 install_cli=1
 install_agent=1
-only_scan=0
+with_unity=0
+with_guard=0
 plugin_dir=""
 skills_dir=""
 agent_dir=""
-scan_source=""
 agent=codex
 project_dir=""
 root_dir=""
@@ -27,8 +27,8 @@ Usage: scripts/install-agent-workflow.sh [options]
   --skip-cli                  Do not install the Reforge CLI.
   --install-cli               Install the Reforge CLI (default).
   --force                     Atomically replace an existing installation.
-  --only-scan                 Install only reforge-scan (compatibility mode).
-  --source DIR                Custom reforge-scan source (compatibility mode).
+  --with-unity                Also install the optional Unity analyzer CLI.
+  --with-guard                Also install the workflow CLI and plan/apply/verify skills.
   --agent NAME                Target agent: codex, claude, gemini, opencode,
                               codebuddy, cursor, generic, or all.
   --project-dir DIR           Install project-local files into DIR.
@@ -48,8 +48,8 @@ while [ "$#" -gt 0 ]; do
         --skip-cli) install_cli=0; shift ;;
         --install-cli) install_cli=1; shift ;;
         --force) force=1; shift ;;
-        --only-scan) only_scan=1; shift ;;
-        --source) scan_source="${2:?missing --source value}"; shift 2 ;;
+        --with-unity) with_unity=1; shift ;;
+        --with-guard) with_guard=1; shift ;;
         --agent) agent="${2:?missing --agent value}"; shift 2 ;;
         --project-dir) project_dir="${2:?missing --project-dir value}"; shift 2 ;;
         --root-dir) root_dir="${2:?missing --root-dir value}"; shift 2 ;;
@@ -67,9 +67,8 @@ codex_root=${CODEX_HOME:-${HOME:?HOME is required}/.codex}
 [ -n "$skills_dir" ] || skills_dir="$codex_root/skills"
 [ -n "$agent_dir" ] || agent_dir="$codex_root/agents"
 [ -n "$plugin_dir" ] || plugin_dir="$codex_root/plugins/reforge"
-[ -n "$scan_source" ] || scan_source="$repo_root/skills/reforge-scan"
 
-for required in "$repo_root/.codex-plugin/plugin.json" "$scan_source/SKILL.md"; do
+for required in "$repo_root/.codex-plugin/plugin.json" "$repo_root/.codex-plugin/bundle.json" "$repo_root/skills/reforge-analyze/SKILL.md"; do
     [ -f "$required" ] || { echo "Missing workflow source: $required" >&2; exit 1; }
 done
 
@@ -107,18 +106,17 @@ atomic_install_dir() {
 }
 
 selected_skills() {
-    if [ "$only_scan" -eq 1 ]; then
-        printf '%s\n' reforge-scan
-    else
-        printf '%s\n' reforge-scan reforge-plan reforge-apply reforge-verify
+    printf '%s\n' reforge-analyze
+    if [ "$with_guard" -eq 1 ]; then
+        printf '%s\n' reforge-plan reforge-apply reforge-verify
     fi
 }
 
 skill_source_for() {
-    if [ "$1" = reforge-scan ] && [ "$only_scan" -eq 1 ]; then
-        printf '%s\n' "$scan_source"
+    if [ "$1" = reforge-analyze ]; then
+        printf '%s\n' "$repo_root/skills/reforge-analyze"
     else
-        printf '%s\n' "$repo_root/skills/$1"
+        printf '%s\n' "$repo_root/tools/reforge-workflow/skills/$1"
     fi
 }
 
@@ -127,16 +125,14 @@ write_agent_instructions() {
     label=$2
     mkdir -p "$(dirname "$target_file")"
     cat > "$target_file" <<EOF
-# Reforge Agent Workflow
+# Reforge Analysis
 
-Reforge is a Rust CLI for evidence-driven refactoring scans and approval-gated refactor workflows.
+Reforge analyzes refactoring evidence through Codebase and Dataflow analyses. Unity is an optional analyzer and the approval workflow is an optional guard.
 
 Use the installed Reforge skills when the user asks to scan, inspect, plan, apply, or verify maintainability/refactoring work:
 
-- \`reforge-scan\`: run \`reforge scan <target> --progress never\` before broad cleanup or architecture recommendations.
-- \`reforge-plan\`: investigate selected Reforge issues and produce workflow artifacts without editing source.
-- \`reforge-apply\`: edit source only after an explicit approved Reforge workflow exists.
-- \`reforge-verify\`: run checks and compare the rescan result after approved changes.
+- \`reforge-analyze\`: run \`reforge analyze <target> --output json\` before broad cleanup or architecture recommendations.
+- If the optional guard was explicitly installed, \`reforge-plan\`, \`reforge-apply\`, and \`reforge-verify\` manage its approval artifacts. They are not prerequisites for analysis.
 
 Keep Reforge workflow artifacts durable and schema-valid. Do not add suppressions, change thresholds, install dependencies, commit, push, or open pull requests unless the user explicitly asks.
 
@@ -152,12 +148,12 @@ write_cursor_rule() {
 description: Reforge evidence-driven refactoring workflow
 alwaysApply: true
 ---
-# Reforge Agent Workflow
+# Reforge Analysis
 
 Use Reforge for maintainability/refactoring scans and approval-gated refactor workflows.
 
-- Run `reforge scan <target> --progress never` before broad cleanup or architecture recommendations.
-- Use `reforge workflow` artifacts for selected issues, plans, approvals, application, and verification.
+- Run `reforge analyze <target> --output json` before broad cleanup or architecture recommendations.
+- Only when the optional guard was explicitly installed, use `reforge-workflow` artifact v5 commands for approval-gated changes.
 - Do not edit source during planning. Edit only after an explicit approved Reforge workflow exists.
 - Keep workflow artifacts durable and schema-valid.
 - Do not add suppressions, change thresholds, install dependencies, commit, push, or open pull requests unless the user explicitly asks.
@@ -248,7 +244,7 @@ install_portable_agent() {
     skills=$(portable_agent_skills_path "$target_agent" "$base")
 
     if [ -e "$instructions" ] && [ "$force" -ne 1 ]; then
-        if grep -q "Reforge Agent Workflow" "$instructions" 2>/dev/null; then
+        if grep -Eq "Reforge (Agent Workflow|Analysis)" "$instructions" 2>/dev/null; then
             printf 'Instructions already installed at %s\n' "$instructions"
             [ -z "$skills" ] || install_skill_set "$skills"
             return
@@ -277,27 +273,19 @@ else
 if [ "$mode" = plugin ]; then
     stage_source=$(mktemp -d)
     mkdir -p "$stage_source/.codex-plugin" "$stage_source/skills" "$stage_source/.codex/agents"
-    cp "$repo_root/.codex-plugin/plugin.json" "$stage_source/.codex-plugin/plugin.json"
-    if [ "$only_scan" -eq 1 ]; then
-        cp -R "$scan_source" "$stage_source/skills/reforge-scan"
-    else
-        for skill in reforge-scan reforge-plan reforge-apply reforge-verify; do cp -R "$repo_root/skills/$skill" "$stage_source/skills/$skill"; done
-    fi
-    if [ "$install_agent" -eq 1 ]; then cp "$repo_root/.codex/agents/reforge-investigator.toml" "$stage_source/.codex/agents/"; fi
+    cp "$repo_root/.codex-plugin/plugin.json" "$repo_root/.codex-plugin/bundle.json" "$stage_source/.codex-plugin/"
+    for skill in $(selected_skills); do cp -R "$(skill_source_for "$skill")" "$stage_source/skills/$skill"; done
+    if [ "$install_agent" -eq 1 ]; then cp "$repo_root/tools/reforge-workflow/agents/reforge-investigator.toml" "$stage_source/.codex/agents/"; fi
     atomic_install_dir "$stage_source" "$plugin_dir"
     rm -rf "$stage_source"
 else
-    if [ "$only_scan" -eq 1 ]; then
-        atomic_install_dir "$scan_source" "$skills_dir/reforge-scan"
-    else
-        for skill in reforge-scan reforge-plan reforge-apply reforge-verify; do atomic_install_dir "$repo_root/skills/$skill" "$skills_dir/$skill"; done
-    fi
+    for skill in $(selected_skills); do atomic_install_dir "$(skill_source_for "$skill")" "$skills_dir/$skill"; done
     if [ "$install_agent" -eq 1 ]; then
         mkdir -p "$agent_dir"
         agent_target="$agent_dir/reforge-investigator.toml"
         if [ -e "$agent_target" ] && [ "$force" -ne 1 ]; then echo "Agent already exists at $agent_target. Pass --force to update it." >&2; exit 1; fi
         agent_stage="$agent_dir/.reforge-investigator.toml.stage.$$"
-        cp "$repo_root/.codex/agents/reforge-investigator.toml" "$agent_stage"
+        cp "$repo_root/tools/reforge-workflow/agents/reforge-investigator.toml" "$agent_stage"
         mv "$agent_stage" "$agent_target"
     fi
 fi
@@ -305,5 +293,7 @@ fi
 
 if [ "$install_cli" -eq 1 ]; then
     command -v cargo >/dev/null 2>&1 || { echo "cargo is required; pass --skip-cli to omit the CLI" >&2; exit 1; }
-    cargo install --path "$repo_root"
+    cargo install --path "$repo_root/tools/reforge" --locked
+    if [ "$with_unity" -eq 1 ]; then cargo install --path "$repo_root/tools/reforge-unity" --locked; fi
+    if [ "$with_guard" -eq 1 ]; then cargo install --path "$repo_root/tools/reforge-workflow" --locked; fi
 fi

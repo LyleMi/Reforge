@@ -7,8 +7,8 @@ param(
     [switch]$SkipAgent,
     [switch]$SkipCli,
     [switch]$Force,
-    [switch]$OnlyScan,
-    [string]$Source,
+    [switch]$WithUnity,
+    [switch]$WithGuard,
     [ValidateSet("codex", "claude", "gemini", "opencode", "codebuddy", "cursor", "generic", "all")][string]$Agent = "codex",
     [string]$ProjectDir,
     [string]$RootDir,
@@ -28,8 +28,8 @@ Usage: scripts\install-agent-workflow.ps1 [options]
   -SkipCli                      Do not install the Reforge CLI.
   -InstallCli                   Install the Reforge CLI (default).
   -Force                        Atomically replace an existing installation.
-  -OnlyScan                     Install only reforge-scan (compatibility mode).
-  -Source DIR                   Custom reforge-scan source (compatibility mode).
+  -WithUnity                    Also install the optional Unity analyzer CLI.
+  -WithGuard                    Also install the workflow CLI and plan/apply/verify skills.
   -Agent NAME                   Target agent: codex, claude, gemini, opencode,
                                 codebuddy, cursor, generic, or all.
   -ProjectDir DIR               Install project-local files into DIR.
@@ -51,9 +51,8 @@ if ($RootDir) { $codexRoot = $RootDir }
 if (-not $PluginDir) { $PluginDir = Join-Path $codexRoot "plugins\reforge" }
 if (-not $SkillsDir) { $SkillsDir = Join-Path $codexRoot "skills" }
 if (-not $AgentDir) { $AgentDir = Join-Path $codexRoot "agents" }
-if (-not $Source) { $Source = Join-Path $repoRoot "skills\reforge-scan" }
 if (-not (Test-Path (Join-Path $repoRoot ".codex-plugin\plugin.json"))) { throw "Missing plugin manifest" }
-if (-not (Test-Path (Join-Path $Source "SKILL.md"))) { throw "Source is not a skill folder: $Source" }
+if (-not (Test-Path (Join-Path $repoRoot "skills\reforge-analyze\SKILL.md"))) { throw "Missing analyze skill source" }
 
 function Install-DirectoryAtomic([string]$SourcePath, [string]$TargetPath) {
     $sourceResolved = (Resolve-Path $SourcePath).Path.TrimEnd('\','/')
@@ -81,11 +80,17 @@ function Install-DirectoryAtomic([string]$SourcePath, [string]$TargetPath) {
 }
 
 function Get-SelectedSkills {
-    if ($OnlyScan) { @("reforge-scan") } else { @("reforge-scan","reforge-plan","reforge-apply","reforge-verify") }
+    $selected = @("reforge-analyze")
+    if ($WithGuard) { $selected += @("reforge-plan","reforge-apply","reforge-verify") }
+    $selected
 }
 
 function Get-SkillSource([string]$Name) {
-    if ($Name -eq "reforge-scan" -and $OnlyScan) { $Source } else { Join-Path $repoRoot "skills\$Name" }
+    if ($Name -eq "reforge-analyze") {
+        Join-Path $repoRoot "skills\reforge-analyze"
+    } else {
+        Join-Path $repoRoot "tools\reforge-workflow\skills\$Name"
+    }
 }
 
 function Install-SkillSet([string]$DestinationParent) {
@@ -103,16 +108,14 @@ function Install-SkillSet([string]$DestinationParent) {
 function Write-AgentInstructions([string]$TargetFile, [string]$Label) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $TargetFile) | Out-Null
     @"
-# Reforge Agent Workflow
+# Reforge Analysis
 
-Reforge is a Rust CLI for evidence-driven refactoring scans and approval-gated refactor workflows.
+Reforge analyzes refactoring evidence through Codebase and Dataflow analyses. Unity is an optional analyzer and the approval workflow is an optional guard.
 
 Use the installed Reforge skills when the user asks to scan, inspect, plan, apply, or verify maintainability/refactoring work:
 
-- ``reforge-scan``: run ``reforge scan <target> --progress never`` before broad cleanup or architecture recommendations.
-- ``reforge-plan``: investigate selected Reforge issues and produce workflow artifacts without editing source.
-- ``reforge-apply``: edit source only after an explicit approved Reforge workflow exists.
-- ``reforge-verify``: run checks and compare the rescan result after approved changes.
+- ``reforge-analyze``: run ``reforge analyze <target> --output json`` before broad cleanup or architecture recommendations.
+- If the optional guard was explicitly installed, ``reforge-plan``, ``reforge-apply``, and ``reforge-verify`` manage its approval artifacts. They are not prerequisites for analysis.
 
 Keep Reforge workflow artifacts durable and schema-valid. Do not add suppressions, change thresholds, install dependencies, commit, push, or open pull requests unless the user explicitly asks.
 
@@ -127,12 +130,12 @@ function Write-CursorRule([string]$TargetFile) {
 description: Reforge evidence-driven refactoring workflow
 alwaysApply: true
 ---
-# Reforge Agent Workflow
+# Reforge Analysis
 
 Use Reforge for maintainability/refactoring scans and approval-gated refactor workflows.
 
-- Run ``reforge scan <target> --progress never`` before broad cleanup or architecture recommendations.
-- Use ``reforge workflow`` artifacts for selected issues, plans, approvals, application, and verification.
+- Run ``reforge analyze <target> --output json`` before broad cleanup or architecture recommendations.
+- Only when the optional guard was explicitly installed, use ``reforge-workflow`` artifact v5 commands for approval-gated changes.
 - Do not edit source during planning. Edit only after an explicit approved Reforge workflow exists.
 - Keep workflow artifacts durable and schema-valid.
 - Do not add suppressions, change thresholds, install dependencies, commit, push, or open pull requests unless the user explicitly asks.
@@ -141,7 +144,7 @@ Use Reforge for maintainability/refactoring scans and approval-gated refactor wo
 
 function Install-InstructionFile([string]$TargetFile, [string]$TargetAgent) {
     if ((Test-Path $TargetFile) -and -not $Force) {
-        if ((Get-Content $TargetFile -Raw) -match "Reforge Agent Workflow") {
+        if ((Get-Content $TargetFile -Raw) -match "Reforge (Agent Workflow|Analysis)") {
             Write-Host "Instructions already installed at $TargetFile"
             return
         }
@@ -221,14 +224,22 @@ if ($Mode -eq "plugin") {
     $stageSource = Join-Path ([IO.Path]::GetTempPath()) "reforge-plugin-source-$PID"
     New-Item -ItemType Directory -Force -Path (Join-Path $stageSource ".codex-plugin"),(Join-Path $stageSource "skills"),(Join-Path $stageSource ".codex\agents") | Out-Null
     Copy-Item (Join-Path $repoRoot ".codex-plugin\plugin.json") (Join-Path $stageSource ".codex-plugin\plugin.json")
-    $names = if ($OnlyScan) { @("reforge-scan") } else { @("reforge-scan","reforge-plan","reforge-apply","reforge-verify") }
-    foreach ($name in $names) { $skillSource = if ($name -eq "reforge-scan" -and $OnlyScan) { $Source } else { Join-Path $repoRoot "skills\$name" }; Copy-Item $skillSource (Join-Path $stageSource "skills\$name") -Recurse }
-    if (-not $SkipAgent) { Copy-Item (Join-Path $repoRoot ".codex\agents\reforge-investigator.toml") (Join-Path $stageSource ".codex\agents\") }
+    Copy-Item (Join-Path $repoRoot ".codex-plugin\bundle.json") (Join-Path $stageSource ".codex-plugin\bundle.json")
+    foreach ($name in (Get-SelectedSkills)) { Copy-Item (Get-SkillSource $name) (Join-Path $stageSource "skills\$name") -Recurse }
+    if (-not $SkipAgent) { Copy-Item (Join-Path $repoRoot "tools\reforge-workflow\agents\reforge-investigator.toml") (Join-Path $stageSource ".codex\agents\") }
     try { Install-DirectoryAtomic $stageSource $PluginDir } finally { if (Test-Path $stageSource) { Remove-Item $stageSource -Recurse -Force } }
 } else {
-    $names = if ($OnlyScan) { @("reforge-scan") } else { @("reforge-scan","reforge-plan","reforge-apply","reforge-verify") }
-    foreach ($name in $names) { $skillSource = if ($name -eq "reforge-scan" -and $OnlyScan) { $Source } else { Join-Path $repoRoot "skills\$name" }; Install-DirectoryAtomic $skillSource (Join-Path $SkillsDir $name) }
-    if (-not $SkipAgent) { New-Item -ItemType Directory -Force -Path $AgentDir | Out-Null; $target=Join-Path $AgentDir "reforge-investigator.toml"; if((Test-Path $target)-and -not $Force){throw "Agent already exists at $target. Pass -Force to update it."}; Copy-Item (Join-Path $repoRoot ".codex\agents\reforge-investigator.toml") "$target.stage" -Force; Move-Item "$target.stage" $target -Force }
+    foreach ($name in (Get-SelectedSkills)) { Install-DirectoryAtomic (Get-SkillSource $name) (Join-Path $SkillsDir $name) }
+    if (-not $SkipAgent) { New-Item -ItemType Directory -Force -Path $AgentDir | Out-Null; $target=Join-Path $AgentDir "reforge-investigator.toml"; if((Test-Path $target)-and -not $Force){throw "Agent already exists at $target. Pass -Force to update it."}; Copy-Item (Join-Path $repoRoot "tools\reforge-workflow\agents\reforge-investigator.toml") "$target.stage" -Force; Move-Item "$target.stage" $target -Force }
 }
 }
-if (-not $SkipCli) { if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw "cargo is required; pass -SkipCli to omit the CLI" }; & cargo install --path $repoRoot; if($LASTEXITCODE-ne 0){throw "cargo install failed"} }
+if (-not $SkipCli) {
+    if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw "cargo is required; pass -SkipCli to omit the CLI" }
+    $packages = @("reforge")
+    if ($WithUnity) { $packages += "reforge-unity" }
+    if ($WithGuard) { $packages += "reforge-workflow" }
+    foreach ($package in $packages) {
+        & cargo install --path (Join-Path $repoRoot "tools/$package") --locked
+        if ($LASTEXITCODE -ne 0) { throw "cargo install failed for $package" }
+    }
+}

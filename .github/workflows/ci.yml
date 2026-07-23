@@ -111,7 +111,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
   test:
     name: test (${{ matrix.os }})
@@ -134,7 +134,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo test --locked --all-targets --all-features
+        run: cargo test --locked --workspace --all-targets --all-features
 
       - name: Test PowerShell agent workflow distribution
         if: runner.os == 'Windows'
@@ -142,7 +142,15 @@ jobs:
         run: .\scripts\test-install-agent-workflow.ps1
 
       - name: Build
-        run: cargo build --locked
+        run: cargo build --locked --workspace
 
-      - name: Smoke test JSON output
-        run: cargo run --locked -- scan . --output json --progress never --color never
+      - name: Smoke test analyses
+        shell: pwsh
+        run: |
+          cargo run --locked -p reforge -- analyze . --output json --output-file target/codebase.json --metrics-output target/metrics.json --reproducible
+          cargo run --locked -p reforge -- analyze . --analysis dataflow --output json --output-file target/dataflow.json --flow-ir-output target/flow-ir.json --reproducible
+          cargo run --locked -p reforge -- analyze . --analysis codebase --analysis dataflow --output json --output-file target/combined.json --reproducible
+          $codebase = Get-Content target/codebase.json -Raw | ConvertFrom-Json
+          $report = Get-Content target/combined.json -Raw | ConvertFrom-Json
+          if ($codebase.summary.issue_count -ne 0) { throw "Codebase self-analysis must have 0 unsuppressed issues" }
+          if ($report.producer.name -ne "reforge.analyze") { throw "unexpected report producer" }

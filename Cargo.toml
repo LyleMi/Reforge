@@ -1,26 +1,34 @@
-[package]
-name = "reforge"
-version = "0.1.0"
+[workspace]
+resolver = "2"
+members = [
+    "crates/reforge-schema",
+    "crates/reforge-output",
+    "crates/reforge-engine",
+    "crates/reforge-unity-engine",
+    "tools/reforge",
+    "tools/reforge-unity",
+    "tools/reforge-workflow",
+]
+default-members = [
+    "tools/reforge",
+]
+
+[workspace.package]
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Detect refactoring signals across source trees"
 license = "Apache-2.0"
-readme = "README.md"
 repository = "https://github.com/LyleMi/Reforge"
-homepage = "https://lylemi.github.io/Reforge/"
-documentation = "https://lylemi.github.io/Reforge/"
-keywords = ["analysis", "cli", "refactoring", "tree-sitter"]
-categories = ["command-line-utilities", "development-tools"]
 
-[dependencies]
+[workspace.dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
+globset = "0.4"
+ignore = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 sha2 = "0.10"
-ignore = "0.4"
-globset = "0.4"
 toml = "0.8"
 tree-sitter = "0.26.10"
 tree-sitter-bash = "0.25.1"
@@ -36,3 +44,6 @@ tree-sitter-ruby = "0.23.1"
 tree-sitter-rust = "0.24.2"
 tree-sitter-typescript = "0.23.2"
 terminal_size = "0.4.4"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

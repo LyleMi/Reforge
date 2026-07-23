@@ -1,5 +1,15 @@
 # Contributing
 
+Core user-facing work starts at `tools/reforge` and an explicit
+the typed `Config`; do not add another peer analyzer CLI for a core rule. Every new
+rule must declare exactly one Codebase or Dataflow owner, a namespaced family,
+description, supported languages, default state, measurements, and focused
+positive/negative tests in the rule registry.
+
+Dataflow frontends emit the language-neutral Flow IR. Add exact edges only for semantics the frontend can prove, record dynamic/unsupported behavior as coverage limitations, and test positive, negative, partial, and unsupported cases. Stable path detectors require ordered source-to-sink witnesses, budget/cycle tests, at least five positive and five negative microfixtures, and documented real-project calibration before maturity changes.
+
+Run `cargo test --workspace --all-targets --all-features`, all-target Clippy with warnings denied, both analysis self-checks, report-app unit/browser/build checks, installer tests, and docs build before review. Frontend changes must regenerate the committed embedded assets.
+
 This project follows the repository guidelines in `AGENTS.md`. Keep changes
 small, behavior-focused, and covered by targeted tests.
 
@@ -15,13 +25,13 @@ cargo test
 For a quick end-to-end smoke test:
 
 ```powershell
-cargo run -- scan . --progress never
+cargo run -p reforge -- analyze . --reproducible
 ```
 
 For reproducible machine-readable output:
 
 ```powershell
-cargo run -- scan . --churn off --reproducible --output json --progress never
+cargo run -p reforge -- analyze . --analysis codebase --set codebase.churn=off --reproducible --output json
 ```
 
 ## Development Workflow
@@ -81,7 +91,7 @@ building or serving the site locally:
 cargo install mdbook --version 0.5.4 --locked
 ```
 
-On Windows, generate the current self-scan sample and serve the site with:
+On Windows, generate the current self-analysis sample and serve the site with:
 
 ```powershell
 .\scripts\serve-docs.ps1
@@ -101,7 +111,7 @@ sh scripts/build-docs.sh
 ```
 
 The published documentation root is
-`https://lylemi.github.io/Reforge/`; the generated self-scan is published at
+`https://lylemi.github.io/Reforge/`; the generated self-analysis is published at
 `https://lylemi.github.io/Reforge/sample/`. Repository administrators must set
 `Settings > Pages > Build and deployment > Source` to `GitHub Actions` before
 the Pages workflow can deploy for the first time. Keep the `github-pages`
@@ -118,7 +128,7 @@ Add tests for:
 
 - CLI parsing and default values when flags change.
 - Config precedence and discovery when configuration changes.
-- Scanner exclusions, thresholds, ordering, and report fields.
+- Source collection exclusions, thresholds, ordering, and report fields.
 - Detector behavior, including false-positive guards.
 - Output stability for human, HTML, JSON, YAML, and SARIF report changes.
 
@@ -142,21 +152,21 @@ a feature safe, keep it scoped and covered by tests.
 JSON, YAML, and SARIF reports are external interfaces. When fields are added,
 removed, or renamed:
 
-- Update `SCAN_REPORT_SCHEMA_VERSION`.
+- Update `reforge_schema::REPORT_SCHEMA_VERSION`.
 - Update `docs/report-schema.md`.
 - Update output tests.
 - Mention the compatibility impact in the pull request.
 
-Consumers should rely on stable finding and issue IDs, typed metrics,
-construct/mechanism/action metadata, coverage receipts, and agent evidence.
-Schema 24 does not emit priority, confidence, severity, or hotspot ranking.
+Consumers should rely on stable Issue and Evidence IDs, typed measurements,
+Coverage, and typed Dataflow witnesses. Schema 26 does not emit priority,
+confidence, severity, or hotspot ranking.
 
 ## Commits and Pull Requests
 
 Use Conventional Commits:
 
 ```text
-feat(scanner): detect directories with many source files
+feat(codebase): detect directories with many source files
 fix(report): keep JSON output stable
 docs: add report schema reference
 ```
@@ -172,6 +182,6 @@ Pull requests should describe:
 - Sample human, HTML, JSON, YAML, or SARIF output when report formatting changes.
 
 Do not commit generated outputs, dependency directories, build artifacts, or
-local scan artifacts. The checked-in `assets/report-app.js` and
+local analysis artifacts. The checked-in `assets/report-app.js` and
 `assets/report-app.css` bundles are the sole generated-output exception because
 the Rust HTML renderer embeds them.

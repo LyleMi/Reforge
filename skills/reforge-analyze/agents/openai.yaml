@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reforge Analyze"
+  short_description: "Analyze Codebase and Dataflow evidence"
+  default_prompt: "Use $reforge-analyze to run the appropriate Reforge analyses and explain Issue evidence, ordered Dataflow witnesses, and coverage limitations."

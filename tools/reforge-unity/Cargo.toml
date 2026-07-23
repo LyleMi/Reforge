@@ -1,0 +1,17 @@
+[package]
+name = "reforge-unity"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Optional Unity analysis pack for Reforge"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+reforge-unity-engine = { path = "../../crates/reforge-unity-engine" }
+reforge-output = { path = "../../crates/reforge-output" }
+serde_json.workspace = true
+
+[lints]
+workspace = true

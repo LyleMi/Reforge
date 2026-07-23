@@ -1,82 +1,21 @@
 # Release
 
-This checklist is for maintainers preparing a Reforge release.
+The core release contains only the `reforge` binary and the `reforge-analyze`
+skill. The installer and release archives must not add compatibility binaries
+or optional workspace products.
 
-Schema 24 is a hard compatibility break for reports and baselines: only schema
-24 baselines are accepted. Workflow artifacts likewise move to v3 and cannot
-reuse v2 run directories. The new Stable ID algorithms use `rf4-*` finding and
-`ri4-*` issue prefixes.
+Before publishing, run:
 
-## Pre-Release Checks
-
-Confirm the crate metadata in `Cargo.toml`:
-
-- `version`
-- `rust-version`
-- `description`
-- `license`
-- `readme`
-- `repository`
-- `homepage`
-- `documentation`
-- `keywords`
-- `categories`
-
-Run validation:
-
-```powershell
-cargo fmt --check
-cargo test
-cargo clippy --all-targets --all-features
-cargo run -- scan . --output json --progress never --churn off
+```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-targets --all-features
+cargo build --release -p reforge
 ```
 
-Review the generated JSON for unexpected schema or detector changes.
+Also run report-app unit, browser, and build checks; Codebase, Dataflow, and
+combined reproducible self-analysis; and smoke tests for every output format
+plus the two explicit debug sidecars.
 
-## Schema Review
-
-If serialized report shape changed:
-
-- Increment `SCAN_REPORT_SCHEMA_VERSION` in `src/model/mod.rs`.
-- Update `docs/report-schema.md`.
-- Update README references to the schema version.
-- Add or update output tests.
-
-If only detector behavior or evidence interpretation changed without report
-shape changes, do not increment the schema version unless consumers need a
-compatibility boundary.
-
-## Documentation Review
-
-Before tagging, check:
-
-- `README.md` quick start still works.
-- `docs/user-guide.md` includes all current CLI flags.
-- `docs/configuration.md` matches config keys in `scan/mod.rs`.
-- `docs/report-schema.md` matches the serialized `ScanReport` model.
-- `docs/detectors.md` lists current `FindingKind` values and detector
-  families.
-
-## Packaging
-
-Build a release binary:
-
-```powershell
-cargo build --release
-```
-
-Install locally from the release candidate:
-
-```powershell
-cargo install --path .
-reforge scan . --progress never
-```
-
-## Release Notes
-
-Release notes should include:
-
-- New detector or CLI capabilities.
-- Changed thresholds, evidence analysis, output, or schema.
-- Bug fixes that affect scan results.
-- Any compatibility notes for JSON/YAML consumers.
+Use a Conventional Commit message and document user-visible changes, validation
+commands, linked issues, and sample output changes in the pull request.

@@ -23,12 +23,15 @@ jobs:
           - os: ubuntu-latest
             artifact: reforge-linux-x86_64
             binary: reforge
+            suffix: ""
           - os: windows-latest
             artifact: reforge-windows-x86_64
             binary: reforge.exe
+            suffix: ".exe"
           - os: macos-latest
             artifact: reforge-macos
             binary: reforge
+            suffix: ""
 
     steps:
       - name: Checkout
@@ -41,10 +44,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo test --locked --all-targets --all-features
+        run: cargo test --locked --workspace --all-targets --all-features
 
-      - name: Build release binary
-        run: cargo build --locked --release
+      - name: Build core binary
+        run: cargo build --locked --release -p reforge
 
       - name: Package artifact
         shell: pwsh
@@ -53,10 +56,23 @@ jobs:
           Copy-Item "target/release/${{ matrix.binary }}" "dist/${{ matrix.binary }}"
           Copy-Item README.md dist/README.md
           Copy-Item LICENSE dist/LICENSE
+          New-Item -ItemType Directory -Force "dist/skills/reforge-analyze" | Out-Null
+          Copy-Item "skills/reforge-analyze/SKILL.md" "dist/skills/reforge-analyze/SKILL.md"
+          if (Test-Path "skills/reforge-analyze/agents") {
+            Copy-Item "skills/reforge-analyze/agents" "dist/skills/reforge-analyze/agents" -Recurse
+          }
           if ("${{ runner.os }}" -eq "Windows") {
             Compress-Archive -Path dist/* -DestinationPath "${{ matrix.artifact }}.zip" -Force
           } else {
             tar -czf "${{ matrix.artifact }}.tar.gz" -C dist .
+          }
+
+      - name: Smoke test packaged binary
+        shell: pwsh
+        run: |
+          & "target/release/${{ matrix.binary }}" --version
+          if (-not (Test-Path "dist/skills/reforge-analyze/SKILL.md")) {
+            throw "core skill is missing from the release artifact"
           }
 
       - name: Upload artifact

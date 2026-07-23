@@ -1,0 +1,9 @@
+{
+  "bundle_version": 1,
+  "cli_version": "0.2.0",
+  "report_schema": 25,
+  "binaries": {
+    "reforge": { "version": "0.2.0", "class": "core" }
+  },
+  "default_skills": ["reforge-analyze"]
+}

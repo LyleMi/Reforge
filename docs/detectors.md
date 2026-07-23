@@ -1,21 +1,33 @@
 # Detectors
 
+Rules have one owner. Codebase owns source-tree heuristics and repository context; Dataflow owns exact Flow IR paths; Unity owns experimental specialization rules. The rule registry and ownership tests enforce this partition.
+
+## Dataflow analysis
+
+- `reforge.dataflow.excessive_relay` (stable): a complete path meets the configured
+  function-hop, module-hop, and relay-percentage thresholds.
+- `reforge.dataflow.flow_fan_out` (stable): a complete source reaches more than the configured number of distinct cross-module sink functions.
+- `reforge.dataflow.adapter_flow_bypass` (stable policy): an exact protected-to-sink path does not cross a declared adapter.
+
+All require ordered exact witnesses. Budget truncation, dynamic/ambiguous calls and unsupported language behavior become language-specific partial coverage instead of speculative Evidence. Rust, JavaScript/TypeScript/TSX, and Python support the documented local def-use/return/direct-call subset. The heuristic `reforge.codebase.adapter_boundary_bypass` remains a Codebase rule.
+
+## Codebase analysis
+
 Reforge emits refactoring signals from threshold checks, Tree-sitter analysis,
-git churn, and heuristic drift detectors. Findings are signals for review; they
+git churn, and heuristic drift detectors. Issues are signals for review; they
 are not automatic proof that code must be changed, that code is low quality, or
 that a bug exists.
 
-Every finding kind is also described by the report-level `detector_manifest`.
-The manifest declares its primary maintainability construct, signal mechanism,
-refactoring action, entity scope, detection approach, supported languages,
-precision risk, composite parent, and typed detector relations. Clustering
-consumes the relation contract so shared paths alone cannot double-count or
-merge unrelated detectors. See [Metric Ontology](metric-ontology.md).
+Every rule is described by one internal metadata registry. It declares
+analysis ownership, family, subject kind, supported languages, measurements,
+description, and guidance. Coverage, `reforge rules`, and suppression
+validation consume the same metadata. See the
+[metrics model](metrics-model.md).
 
 ## File and Directory Signals
 
-- `large_file`: source file line count exceeds `--max-file-lines`.
-- `large_directory`: direct source-file count exceeds `--max-dir-files`.
+- `large_file`: source file line count exceeds `codebase.max-file-lines`.
+- `large_directory`: direct source-file count exceeds `codebase.max-dir-files`.
 - `debt_marker`: a comment line contains `TODO` or `FIXME`.
 
 Hidden paths are skipped unless `--include-hidden` is set. Generated and
@@ -38,37 +50,33 @@ longest-common-subsequence check.
 
 Controls:
 
-- `--min-similar-functions`
-- `--min-function-tokens`
-- `--function-similarity`
-- `--include-test-similarity`
+- `codebase.min-similar-functions`
+- `codebase.min-function-tokens`
+- `codebase.function-similarity`
 
-Test files are excluded from this detector by default.
+Test files are excluded from this detector.
 
 ## Structural Signals
 
 Structural detectors use Tree-sitter for supported languages.
 
-- `long_function`: function line span exceeds `--max-function-lines`.
+- `long_function`: function line span exceeds `codebase.max-function-lines`.
 - `complex_function`: estimated complexity exceeds
-  `--max-function-complexity`.
-- `deep_nesting`: nested control-flow depth exceeds `--max-nesting-depth`.
-- `many_parameters`: parameter count exceeds `--max-function-parameters`.
-- `readability_risk`: one function combines at least two function-level
-  readability signals, such as length, complexity, nesting, or parameter
-  pressure.
-- `large_type`: type line span or member count exceeds `--max-type-lines` or
-  `--max-type-members`.
+  `codebase.max-function-complexity`.
+- `deep_nesting`: nested control-flow depth exceeds `codebase.max-nesting-depth`.
+- `many_parameters`: parameter count exceeds `codebase.max-function-parameters`.
+- `large_type`: type line span or member count exceeds `codebase.max-type-lines` or
+  `codebase.max-type-members`.
 - `large_public_surface`: public/exported item count exceeds
-  `--max-public-items`.
-- `import_heavy_file`: import count exceeds `--max-imports`.
+  `codebase.max-public-items`.
+- `import_heavy_file`: import count exceeds `codebase.max-imports`.
 - `function_proliferation`: a production file has many functions, high
   functions-per-100-lines density, and a high percentage of small simple
   functions. This is an over-splitting signal, not proof that any function is
   unused.
 
-Tests are excluded from general structural findings unless
-`--include-test-structure` is passed.
+Tests are excluded from general structural Evidence. Use `--exclude-tests` only
+when test files should be removed from the source inventory entirely.
 
 For Rust, `large_public_surface` counts items with visibility modifiers such as
 `pub`, `pub(crate)`, and `pub(super)`, including public re-exports, because each
@@ -87,23 +95,23 @@ precisely.
 The detector skips public or exported functions, methods, common entry-point
 names such as `main` and `init`, and test helper definitions by default.
 References from scanned test files still count, so production helpers called
-only by tests are not reported unless tests are excluded from the scan.
+only by tests are not reported unless tests are excluded from analysis.
 
 ## Dependency Graph Signals
 
 `dependency_cycle` and `dependency_hub` use a conservative source-file import
 graph. The detector resolves only imports that point to another scanned source
-file under the scan root, such as relative JavaScript/TypeScript/Vue imports,
+file under the analysis root, such as relative JavaScript/TypeScript/Vue imports,
 Rust `mod` declarations, Python relative imports, Ruby `require_relative`
 calls, and quoted C/C++ includes that resolve to scanned source files.
 Bash `source`/`.` and PowerShell dot-sourcing or `Import-Module` are not
 modeled in this version.
 
 - `dependency_cycle`: a resolved strongly connected component spans multiple
-  source files. The finding reports cycle size, internal dependency edge count,
+  source files. The Evidence reports cycle size, internal dependency edge count,
   and internal edge density.
 - `dependency_hub`: a project with enough resolved graph data has a file with
-  unusually high fan-in or fan-out. The finding reports direct fan-in/fan-out,
+  unusually high fan-in or fan-out. The Evidence reports direct fan-in/fan-out,
   transitive reach, dependency depth, and instability percentage so broad,
   deep, and mixed-responsibility hubs rank higher. Dependency depth is the
   longest path through the strongly connected component condensation graph.
@@ -111,25 +119,25 @@ modeled in this version.
   density remain evidence of `dependency_cycle` instead of being counted again
   as depth.
 
-## Unity projects
+## Experimental Unity specialization
 
 At a Unity project root, Reforge statically analyzes text serialization, meta GUIDs,
 asmdef dependencies, Build Settings, and C# Unity component semantics without
 starting the Editor. `Library/PackageCache` is identity-only external context and
-never produces maintenance findings. Missing PackageCache data or binary assets
-produce `partially_observed` coverage instead of speculative broken-reference findings.
+never produces Issues. Missing PackageCache data or binary assets produce
+`partially_observed` coverage instead of speculative broken-reference Evidence.
 
-External packages, unresolved aliases, generated paths skipped by scan filters,
+External packages, unresolved aliases, generated paths skipped by source filters,
 and ambiguous language-specific module systems are ignored rather than guessed.
 
 ## Duplication and Test-Risk Signals
 
 - `repeated_literal`: string or numeric literals occur at least
-  `--min-repeated-literal-occurrences` times after normalization and filtering.
+  `codebase.min-repeated-literal-occurrences` times after normalization and filtering.
 - `repeated_error_pattern`: repeated catch/except/error handling patterns are
   found across supported languages.
 - `data_clump`: repeated parameter groups occur at least
-  `--min-data-clump-occurrences` times.
+  `codebase.min-data-clump-occurrences` times.
 - `test_duplication`: repeated setup, fixture, mock, fake, or before-hook
   patterns occur in tests.
 - `happy_path_only_tests`: a test file has at least three test cases with
@@ -164,11 +172,11 @@ test-only and protocol literals remain important confounders to inspect.
   migration boundary.
 
 Drift detectors use path and identifier heuristics, so grouped cross-file
-findings generally provide stronger evidence than isolated matches.
+Evidence groups generally provide stronger support than isolated matches.
 
-## Exact Rust Adapter Flow
+## Exact adapter policy flow
 
-`adapter_flow_bypass` is an opt-in policy finding backed by an ordered exact
+`reforge.dataflow.adapter_flow_bypass` is an opt-in policy rule backed by an ordered exact
 Rust value-transfer witness from a configured protected path to a configured
 sink without visiting an allowed adapter path. The bounded source set is
 function parameters declared in protected Rust paths. It remains separate from
@@ -176,29 +184,26 @@ function parameters declared in protected Rust paths. It remains separate from
 argument, return, and project-local call edges; the drift detector remains a
 naming and dependency heuristic.
 
-The detector requires `[data-flow].mode = "policy"`. It never emits when a
-witness edge is unresolved, unsupported, or beyond `max-hops`. Findings carry
-`flow.module_hops`, `flow.call_edges`, `flow.path_steps`,
-`flow.unresolved_edges`, `flow.policy_conforming_paths`, and
-`flow.policy_bypass_paths`, plus a typed `flow_witness`. A conforming comparison
+The detector requires at least one `[[dataflow.policies]]` entry. It never
+emits when a witness edge is unresolved, unsupported, or beyond
+`max-function-hops`. Evidence carries numeric measurements and a typed Flow
+witness. A conforming comparison
 path is retained when observed but is not required before an exact bypass can
 be reported. Workspace scans scope `crate::...` resolution to the nearest
 owning Cargo package, while policy sink symbols remain source-level Rust paths.
 
 ## Documentation Signals
 
-When the scan root looks like a project, Reforge checks for a stable
+When the analysis root looks like a project, Reforge checks for a stable
 documentation set.
 
-- `missing_documentation_set`: expected docs are missing under `docs/` or at
-  the repository root.
 - `missing_user_guide`: user-guide topics such as installation, quick start,
   CLI, configuration, output, and troubleshooting are missing.
 - `missing_report_schema_docs`: JSON/YAML fields and compatibility
   expectations are undocumented.
-- `missing_metrics_model_docs`: raw metrics, findings, issues, coverage, or
-  agent evidence are undocumented.
-- `missing_architecture_docs`: scan pipeline, detector boundaries, data flow,
+- `missing_metrics_model_docs`: measurements, Evidence, Issues, or Coverage
+  are undocumented.
+- `missing_architecture_docs`: source collection, detector boundaries, data flow,
   or extension points are undocumented.
 - `stale_cli_documentation`: docs mention CLI flags but omit current flags.
 - `stale_schema_documentation`: report-schema docs omit current fields.
@@ -209,28 +214,20 @@ guide.
 
 ## Interpreting Detector Output
 
-Choose findings using repository goals, metric excess, cross-file spread,
-detector precision risk, agent context/test-reachability evidence, and clear
-related locations. Treat heuristic findings as prompts for inspection, not
-automatic refactor instructions.
+Choose Issues using repository goals, measurements, cross-file spread, clear
+locations, and Coverage. Treat heuristic Evidence as a prompt for inspection,
+not an automatic refactor instruction.
 
-`findings=0` means no findings remain after detector filters and
-suppressions. It does not prove that the scanned code is healthy, bug-free, or
-free of maintainability pressure. Check coverage, raw metrics, agent evidence,
-and suppression summary context when explaining an empty finding list.
+`issues=0` means no unsuppressed Issues remain. It does not prove that the
+scanned code is healthy or bug-free. Check Coverage and the suppression
+summary when explaining an empty Issue list.
 
 ## Filtering and Suppression
 
-Finding-kind controls use the snake-case detector names above. `--only` keeps
-only selected kinds and `--exclude-detector` removes selected kinds.
+Intentional Evidence can be suppressed with versioned `[[suppressions]]`
+entries in `reforge.toml`. Each entry names a full rule, target-relative path,
+reason, and optional line.
 
-Intentional findings can be suppressed in source comments with
-`reforge:ignore`, `reforge:ignore-next-line`, or `reforge:ignore-file`.
-Each directive accepts an optional comma-separated kind list followed by a
-reason. Long-lived suppressions can also be recorded in `reforge.toml` with
-`[[suppressions]]` entries.
-
-Suppressions remove matching findings from reports and CI gate selection, but
-they do not remove raw metrics. Suppression
-summary information exists to preserve that audit context and prevent zero
-unsuppressed findings from being read as zero observed signals.
+Suppressions remove matching Evidence before Issue aggregation. The suppression
+summary preserves audit context so zero unsuppressed Issues is not mistaken for
+zero observed signals.

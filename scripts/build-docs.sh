@@ -6,5 +6,5 @@ destination=${1:-target/docs-site}
 
 cd "$repo_root"
 mkdir -p docs/sample
-cargo run --locked -- scan . --output html --output-file docs/sample/index.html --progress never --color never
+cargo run --locked -p reforge -- analyze . --output html --output-file docs/sample/index.html --reproducible
 mdbook build --dest-dir "$destination"

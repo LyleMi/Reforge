@@ -1,7 +1,7 @@
-# Data-flow Evidence Execution Plan
+# Data-flow Evidence Execution Plan (superseded)
 
-> **Status:** Implemented decision record. Normative behavior now lives in the
-> architecture, detector, configuration, metrics, and schema documentation.
+> **Status:** Superseded research record. Normative behavior now lives in the
+> [Analyses](../../analyses.md), [Dataflow guide](../../dataflow.md), architecture, detector, configuration, metrics, and schema documentation.
 > This file is retained only to audit the research and rollout rationale.
 >
 > **Decision:** Conditional go for a bounded, exact-edge Rust prototype. No-go
@@ -169,7 +169,7 @@ Configuration remains absent from generated `reforge.toml` until the Rust graph
 passes Phase 2. The provisional shape follows existing kebab-case config rules:
 
 ```toml
-[data-flow]
+[dataflow]
 mode = "off" # off | observe | policy
 max-hops = 4
 
@@ -202,7 +202,7 @@ are Phase 2 decisions, not assumptions to bake into Phase 1.
 ### Before schema publication
 
 Phases 0 through 2 keep graph structures internal and expose them only through
-tests and retained calibration artifacts. Do not add a `FindingKind`,
+tests and retained calibration artifacts. Do not add a `Rule`,
 `MetricId`, report field, CLI flag, or config key during the instrumentation
 spike.
 
@@ -365,9 +365,9 @@ Implementation batch A — contracts:
 - add resolved CLI/config models and strict validation;
 - add schema 22 flow coverage types;
 - add canonical metric IDs and manifests;
-- add `FindingKind::AdapterFlowBypass` and its construct, mechanism, action,
-  scope, approach, precision risk, issue family, and detector relations;
-- define stable finding identity and baseline behavior.
+- add `Rule::AdapterFlowBypass` with analysis ownership, family, subject kind,
+  languages, measurements, description, and guidance in `RuleMetadata`;
+- define stable Evidence and Issue identity plus baseline behavior.
 
 Implementation batch B — scan integration:
 
@@ -474,7 +474,7 @@ coverage contract. Otherwise keep it opt-in. Do not lower gates merely to ship.
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features
-cargo run -- scan . --progress never
+cargo run -p reforge -- analyze . --reproducible
 python3 docs/research/data-flow-signals/generate_report.py
 python3 /home/ubuntu/sample/Deep-Research-skills/skills/research-codex-zh/research/validate_json.py \
   -f docs/research/data-flow-signals/fields.yaml \

@@ -1,16 +1,47 @@
-churn = "auto"
-max-file-lines = 600
+version = 1
+
+[analysis]
+enabled = ["codebase"]
+
+[scope]
+include-hidden = false
+include-generated = false
+no-gitignore = false
+exclude-tests = false
 ignore-paths = [
   "assets/report-app.js",
   "web/report-app/src/vite-env.d.ts",
 ]
 
-[[suppressions]]
-kind = "dependency_hub"
-path = "src/main.rs"
-reason = "The binary crate root intentionally wires the CLI, scan, workflow, and output ownership boundaries."
+[codebase]
+preset = "balanced"
+churn = "auto"
+churn-window-days = 90
+max-file-lines = 600
+
+[dataflow.search]
+max-path-steps = 24
+max-function-hops = 8
+max-module-hops = 8
+max-paths-per-source = 100
+max-sinks-per-source = 100
+work-budget = 100000
+
+[dataflow.relay]
+min-function-hops = 4
+min-module-hops = 2
+min-relay-percent = 90
+
+[dataflow.fan-out]
+min-sinks = 4
+min-modules = 3
 
 [[suppressions]]
-kind = "dependency_hub"
-path = "src/detectors/similarity.rs"
-reason = "The similarity facade intentionally coordinates language parsing, token extraction, lossless indexing, exact comparison, and detector reporting modules."
+rule = "reforge.codebase.dependency_hub"
+path = "crates/reforge-engine/src/detectors/similarity.rs"
+reason = "The similarity facade intentionally coordinates parsing, indexing, comparison, and detector reporting."
+
+[[suppressions]]
+rule = "reforge.codebase.generic_bucket_drift"
+path = "crates/reforge-schema/src/lib.rs"
+reason = "The schema crate deliberately owns the small, cohesive public report contract in a single module."

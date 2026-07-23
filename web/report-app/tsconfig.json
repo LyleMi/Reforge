@@ -16,5 +16,12 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src", "test"]
+  "include": [
+    "src/main.tsx",
+    "src/reportApp.tsx",
+    "src/reportModel.ts",
+    "src/reportTypes.ts",
+    "src/vite-env.d.ts",
+    "test/reportModel.test.ts"
+  ]
 }

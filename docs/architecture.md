@@ -1,209 +1,50 @@
 # Architecture
 
-Reforge is a single Rust CLI crate. The scan pipeline observes source trees,
-collects raw metrics, runs detectors, groups atomic findings into decision
-units, projects coverage and agent context, and renders schema 24 reports.
+- `tools/reforge` is a thin CLI and configuration boundary.
+- `crates/reforge-engine` owns workspace indexing, execution planning,
+  Codebase and Dataflow analysis, evidence aggregation, and report creation.
+- `crates/reforge-unity-engine` independently owns Unity scanning, rules,
+  coverage, and report construction; it depends on the shared schema, not the
+  core engine.
+- `crates/reforge-schema` owns the strict schema 26 `Report`, stable identities,
+  typed witnesses, coverage, and baseline comparison.
+- `crates/reforge-output` owns human, JSON, YAML, SARIF, and embedded HTML
+  rendering.
+- `web/report-app` owns the offline HTML interface.
+- `tools/reforge-unity` is an experimental CLI over the independent Unity
+  engine and emits producer `reforge.unity`.
+- `tools/reforge-workflow` is an optional report consumer; it is not part of
+  analyzer execution.
 
-## Module Boundaries
+The engine builds one shared workspace index. Each selected source is walked,
+read, language-classified, and parsed once; Codebase and Dataflow consume the
+same indexed sources. The typed `Config` selects either or both analyses and
+owns scope, thresholds, policies, and suppressions.
 
-- `src/main.rs`: CLI entrypoint, config commands, progress/color/output routing,
-  baseline loading, new-finding gate evaluation, and broken-pipe handling.
-- `src/cli/`: Clap commands, scan argument groups, thresholds, output inference,
-  progress/color/churn modes, and value parsers.
-- `src/scan/`: scan orchestration, config discovery, tolerant source decoding,
-  source walking, stable-anchor projection, git churn, finding controls,
-  coverage/receipt projection, agent evidence, and final
-  `ScanReport` assembly.
-- `src/lang/`: Tree-sitter language adapters and shared syntax classification.
-- `src/model/`: schema 24 report data, finding/issue identity, coverage,
-  evidence subjects, raw metrics, dependency data, and Unity report data.
-- `src/pathing.rs`: shared portable display normalization for Windows verbatim,
-  UNC, and platform-native paths used by findings, policies, and suppressions.
-- `src/detectors/`: structural, similarity, unused-function, dependency,
-  concept-drift, documentation, and detector-owned exact Rust data-flow
-  analysis plus their manifest contracts.
-- `src/evidence_analysis.rs`: metric percentile context and compatible-finding
-  clustering without a ranking model.
-- `src/workflow.rs`: strict resumable artifacts, approval snapshots, direct
-  checks, rescans, and workflow state transitions.
-- `src/baseline.rs`: schema 24 baseline validation, stable-ID diffing,
-  `--show` selection, and new unsuppressed finding selection.
-- `src/unity.rs` and `src/unity/`: Unity project planning, text asset/GUID
-  indexing, asmdef analysis, and Unity-aware C# signals.
-- `src/output/`: human, HTML, JSON, YAML, and issue-oriented SARIF rendering.
-- `web/report-app`: React + TypeScript source for the embedded offline HTML
-  report.
+The public model starts at the report. An analysis is an execution selection
+and a Coverage key, not a wrapper around the report:
 
-`src/main.rs` re-exports some modules under compatibility names used by inline
-tests. These aliases are not public library API; Reforge is currently a binary
-crate.
-
-## Scan Flow
-
-1. Parse `reforge scan [OPTIONS] [PATH]` with Clap.
-2. Resolve the scan root and merge CLI values with an optional discovered or
-   explicit `reforge.toml`.
-3. Build a source plan with default generated/hidden/git-ignore exclusions,
-   explicit ignored paths, and test-scope controls.
-4. Read source files and collect basic file/directory observations plus parsed
-   Tree-sitter sources where supported.
-5. Run structural, unused-function, dependency-graph, optional exact Rust
-   data-flow, concept-drift, similar-function, documentation, and applicable
-   Unity detectors. `off` skips graph construction entirely.
-6. Merge structural function/type metrics and the resolved source dependency
-   graph into the observation model.
-7. Collect git churn when enabled. Missing history in `auto` mode degrades the
-   churn observation rather than failing the scan.
-8. Summarize raw metrics into project percentiles and attach normalized metric
-   context to findings.
-9. Remove composite summaries, apply detector filters and suppressions, and
-   record `suppression_summary`.
-10. Cluster compatible atomic findings into stable `ri4-...` issues while
-    retaining their stable `rf4-...` evidence IDs.
-11. Build `agent_evidence` from dependency closure, unresolved local edges,
-    evidence dispersion, and direct/reachable tests.
-12. Project coverage manifests, run-specific coverage summary, detector
-    execution receipts, and raw metric coverage.
-13. Render human, HTML, JSON, YAML, or SARIF output to stdout or
-    `--output-file`.
-14. When a schema 24 baseline is present, embed finding and issue
-    added/removed/changed/unchanged diffs, provenance attribution, and lineage
-    candidates in the report. Fail closed after output on unaccepted
-    engine/policy/config drift, then apply the selected finding gate.
-
-## Data Contract
-
-`ScanArgs` is the resolved execution input. `scan_report` produces a schema 24
-`ScanReport`. The serialized layers are:
-
-- observations: `stats`, `raw_metrics`, `metrics_summary`,
-  `raw_metric_manifest`, and `raw_metric_coverage`;
-- topology and project context: `dependency_graph`, `agent_evidence`, and
-  `unity_project`;
-- observability: `coverage_manifest`, `coverage_summary`, `flow_analysis`, and
-  `detector_execution`;
-- decisions and evidence: `issues`, `findings`, `detector_manifest`, and
-  `suppression_summary`.
-
-Findings carry metric values, thresholds, normalized context, construct,
-mechanism, message, recommendation, and related locations. Issues carry a
-stable canonical subject, refactor action, family, and member evidence IDs.
-Flow findings additionally carry a compact typed witness; the full internal
-graph is never serialized.
-
-## Exact Rust Data-Flow Boundary
-
-`src/detectors/data_flow/` owns deterministic nodes/edges, Rust free-function
-and module resolution, lexical def-use extraction, bounded call composition,
-policy matching, and capability receipts. The analysis retains only assignment,
-argument-to-parameter, and return-to-result edges it can prove. Call/return
-search state tracks call sites, so recursive components are bounded without
-enumerating cyclic paths. At most one shortest deterministic path is retained
-per source/sink/policy tuple. In Cargo workspaces, the nearest owning
-`Cargo.toml` scopes internal symbol resolution so equal `crate::...` symbols in
-different member crates cannot collide; witnesses retain source-level symbols.
-
-The layer is deliberately not a whole-program taint engine. It does not model
-heap aliases, fields, methods, dynamic dispatch, external crates, runtime
-middleware, persistence, queues, or service hops. Unsupported constructs add
-coverage reasons and cannot appear in a conservative finding witness.
-
-Schema 24 does not serialize priority, severity, hotspot ranking, scoring
-policy, or reliability scores. Those legacy model and CLI fields are not kept
-in the Rust implementation. Consumers choose work using the evidence,
-coverage, project goals, and their own policy.
-
-See [Report Schema](report-schema.md) for the complete serialized contract and
-[Agent Workflows](agent-workflows.md) for the boundary between scanner
-facts and proposed agent orchestration.
-
-## Parser Integration
-
-Tree-sitter support is routed through language adapters. Structural and
-similarity analysis currently covers Rust, JavaScript, TypeScript/TSX, Vue SFC
-script blocks, Python, Go, Java, C#, Kotlin, PHP, Ruby, Bash, and PowerShell.
-Bash and PowerShell are structure/similarity-only in the first version; the
-dependency graph and unused-function detectors intentionally avoid script call
-semantics.
-
-Files with parse failures can still contribute language-neutral file,
-directory, debt-marker, dependency, and documentation evidence. Coverage
-receipts record parse failures and unobservable reasons so consumers do not
-mistake unsupported or partial analysis for an observed absence.
-
-## Stable Identity and Baselines
-
-Finding IDs use detector kind plus an explicit checkout-relative semantic
-anchor. Issue IDs use issue family and an anchor-backed canonical subject.
-Display lines, messages, metric values, and traversal order are excluded so the
-same evidence survives harmless comments, formatting, and checkout relocation.
-
-Schema 24 baselines expose finding and issue added, removed, changed, and
-unchanged states. Same-ID semantic changes list their changed fields. Each
-change is attributed to engine, configuration, source, mixed, or unknown
-provenance, and removed/added pairs may produce deterministic lineage
-candidates. `--baseline-mode new` gates added findings; `all` gates every
-current finding. Human and HTML views render the embedded comparison model.
-
-## Progress and Output
-
-Progress is abstracted behind `ProgressSink`. `NoopProgress` is used when
-progress is disabled. `StderrProgress` writes dynamic terminal progress or
-coarser line-oriented progress depending on whether stderr is a TTY.
-
-Human, HTML, and SARIF output derive from the same `ScanReport` as JSON and
-YAML. JSON and YAML preserve atomic findings and issues. SARIF emits issue
-decision units at `note` level with stable issue fingerprints. Color applies
-only to human output.
-
-## HTML Report App
-
-`--output html` and `.html`/`.htm` output-file extensions produce one offline
-artifact. The packaging flow is:
-
-1. The Rust scanner builds a schema 24 `ScanReport`.
-2. HTML output serializes the report as JSON into an HTML shell.
-3. The shell inlines the compiled React bundle and CSS.
-4. The browser renders locally without a server or network dependency.
-
-Frontend source lives under `web/report-app`. After UI changes run:
-
-```powershell
-cd web\report-app
-npm ci
-npm run build
+```text
+Report
+├── Coverage by analysis
+│   ├── language counts
+│   ├── rule execution
+│   └── limitations
+└── Issue
+    └── Evidence
+        ├── Measurement
+        ├── Location
+        └── optional Flow witness
 ```
 
-Commit frontend source together with refreshed `assets/report-app.js` and
-`assets/report-app.css`. Update the report schema documentation and frontend
-types in the same change when serialized fields change.
+Detectors produce `DetectedEvidence` with a semantic anchor and no internal
+report ID. One static `RuleSpec` registry supplies analysis ownership,
+aggregation family, output subject kind, input observation source, language
+support, measurements, and a rule-specific description. Families
+are an aggregation and identity mechanism, not an additional user workflow:
+after suppression, the engine groups Evidence by family and Subject into
+schema 26 Issues; schema projection alone creates `re6-*` Evidence IDs.
 
-## Extension Points
-
-To add a detector:
-
-1. Add a `FindingKind` and stable serialized name.
-2. Implement the detector in the owning detector family.
-3. Emit declared metrics with meaningful IDs, units, thresholds, and related
-   locations.
-4. Add manifest construct, mechanism, action, entity scope, approach,
-   supported-language, precision-risk, issue-family, and evidence-role data.
-5. Wire execution and coverage receipts into the scan.
-6. Add focused detector, issue-clustering, output, and documentation tests.
-
-To add a language:
-
-1. Add the Tree-sitter dependency and language adapter.
-2. Define function, type, import, public-item, complexity, and test constructs.
-3. Update supported-language manifest data and coverage expectations. Keep
-   detectors out of the language manifest when the language has only partial
-   semantic support.
-4. Add parsing, metric, detector, dependency-resolution, and failure tests.
-
-To change report shape:
-
-1. Update `SCAN_REPORT_SCHEMA_VERSION`.
-2. Update serializable model types and baseline validation.
-3. Update JSON/YAML, human, SARIF, and HTML consumers as applicable.
-4. Update `docs/report-schema.md`, this architecture guide, and agent skills.
-5. Add zero-finding and nonzero-finding report contract tests.
+The engine returns the public `Report` directly. Debug metrics and Flow IR take
+separate explicit sidecar paths and never enter the report. Flow IR is only
+materialized when `--flow-ir-output` is requested.
