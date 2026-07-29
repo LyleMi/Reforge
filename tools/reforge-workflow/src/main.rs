@@ -28,7 +28,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Consume schema 26 reports and create an Imported run.
+    /// Consume schema 27 reports and create an Imported run.
     Start(StartArgs),
     /// Import and validate a complete plan artifact.
     Plan(PlanArgs),
@@ -187,10 +187,9 @@ fn mark_applied(args: RunArgs) -> Result<()> {
     let mut run = load_run(&args.run)?;
     validation::require_phase(&run, Phase::Approved)?;
     let plan: PlanArtifact = read_json(&args.run.join("plan.json"))?;
+    validation::plan(&run, &plan)?;
     let approval: ApprovalArtifact = read_json(&args.run.join("approval.json"))?;
-    if approval.plan_hash != json_hash(&plan)? {
-        bail!("plan.json changed after approval");
-    }
+    validate_approval(&plan, &approval)?;
     let current = snapshot(Path::new(&run.workspace_root), &args.run)?;
     let changed = changed_paths(&approval.workspace_snapshot, &current);
     enforce_write_set(&changed, &approval.write_set)?;
@@ -219,6 +218,7 @@ fn check(args: CheckArgs) -> Result<()> {
     )?;
     let success = result.success;
     let mut checks: ChecksArtifact = read_json(&args.run.join("checks.json"))?;
+    validate_artifact_version(checks.artifact_schema_version)?;
     checks.checks.push(result);
     write_json(&args.run.join("checks.json"), &checks)?;
     if !success {
@@ -231,7 +231,9 @@ fn check(args: CheckArgs) -> Result<()> {
 fn verify(args: VerifyArgs) -> Result<()> {
     let mut run = load_run(&args.run)?;
     validation::require_phase(&run, Phase::Applied)?;
-    validate_application(&run, &args.run)?;
+    let plan: PlanArtifact = read_json(&args.run.join("plan.json"))?;
+    validation::plan(&run, &plan)?;
+    validate_application(&run, &args.run, &plan)?;
     let fresh = load_and_merge(&args.reports)?;
     for report in &fresh {
         if report.target.workspace_identity != run.workspace_identity {
@@ -239,9 +241,9 @@ fn verify(args: VerifyArgs) -> Result<()> {
         }
     }
     let initial = load_stored_reports(&args.run, &run.initial_reports)?;
-    let plan: PlanArtifact = read_json(&args.run.join("plan.json"))?;
     let checks: ChecksArtifact = read_json(&args.run.join("checks.json"))?;
-    let changes = verification::issue_changes(&run, &plan, &fresh);
+    validate_artifact_version(checks.artifact_schema_version)?;
+    let changes = verification::issue_changes(&run, &plan, &initial, &fresh);
     let mut failed = Vec::new();
     let mut needs_input = Vec::new();
     if !changes.remaining.is_empty() {
@@ -254,6 +256,12 @@ fn verify(args: VerifyArgs) -> Result<()> {
         failed.push(format!(
             "{} new issue(s) appeared",
             changes.new_issues.len()
+        ));
+    }
+    if !changes.unknown.is_empty() {
+        needs_input.push(format!(
+            "{} issue(s) have unknown baseline state",
+            changes.unknown.len()
         ));
     }
     checks::evaluate(&plan, &checks, &mut failed, &mut needs_input);
@@ -279,6 +287,7 @@ fn verify(args: VerifyArgs) -> Result<()> {
             resolved_issue_ids: changes.resolved,
             remaining_issue_ids: changes.remaining,
             new_issue_ids: changes.new_issues,
+            unknown_issue_ids: changes.unknown,
         },
     )?;
     run.phase = Phase::Verified;
@@ -309,23 +318,35 @@ fn status(args: RunArgs) -> Result<()> {
 fn validate_run(args: RunArgs) -> Result<()> {
     let run = load_run(&args.run)?;
     let _ = load_stored_reports(&args.run, &run.initial_reports)?;
+    let mut plan = None;
     if !matches!(run.phase, Phase::Imported) {
-        let plan: PlanArtifact = read_json(&args.run.join("plan.json"))?;
-        validation::plan(&run, &plan)?;
+        let artifact: PlanArtifact = read_json(&args.run.join("plan.json"))?;
+        validation::plan(&run, &artifact)?;
+        plan = Some(artifact);
     }
     if matches!(
         run.phase,
         Phase::Approved | Phase::Applied | Phase::Verified
     ) {
-        let _: ApprovalArtifact = read_json(&args.run.join("approval.json"))?;
+        let approval: ApprovalArtifact = read_json(&args.run.join("approval.json"))?;
+        validate_approval(
+            plan.as_ref().context("plan is required after Imported")?,
+            &approval,
+        )?;
     }
     if matches!(run.phase, Phase::Applied | Phase::Verified) {
-        let _: ApplicationArtifact = read_json(&args.run.join("application.json"))?;
+        validate_application(
+            &run,
+            &args.run,
+            plan.as_ref().context("plan is required after Imported")?,
+        )?;
     }
     if run.phase == Phase::Verified {
-        let _: VerificationArtifact = read_json(&args.run.join("verification.json"))?;
+        let verification: VerificationArtifact = read_json(&args.run.join("verification.json"))?;
+        validate_artifact_version(verification.artifact_schema_version)?;
     }
-    let _: ChecksArtifact = read_json(&args.run.join("checks.json"))?;
+    let checks: ChecksArtifact = read_json(&args.run.join("checks.json"))?;
+    validate_artifact_version(checks.artifact_schema_version)?;
     println!("Workflow artifacts are valid (phase {:?}).", run.phase);
     Ok(())
 }
@@ -397,43 +418,48 @@ mod tests {
     }
 
     fn report(workspace: &str, message: &str, status: CoverageStatus) -> Report {
-        let issue = Issue::new(
-            "codebase",
-            "reforge.codebase.large_file",
-            Subject::File {
-                path: "src/lib.rs".into(),
+        let issue = Issue::new(reforge_schema::IssueInput {
+            kind: reforge_schema::IssueKind::Advisory,
+            analysis: "codebase".into(),
+            family: "reforge.codebase.large_file".into(),
+            subject: Subject::File {
+                entity: reforge_schema::EntityRef::new("file", "src/lib.rs", None),
             },
-            ("Large file", "Split it"),
-            vec![Evidence::new(
+            title: "Large file".into(),
+            guidance: "Split it".into(),
+            evidence: vec![Evidence::new(
                 "reforge.codebase.large_file",
                 "src/lib.rs",
                 message,
             )],
-        );
-        Report::new(
-            Producer {
+        });
+        let coverage = BTreeMap::from([(
+            "codebase".into(),
+            AnalysisCoverage {
+                status,
+                scanned_files: 1,
+                languages: BTreeMap::new(),
+                rules: BTreeMap::new(),
+                limitations: Vec::new(),
+            },
+        )]);
+        let issues = vec![issue];
+        Report::new(reforge_schema::ReportInput {
+            producer: Producer {
                 name: "reforge.analyze".into(),
                 version: "test".into(),
                 revision: None,
             },
-            Target {
+            target: Target {
                 root: "/tmp/work".into(),
                 workspace_identity: workspace.into(),
                 source_revision: Some("revision".into()),
             },
-            SuppressionSummary::default(),
-            BTreeMap::from([(
-                "codebase".into(),
-                AnalysisCoverage {
-                    status,
-                    scanned_files: 1,
-                    languages: BTreeMap::new(),
-                    rules: BTreeMap::new(),
-                    limitations: Vec::new(),
-                },
-            )]),
-            vec![issue],
-        )
+            provenance: reforge_schema::default_provenance(&coverage, &issues),
+            suppression: SuppressionSummary::default(),
+            coverage,
+            issues,
+        })
     }
 
     #[test]

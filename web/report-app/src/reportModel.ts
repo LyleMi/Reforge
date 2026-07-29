@@ -1,6 +1,6 @@
 import type { Report, Subject } from "./reportTypes";
 
-export const REPORT_SCHEMA_VERSION = 26;
+export const REPORT_SCHEMA_VERSION = 27;
 
 export function validateReport(value: unknown): Report {
   if (!value || typeof value !== "object") {
@@ -16,17 +16,25 @@ export function validateReport(value: unknown): Report {
 
 function validateEnvelope(report: Partial<Report> & Record<string, unknown>): void {
   if (report.schema_version !== REPORT_SCHEMA_VERSION) {
-    throw new Error(`Unsupported Reforge report schema ${String(report.schema_version ?? "missing")}; this report app requires schema 26.`);
+    throw new Error(`Unsupported Reforge report schema ${String(report.schema_version ?? "missing")}; this report app requires schema 27.`);
   }
-  if (!report.producer?.name || !report.target?.workspace_identity || !Array.isArray(report.issues) || !report.coverage || Array.isArray(report.coverage)) {
-    throw new Error("The schema 26 report envelope is incomplete.");
+  if (
+    !report.producer?.name
+    || !report.target?.workspace_identity
+    || report.provenance?.identity_scheme !== "reforge-identity-v7"
+    || !report.provenance.scope_digest
+    || !Array.isArray(report.issues)
+    || !report.coverage
+    || Array.isArray(report.coverage)
+  ) {
+    throw new Error("The schema 27 report envelope is incomplete.");
   }
 }
 
 function validateRemovedFields(report: Record<string, unknown>): void {
   for (const removed of ["profile", "extensions", "findings"]) {
     if (removed in report) {
-      throw new Error(`Schema 26 reports must not contain ${removed}.`);
+      throw new Error(`Schema 27 reports must not contain ${removed}.`);
     }
   }
 }
@@ -47,7 +55,7 @@ function validateMeasurements(report: Report): void {
         const invalidThreshold = measurement.threshold !== undefined
           && typeof measurement.threshold !== "number";
         if (invalidValue || invalidThreshold) {
-          throw new Error("Schema 26 measurements must use JSON numbers.");
+          throw new Error("Schema 27 measurements must use JSON numbers.");
         }
       }
     }
@@ -66,7 +74,7 @@ export function parseEmbeddedReport(): { report?: Report; error?: string } {
 
 export function subjectLabel(subject: Subject): string {
   if (subject.kind === "repository") return "repository";
-  if (subject.kind === "symbol") return `${subject.symbol} in ${subject.path}`;
+  if (subject.kind === "symbol") return `${subject.entity.symbol ?? subject.entity.key} in ${subject.entity.path}`;
   if (subject.kind === "group") return `${subject.members.length} related items`;
-  return subject.path;
+  return subject.entity.path;
 }

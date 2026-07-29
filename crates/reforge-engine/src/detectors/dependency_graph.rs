@@ -127,6 +127,7 @@ fn dependency_cycle_detections(graph: &DependencyGraph) -> Vec<DetectedEvidence>
                     path: path.clone(),
                     line: 1,
                     name: Some("cycle member".to_string()),
+                    entity_key: None,
                 })
                 .collect::<Vec<_>>();
 
@@ -159,7 +160,8 @@ fn dependency_cycle_detections(graph: &DependencyGraph) -> Vec<DetectedEvidence>
                         ),
                     ],
                 )
-                .with_related_locations(related_locations),
+                .with_related_locations(related_locations)
+                .with_group_subject(),
             )
         })
         .collect()
@@ -241,25 +243,28 @@ fn dependency_hub_detection(
         .copied()
         .unwrap_or(0);
 
-    Some(DetectedEvidence::from(DetectedEvidenceInput::new(
-        Rule::DependencyHub,
-        node.path.clone(),
-        Some(1),
-        dependency_hub_message(
-            fan_in,
-            fan_out,
-            transitive_fan_in,
-            transitive_fan_out,
-            dependency_depth,
-        ),
-        dependency_hub_metrics(
-            fan_in,
-            fan_out,
-            transitive_fan_in,
-            transitive_fan_out,
-            dependency_depth,
-        ),
-    )))
+    Some(DetectedEvidence::from(
+        DetectedEvidenceInput::new(
+            Rule::DependencyHub,
+            node.path.clone(),
+            Some(1),
+            dependency_hub_message(
+                fan_in,
+                fan_out,
+                transitive_fan_in,
+                transitive_fan_out,
+                dependency_depth,
+            ),
+            dependency_hub_metrics(
+                fan_in,
+                fan_out,
+                transitive_fan_in,
+                transitive_fan_out,
+                dependency_depth,
+            ),
+        )
+        .with_file_subject(),
+    ))
 }
 
 fn is_dependency_hub(fan_in: usize, fan_out: usize, context: &HubContext) -> bool {

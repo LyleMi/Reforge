@@ -27,6 +27,7 @@ pub(in crate::detectors::structure) fn collect_file_naming_style(
         path: file.display_path.clone(),
         line: 1,
         name: Some(stem),
+        entity_key: None,
     });
 }
 
@@ -70,7 +71,8 @@ pub(in crate::detectors::structure) fn file_naming_drift_detections(
                     "naming styles",
                 )],
             )
-            .with_related_locations(related_locations),
+            .with_related_locations(related_locations)
+            .with_directory_subject(),
         ));
     }
 
@@ -289,7 +291,7 @@ pub(in crate::detectors::structure) fn directory_drift_detections(
                     threshold,
                     "concepts",
                 )],
-            )));
+            ).with_directory_subject()));
         }
     }
     detections
@@ -324,6 +326,7 @@ pub(in crate::detectors::structure) fn group_occurrences(
                 path: occurrence.path.clone(),
                 line: occurrence.line,
                 name: occurrence.name.clone(),
+                entity_key: None,
             })
             .collect::<Vec<_>>();
         let metrics = vec![DetectedMeasurement::threshold(
@@ -340,7 +343,8 @@ pub(in crate::detectors::structure) fn group_occurrences(
                 message(&key, group.len()),
                 metrics,
             )
-            .with_related_locations(related_locations),
+            .with_related_locations(related_locations)
+            .with_group_subject(),
         );
         detections.push(detection);
     }

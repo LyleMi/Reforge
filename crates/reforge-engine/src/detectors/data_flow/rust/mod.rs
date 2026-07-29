@@ -9,7 +9,7 @@ use crate::detectors::similarity::ParsedSourceFile;
 use crate::lang::LanguageFamily;
 use crate::model::{FlowEdgeKind, FlowLocation, FlowNodeKind, FlowResolution};
 
-use super::model::{CallRecord, CallTransition, FlowEdge, FlowGraph, FunctionRecord, NodeId};
+use super::model::{CallTransition, FlowEdge, FlowGraph, FunctionRecord, NodeId};
 use resolution::{canonical_path, file_module, resolution_key, resolve_function, stable_path};
 
 struct RustFileContext<'a> {
@@ -100,6 +100,8 @@ fn index_function(
     );
     graph.functions.push(FunctionRecord {
         symbol: symbol.clone(),
+        public: has_visibility_modifier(node),
+        owner: None,
         crate_key: context.crate_key.to_string(),
         module: module.to_string(),
         start_byte: node.start_byte(),
@@ -114,6 +116,12 @@ fn index_function(
         .entry(resolution_key(context.crate_key, &symbol))
         .or_default()
         .push(function_index);
+}
+
+fn has_visibility_modifier(node: Node<'_>) -> bool {
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .any(|child| child.kind() == "visibility_modifier")
 }
 
 struct IndexedParameters {
@@ -186,7 +194,7 @@ fn index_use(context: &RustFileContext<'_>, node: Node<'_>, module: &str, graph:
         return;
     };
     if path.contains('{') || path.contains('*') {
-        graph.unresolved("unsupported grouped or glob Rust import");
+        graph.unresolved("rust", "unsupported grouped or glob Rust import");
         return;
     }
     let (target, alias) = if let Some((target, alias)) = path.rsplit_once(" as ") {

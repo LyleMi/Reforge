@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Approval-gated workflow for schema 26 Reforge reports"
+description = "Approval-gated workflow for schema 27 Reforge reports"
 
 [dependencies]
 anyhow.workspace = true

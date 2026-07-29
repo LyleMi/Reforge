@@ -32,6 +32,7 @@ pub(super) fn collect_compatibility_paths(
                 path: file.display_path.clone(),
                 line: index + 1,
                 name: Some(occurrence_name),
+                entity_key: None,
             });
     }
 }
@@ -75,7 +76,8 @@ pub(super) fn stale_compatibility_path_detections(
                     "markers",
                 )],
             )
-            .with_related_locations(group.iter().map(related_location).collect()),
+            .with_related_locations(group.iter().map(related_location).collect())
+            .with_group_subject(),
         ));
     }
 

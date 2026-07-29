@@ -40,8 +40,6 @@ const GRAPH: &[&str] = &[
     "csharp",
 ];
 const FLOW: &[&str] = &["rust", "javascript", "typescript", "tsx", "python"];
-const RUST: &[&str] = &["rust"];
-const REPOSITORY: &[&str] = &["repository"];
 const PATHS: &[&str] = &["language_neutral_paths"];
 
 const fn seed(
@@ -67,6 +65,7 @@ const fn seed_observation_source(kind: Rule, subject: SubjectKind) -> Observatio
         K::SimilarFunctions => O::FunctionPairs,
         K::DataClump | K::ParallelImplementation | K::ShadowedAbstraction => O::Functions,
         K::DuplicateTypeShape => O::Types,
+        K::LargeType => O::Types,
         K::DependencyCycle | K::DependencyHub => O::DependencyNodes,
         K::AdapterFlowBypass | K::ExcessiveRelay | K::FlowFanOut => O::DataflowSources,
         _ => match subject {
@@ -111,14 +110,7 @@ const fn rule_description(kind: Rule) -> &'static str {
         K::AdapterFlowBypass | K::ExcessiveRelay | K::FlowFanOut => {
             dataflow_rule_description(kind)
         }
-        K::StaleCompatibilityPath
-        | K::MissingUserGuide
-        | K::MissingReportSchemaDocs
-        | K::MissingMetricsModelDocs
-        | K::MissingArchitectureDocs
-        | K::StaleCliDocumentation
-        | K::StaleSchemaDocumentation
-        | K::DependencyCycle
+        K::StaleCompatibilityPath | K::DependencyCycle
         | K::DependencyHub => codebase_repository_description(kind),
     }
 }
@@ -226,22 +218,6 @@ const fn codebase_repository_description(kind: Rule) -> &'static str {
         K::StaleCompatibilityPath => {
             "Reports compatibility paths that lack an explicit owner or retirement plan."
         }
-        K::MissingUserGuide => "Reports missing installation, usage, output, or troubleshooting documentation.",
-        K::MissingReportSchemaDocs => {
-            "Reports a missing public report-field and compatibility reference."
-        }
-        K::MissingMetricsModelDocs => {
-            "Reports missing documentation for measurements, Evidence, Issues, or Coverage."
-        }
-        K::MissingArchitectureDocs => {
-            "Reports missing documentation for analyzer execution and extension boundaries."
-        }
-        K::StaleCliDocumentation => {
-            "Reports documented CLI surfaces that omit current commands or flags."
-        }
-        K::StaleSchemaDocumentation => {
-            "Reports schema documentation that omits current report fields."
-        }
         K::DependencyCycle => {
             "Reports cycles in the resolved project-local source dependency graph."
         }
@@ -265,7 +241,7 @@ const RULE_SPEC_SEEDS: &[RuleSpecSeed] = &[
     seed(K::LargePublicSurface, ANALYSIS_CODEBASE, (F::ModuleSurface, S::File), (ALL_PARSED, &[M::FilePublicItems])),
     seed(K::ImportHeavyFile, ANALYSIS_CODEBASE, (F::ModuleSurface, S::File), (ALL_PARSED, &[M::FileImports])),
     seed(K::FunctionProliferation, ANALYSIS_CODEBASE, (F::ResponsibilityDecomposition, S::File), (ALL_PARSED, &[M::FileFunctionCount, M::FileFunctionsPerHundredLines, M::FileSmallFunctionRatio])),
-    seed(K::UnusedFunction, ANALYSIS_CODEBASE, (F::DeadCode, S::File), (UNUSED, &[M::FunctionReferences])),
+    seed(K::UnusedFunction, ANALYSIS_CODEBASE, (F::DeadCode, S::Symbol), (UNUSED, &[M::FunctionReferences])),
     seed(K::RepeatedLiteral, ANALYSIS_CODEBASE, (F::LiteralOwnership, S::Group), (ALL_PARSED, &[M::GroupSize])),
     seed(K::RepeatedErrorPattern, ANALYSIS_CODEBASE, (F::ErrorHandlingDuplication, S::Group), (ALL_PARSED, &[M::GroupSize])),
     seed(K::TestDuplication, ANALYSIS_CODEBASE, (F::TestSupport, S::Group), (ALL_PARSED, &[M::GroupSize])),
@@ -280,16 +256,10 @@ const RULE_SPEC_SEEDS: &[RuleSpecSeed] = &[
     seed(K::FixtureFactoryDrift, ANALYSIS_CODEBASE, (F::TestSupport, S::Group), (ALL_PARSED, &[M::GroupSize])),
     seed(K::GenericBucketDrift, ANALYSIS_CODEBASE, (F::DirectoryOrganization, S::Directory), (ALL_PARSED, &[M::GroupSize])),
     seed(K::AdapterBoundaryBypass, ANALYSIS_CODEBASE, (F::BoundaryIntegrity, S::Group), (ALL_PARSED, &[M::GroupSize])),
-    seed(K::AdapterFlowBypass, ANALYSIS_DATAFLOW, (F::BoundaryIntegrity, S::Group), (RUST, &[M::FlowModuleHops, M::FlowCallEdges, M::FlowPathSteps, M::FlowUnresolvedEdges, M::FlowPolicyConformingPaths, M::FlowPolicyBypassPaths])),
-    seed(K::ExcessiveRelay, ANALYSIS_DATAFLOW, (F::DataflowOwnership, S::Group), (FLOW, &[M::FlowPathSteps, M::FlowFunctionHops, M::FlowModuleHops, M::FlowRelayRatioPercent])),
-    seed(K::FlowFanOut, ANALYSIS_DATAFLOW, (F::DataflowOwnership, S::Group), (FLOW, &[M::FlowSinkCount, M::FlowBranchCount, M::FlowModuleCount, M::FlowMaxPathSteps])),
+    seed(K::AdapterFlowBypass, ANALYSIS_DATAFLOW, (F::BoundaryIntegrity, S::Symbol), (FLOW, &[M::FlowModuleHops, M::FlowCallEdges, M::FlowPathSteps, M::FlowUnresolvedEdges, M::FlowPolicyConformingPaths, M::FlowPolicyBypassPaths])),
+    seed(K::ExcessiveRelay, ANALYSIS_DATAFLOW, (F::DataflowOwnership, S::Symbol), (FLOW, &[M::FlowPathSteps, M::FlowFunctionHops, M::FlowModuleHops, M::FlowRelayRatioPercent])),
+    seed(K::FlowFanOut, ANALYSIS_DATAFLOW, (F::DataflowOwnership, S::Symbol), (FLOW, &[M::FlowSinkCount, M::FlowBranchCount, M::FlowModuleCount, M::FlowMaxPathSteps])),
     seed(K::StaleCompatibilityPath, ANALYSIS_CODEBASE, (F::CompatibilityRetirement, S::Group), (ALL_PARSED, &[M::GroupSize])),
-    seed(K::MissingUserGuide, ANALYSIS_CODEBASE, (F::DocumentationIntegrity, S::Repository), (REPOSITORY, &[M::DocumentationMissingUserTopics])),
-    seed(K::MissingReportSchemaDocs, ANALYSIS_CODEBASE, (F::DocumentationIntegrity, S::Repository), (REPOSITORY, &[M::DocumentationRisk])),
-    seed(K::MissingMetricsModelDocs, ANALYSIS_CODEBASE, (F::DocumentationIntegrity, S::Repository), (REPOSITORY, &[M::DocumentationRisk])),
-    seed(K::MissingArchitectureDocs, ANALYSIS_CODEBASE, (F::DocumentationIntegrity, S::Repository), (REPOSITORY, &[M::DocumentationRisk])),
-    seed(K::StaleCliDocumentation, ANALYSIS_CODEBASE, (F::DocumentationIntegrity, S::Repository), (REPOSITORY, &[M::DocumentationMissingCliFlags])),
-    seed(K::StaleSchemaDocumentation, ANALYSIS_CODEBASE, (F::DocumentationIntegrity, S::Repository), (REPOSITORY, &[M::DocumentationMissingSchemaFields])),
     seed(K::DependencyCycle, ANALYSIS_CODEBASE, (F::DependencyTopology, S::Group), (GRAPH, &[M::DependencyCycleFiles, M::DependencyCycleEdges, M::DependencyCycleDensityPercent])),
     seed(K::DependencyHub, ANALYSIS_CODEBASE, (F::DependencyTopology, S::File), (GRAPH, &[M::DependencyDepth, M::DependencyInstabilityPercent, M::DependencyFanOut, M::DependencyFanIn, M::DependencyTransitiveFanOut, M::DependencyTransitiveFanIn])),
 ];

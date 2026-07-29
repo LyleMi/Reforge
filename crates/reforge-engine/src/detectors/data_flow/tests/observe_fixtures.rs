@@ -10,11 +10,11 @@ fn dynamic_frontends_use_static_imports_to_disambiguate_project_calls() {
             ),
             parsed(
                 "/project/src/right.js",
-                "function relay(x){ const used=x; }",
+                "export function relay(x){ const used=x; }",
             ),
             parsed(
                 "/project/src/wrong.js",
-                "function relay(x){ const used=x; }",
+                "export function relay(x){ const used=x; }",
             ),
         ],
         vec![

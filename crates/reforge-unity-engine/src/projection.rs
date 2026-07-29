@@ -21,15 +21,21 @@ fn project_issues(detections: Vec<Detection>) -> Vec<Issue> {
 fn detection_subject(kind: SubjectKind, detection: &Detection) -> Subject {
     match kind {
         SubjectKind::File => Subject::File {
-            path: detection.path.clone(),
+            entity: EntityRef::new("unity:file", detection.path.clone(), None),
         },
         SubjectKind::Symbol => Subject::Symbol {
-            path: detection.path.clone(),
-            symbol: detection
-                .related
-                .first()
-                .map(|(_, name)| name.clone())
-                .unwrap_or_else(|| "Unity type".into()),
+            entity: {
+                let symbol = detection
+                    .related
+                    .first()
+                    .map(|(_, name)| name.clone())
+                    .unwrap_or_else(|| "Unity type".into());
+                EntityRef::new(
+                    format!("unity:symbol:{symbol}"),
+                    detection.path.clone(),
+                    Some(symbol),
+                )
+            },
         },
         SubjectKind::Group => Subject::Group {
             members: related_members(&detection.related),
@@ -37,10 +43,16 @@ fn detection_subject(kind: SubjectKind, detection: &Detection) -> Subject {
     }
 }
 
-fn related_members(related: &[(String, String)]) -> Vec<String> {
+fn related_members(related: &[(String, String)]) -> Vec<EntityRef> {
     related
         .iter()
-        .map(|(path, name)| format!("{path}#{name}"))
+        .map(|(path, name)| {
+            EntityRef::new(
+                format!("unity:symbol:{name}"),
+                path.clone(),
+                Some(name.clone()),
+            )
+        })
         .collect()
 }
 
@@ -51,7 +63,11 @@ fn project_evidence(detection: Detection) -> Evidence {
         format!(
             "{}:{}",
             detection.rule,
-            related_members(&detection.related).join("|")
+            related_members(&detection.related)
+                .iter()
+                .map(|member| format!("{}:{}", member.path, member.key))
+                .collect::<Vec<_>>()
+                .join("|")
         )
     };
     let mut evidence = Evidence::new(
@@ -85,20 +101,19 @@ fn project_evidence(detection: Detection) -> Evidence {
 
 fn project_issue(family: String, subject: Subject, evidence: Vec<Evidence>) -> Issue {
     let family_name = family.rsplit('.').next().unwrap_or("Unity issue");
-    Issue::new(
-        ANALYSIS_UNITY,
-        family.clone(),
-        subject.clone(),
-        (
-            format!(
-                "{}: {}",
-                family_name.replace('_', " "),
-                subject.display_name()
-            ),
-            guidance(family_name),
+    Issue::new(reforge_schema::IssueInput {
+        kind: reforge_schema::IssueKind::Advisory,
+        analysis: ANALYSIS_UNITY.into(),
+        family: family.clone(),
+        subject: subject.clone(),
+        title: format!(
+            "{}: {}",
+            family_name.replace('_', " "),
+            subject.display_name()
         ),
+        guidance: guidance(family_name).into(),
         evidence,
-    )
+    })
 }
 
 macro_rules! detection {

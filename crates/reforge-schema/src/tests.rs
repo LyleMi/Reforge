@@ -14,30 +14,35 @@ fn coverage() -> BTreeMap<String, AnalysisCoverage> {
 }
 
 fn report(evidence: Vec<Evidence>) -> Report {
-    let issue = Issue::new(
-        "codebase",
-        "reforge.codebase.large_file",
-        Subject::File {
-            path: "./src\\lib.rs".into(),
+    let issue = Issue::new(IssueInput {
+        kind: IssueKind::Advisory,
+        analysis: "codebase".into(),
+        family: "reforge.codebase.large_file".into(),
+        subject: Subject::File {
+            entity: EntityRef::new("file", "./src\\lib.rs", None),
         },
-        ("Large file: src/lib.rs", "Split cohesive responsibilities."),
+        title: "Large file: src/lib.rs".into(),
+        guidance: "Split cohesive responsibilities.".into(),
         evidence,
-    );
-    Report::new(
-        Producer {
+    });
+    let coverage = coverage();
+    let issues = vec![issue];
+    Report::new(ReportInput {
+        producer: Producer {
             name: "reforge.analyze".into(),
             version: "1".into(),
             revision: None,
         },
-        Target {
+        target: Target {
             root: "/tmp/checkout".into(),
             workspace_identity: "rw5-test".into(),
             source_revision: None,
         },
-        SuppressionSummary::default(),
-        coverage(),
-        vec![issue],
-    )
+        provenance: default_provenance(&coverage, &issues),
+        suppression: SuppressionSummary::default(),
+        coverage,
+        issues,
+    })
 }
 
 #[test]
@@ -56,6 +61,37 @@ fn compact_round_trip_and_old_field_rejection() {
             .insert(field.into(), serde_json::json!({}));
         assert!(serde_json::from_value::<Report>(value).is_err());
     }
+}
+
+#[test]
+fn input_structures_preserve_the_schema_27_json_and_yaml_contract() {
+    let report = report(vec![Evidence::new(
+        "reforge.codebase.large_file",
+        "src/lib.rs",
+        "large file",
+    )]);
+    let json = serde_json::to_value(&report).unwrap();
+    let yaml = serde_yaml::to_string(&report).unwrap();
+    let from_yaml: Report = serde_yaml::from_str(&yaml).unwrap();
+
+    assert_eq!(serde_json::to_value(from_yaml).unwrap(), json);
+    assert_eq!(json["schema_version"], REPORT_SCHEMA_VERSION);
+    assert_eq!(json["provenance"]["identity_scheme"], IDENTITY_SCHEME);
+    assert!(
+        json["issues"][0]["id"]
+            .as_str()
+            .unwrap()
+            .starts_with("ri7-")
+    );
+    assert!(
+        json["issues"][0]["evidence"][0]["id"]
+            .as_str()
+            .unwrap()
+            .starts_with("re7-")
+    );
+    assert_eq!(json["summary"]["issue_count"], 1);
+    assert_eq!(json["summary"]["evidence_count"], 1);
+    assert_eq!(json["baseline_comparison"], serde_json::Value::Null);
 }
 
 #[test]
@@ -81,6 +117,8 @@ fn coverage_round_trip_rejects_the_transitional_rule_shape() {
     value["coverage"]["codebase"]["rules"] = serde_json::json!({
         "reforge.codebase.large_file": {
             "status": "observed",
+            "maturity": "preview",
+            "enabled_source": "enable",
             "observations": [{
                 "name": "files_scanned",
                 "count": 2,
@@ -124,14 +162,14 @@ fn dataflow_evidence_identity_includes_policy_source_and_sink() {
 }
 
 #[test]
-fn schema_26_ids_and_derived_summary_are_enforced() {
+fn schema_27_ids_and_derived_summary_are_enforced() {
     let evidence = Evidence::new("reforge.codebase.large_file", "src/lib.rs", "large file");
     let valid = report(vec![evidence]);
-    assert!(valid.issues[0].id.starts_with("ri6-"));
-    assert!(valid.issues[0].evidence[0].id.starts_with("re6-"));
+    assert!(valid.issues[0].id.starts_with("ri7-"));
+    assert!(valid.issues[0].evidence[0].id.starts_with("re7-"));
 
     let mut old_issue = valid.clone();
-    old_issue.issues[0].id = old_issue.issues[0].id.replacen("ri6-", "ri5-", 1);
+    old_issue.issues[0].id = old_issue.issues[0].id.replacen("ri7-", "ri6-", 1);
     assert!(
         old_issue
             .validate()
@@ -143,13 +181,14 @@ fn schema_26_ids_and_derived_summary_are_enforced() {
     let mut old_evidence = valid.clone();
     old_evidence.issues[0].evidence[0].id = old_evidence.issues[0].evidence[0]
         .id
-        .replacen("re6-", "re5-", 1);
+        .replacen("re7-", "re6-", 1);
+    old_evidence.issues[0].content_fingerprint = content_fingerprint(&old_evidence.issues[0]);
     assert!(
         old_evidence
             .validate()
             .unwrap_err()
             .to_string()
-            .contains("schema 26 evidence ID")
+            .contains("schema 27 evidence ID")
     );
 
     let mut inconsistent = valid;
@@ -181,10 +220,16 @@ fn issue_id_ignores_evidence_order_and_growth() {
 #[test]
 fn group_subject_is_path_and_symbol_stable() {
     let a = Subject::Group {
-        members: vec!["b.rs#b".into(), "a.rs#a".into()],
+        members: vec![
+            EntityRef::new("symbol:b", "b.rs", Some("b".into())),
+            EntityRef::new("symbol:a", "a.rs", Some("a".into())),
+        ],
     };
     let b = Subject::Group {
-        members: vec!["./a.rs#a".into(), "b.rs#b".into()],
+        members: vec![
+            EntityRef::new("symbol:a", "./a.rs", Some("a".into())),
+            EntityRef::new("symbol:b", "b.rs", Some("b".into())),
+        ],
     };
     assert_eq!(
         issue_id("reforge.codebase.similar", &a),
@@ -220,7 +265,7 @@ fn measurements_are_json_numbers() {
 }
 
 #[test]
-fn baseline_requires_matching_producer_workspace_and_analysis_set() {
+fn baseline_allows_producer_version_and_analysis_set_changes() {
     let current = report(vec![Evidence::new(
         "reforge.codebase.large_file",
         "src/lib.rs",
@@ -229,9 +274,13 @@ fn baseline_requires_matching_producer_workspace_and_analysis_set() {
 
     let mut different = current.clone();
     different.producer.version = "other".into();
+    current.validate_baseline(&different).unwrap();
+
+    let mut different_name = current.clone();
+    different_name.producer.name = "other.producer".into();
     assert_eq!(
         current
-            .validate_baseline(&different)
+            .validate_baseline(&different_name)
             .unwrap_err()
             .to_string(),
         "baseline producer does not match the current report"
@@ -258,13 +307,7 @@ fn baseline_requires_matching_producer_workspace_and_analysis_set() {
             limitations: Vec::new(),
         },
     );
-    assert_eq!(
-        current
-            .validate_baseline(&different)
-            .unwrap_err()
-            .to_string(),
-        "baseline analysis set does not match the current report"
-    );
+    current.validate_baseline(&different).unwrap();
 }
 
 #[test]
@@ -281,5 +324,155 @@ fn coverage_downgrade_does_not_resolve_disappearing_issues() {
     current.coverage.get_mut("codebase").unwrap().status = CoverageStatus::Partial;
 
     assert_eq!(current.coverage_downgrades(&baseline), ["codebase"]);
-    assert!(current.compare_to(&baseline).resolved_issue_ids.is_empty());
+    assert_eq!(
+        current
+            .compare_to(&baseline)
+            .issues
+            .get(&baseline.issues[0].id)
+            .unwrap()
+            .state,
+        BaselineState::Unknown
+    );
+}
+
+#[test]
+fn baseline_matrix_distinguishes_updated_new_absent_and_unchanged() {
+    let unchanged = Evidence::new("reforge.codebase.large_file", "src/a.rs", "same");
+    let mut updated = Evidence::new("reforge.codebase.large_file", "src/b.rs", "before");
+    updated.measurements.push(Measurement {
+        name: "file.loc".into(),
+        value: 700.0,
+        threshold: Some(600.0),
+        unit: "lines".into(),
+    });
+    let absent = Evidence::new("reforge.codebase.large_file", "src/c.rs", "absent");
+    let mut baseline = report(vec![unchanged.clone()]);
+    baseline.issues.extend([
+        Issue::new(IssueInput {
+            kind: IssueKind::Advisory,
+            analysis: "codebase".into(),
+            family: "reforge.codebase.large_file".into(),
+            subject: Subject::File {
+                entity: EntityRef::new("file:b", "src/b.rs", None),
+            },
+            title: "B".into(),
+            guidance: "split".into(),
+            evidence: vec![updated.clone()],
+        }),
+        Issue::new(IssueInput {
+            kind: IssueKind::Advisory,
+            analysis: "codebase".into(),
+            family: "reforge.codebase.large_file".into(),
+            subject: Subject::File {
+                entity: EntityRef::new("file:c", "src/c.rs", None),
+            },
+            title: "C".into(),
+            guidance: "split".into(),
+            evidence: vec![absent],
+        }),
+    ]);
+    baseline.summary.issue_count = baseline.issues.len();
+    baseline.summary.evidence_count = baseline.issues.len();
+
+    updated.measurements[0].value = 701.0;
+    let new = Evidence::new("reforge.codebase.large_file", "src/d.rs", "new");
+    let mut current = report(vec![unchanged]);
+    current.issues.extend([
+        Issue::new(IssueInput {
+            kind: IssueKind::Advisory,
+            analysis: "codebase".into(),
+            family: "reforge.codebase.large_file".into(),
+            subject: Subject::File {
+                entity: EntityRef::new("file:b", "src/b.rs", None),
+            },
+            title: "B changed prose".into(),
+            guidance: "split".into(),
+            evidence: vec![updated],
+        }),
+        Issue::new(IssueInput {
+            kind: IssueKind::Advisory,
+            analysis: "codebase".into(),
+            family: "reforge.codebase.large_file".into(),
+            subject: Subject::File {
+                entity: EntityRef::new("file:d", "src/d.rs", None),
+            },
+            title: "D".into(),
+            guidance: "split".into(),
+            evidence: vec![new],
+        }),
+    ]);
+    current.summary.issue_count = current.issues.len();
+    current.summary.evidence_count = current.issues.len();
+
+    let states = current.compare_to(&baseline).issues;
+    assert!(
+        states
+            .values()
+            .any(|entry| entry.state == BaselineState::Unchanged)
+    );
+    assert!(
+        states
+            .values()
+            .any(|entry| entry.state == BaselineState::Updated)
+    );
+    assert!(
+        states
+            .values()
+            .any(|entry| entry.state == BaselineState::New)
+    );
+    assert!(
+        states
+            .values()
+            .any(|entry| entry.state == BaselineState::Absent)
+    );
+}
+
+#[test]
+fn scope_change_keeps_disappearing_issues_unknown() {
+    let baseline = report(vec![Evidence::new(
+        "reforge.codebase.large_file",
+        "src/lib.rs",
+        "large file",
+    )]);
+    let mut current = baseline.clone();
+    current.provenance.scope_digest = "different-scope".into();
+    current.issues.clear();
+    current.summary.issue_count = 0;
+    current.summary.evidence_count = 0;
+
+    let comparison = current.compare_to(&baseline);
+    let entry = comparison.issues.get(&baseline.issues[0].id).unwrap();
+    assert_eq!(entry.state, BaselineState::Unknown);
+    assert_eq!(entry.reason.as_deref(), Some("scope_changed"));
+}
+
+#[test]
+fn content_fingerprint_ignores_prose_lines_and_order_but_tracks_measurements() {
+    let mut first = Evidence::new("reforge.codebase.large_file", "src/lib.rs", "first prose");
+    first.locations.push(Location {
+        path: "src/lib.rs".into(),
+        line: Some(10),
+        symbol: None,
+    });
+    first.measurements.push(Measurement {
+        name: "file.loc".into(),
+        value: 700.0,
+        threshold: Some(600.0),
+        unit: "lines".into(),
+    });
+    let mut second = first.clone();
+    second.message = "different prose".into();
+    second.locations[0].line = Some(99);
+    let a = report(vec![first]);
+    let b = report(vec![second.clone()]);
+    assert_eq!(
+        a.issues[0].content_fingerprint,
+        b.issues[0].content_fingerprint
+    );
+    second.measurements[0].value = 701.0;
+    let c = report(vec![second]);
+    assert_ne!(
+        a.issues[0].content_fingerprint,
+        c.issues[0].content_fingerprint
+    );
 }

@@ -1,6 +1,7 @@
 mod compose;
 mod coverage;
 mod dynamic;
+mod frontend;
 mod model;
 mod observe;
 mod policy;
@@ -13,6 +14,7 @@ use anyhow::Result;
 use crate::detectors::similarity::ParsedSourceFile;
 use crate::model::{DetectedEvidence, FlowAnalysisSummary, ParseFailure};
 use crate::scan::config::DataFlowConfig;
+use frontend::{JavaScriptTypeScriptFrontend, PythonFrontend, RustFrontend, SemanticFrontend};
 
 #[derive(Debug, Default)]
 pub(crate) struct DataFlowScan {
@@ -37,8 +39,14 @@ pub(crate) fn scan_data_flow_with_ir(
     config: &DataFlowConfig,
     materialize_flow_ir: bool,
 ) -> Result<DataFlowScan> {
-    let mut graph = rust::build_graph(root, files);
-    dynamic::extend_graph(root, files, &mut graph);
+    let mut graph = model::FlowGraph::default();
+    for frontend in [
+        &RustFrontend as &dyn SemanticFrontend,
+        &JavaScriptTypeScriptFrontend,
+        &PythonFrontend,
+    ] {
+        frontend.extend_graph(root, files, &mut graph);
+    }
     graph.finish();
     let observe_result = observe::evaluate(&graph, config);
     let policy_result = if !config.boundaries.is_empty() {

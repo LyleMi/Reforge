@@ -9,6 +9,9 @@ use crate::scan::config::DataFlowConfig;
 
 use super::model::{CallTransition, FlowGraph, NodeId};
 
+mod fan_out;
+use fan_out::{fan_out_detection, fan_out_observation};
+
 pub(super) struct ObserveResult {
     pub detections: Vec<DetectedEvidence>,
     pub truncated_paths: usize,
@@ -118,52 +121,6 @@ fn evaluate_source(
         detections,
         truncated: 0,
     }
-}
-
-struct FanOutObservation {
-    witness: ObservedPath,
-    sink_count: usize,
-    branch_count: usize,
-    paths: Vec<ObservedPath>,
-}
-
-fn fan_out_observation(
-    observed: &SourcePaths,
-    graph: &FlowGraph,
-    min_sinks: usize,
-    min_modules: usize,
-) -> Option<FanOutObservation> {
-    let paths = observed
-        .paths
-        .iter()
-        .filter(|path| function_hops(path, graph) > 0)
-        .cloned()
-        .collect::<Vec<_>>();
-    let sink_count = paths
-        .iter()
-        .map(|path| graph.nodes[path.sink].function.as_str())
-        .collect::<BTreeSet<_>>()
-        .len();
-    let module_count = paths
-        .iter()
-        .map(|path| graph.nodes[path.sink].module.as_str())
-        .collect::<BTreeSet<_>>()
-        .len();
-    if sink_count < min_sinks || module_count < min_modules {
-        return None;
-    }
-    let witness = paths.iter().max_by(|left, right| {
-        left.edges
-            .len()
-            .cmp(&right.edges.len())
-            .then_with(|| graph.nodes[right.sink].id.cmp(&graph.nodes[left.sink].id))
-    })?;
-    Some(FanOutObservation {
-        witness: witness.clone(),
-        sink_count,
-        branch_count: observed.branch_nodes.len(),
-        paths,
-    })
 }
 
 fn outgoing_edges(graph: &FlowGraph) -> BTreeMap<NodeId, Vec<usize>> {
@@ -397,88 +354,17 @@ fn relay_detection(
             ),
             metrics,
         )
-        .with_related_locations(related_locations(path, graph)),
+        .with_related_locations(related_locations(path, graph))
+        .with_subject(
+            crate::model::DetectedSubject::Symbol {
+                declaration_kind: "function".into(),
+                name: source.function.clone(),
+                signature: None,
+            },
+            source.language.clone(),
+        ),
     );
     detection.flow_witness = Some(witness("excessive_relay", path, graph));
-    detection.normalize_flow_anchor();
-    detection
-}
-
-fn fan_out_detection(
-    observation: FanOutObservation,
-    graph: &FlowGraph,
-    config: &DataFlowConfig,
-) -> DetectedEvidence {
-    let witness_path = &observation.witness;
-    let paths = &observation.paths;
-    let sink_count = observation.sink_count;
-    let source = &graph.nodes[witness_path.source];
-    let modules = paths
-        .iter()
-        .map(|path| graph.nodes[path.sink].module.as_str())
-        .collect::<BTreeSet<_>>()
-        .len();
-    let max_steps = paths
-        .iter()
-        .map(|path| path.edges.len())
-        .max()
-        .unwrap_or_default();
-    let metrics = vec![
-        DetectedMeasurement::threshold(
-            MetricId::FlowSinkCount,
-            sink_count,
-            config.min_sinks,
-            "sinks",
-        ),
-        DetectedMeasurement::measurement(
-            MetricId::FlowBranchCount,
-            observation.branch_count,
-            "branches",
-        ),
-        DetectedMeasurement::threshold(
-            MetricId::FlowModuleCount,
-            modules,
-            config.min_modules,
-            "modules",
-        ),
-        DetectedMeasurement::threshold(
-            MetricId::FlowMaxPathSteps,
-            max_steps,
-            config.max_path_steps,
-            "steps",
-        ),
-    ];
-    let mut related = paths
-        .iter()
-        .map(|path| {
-            let sink = &graph.nodes[path.sink];
-            RelatedLocation {
-                path: sink.path.clone(),
-                line: sink.line,
-                name: Some(format!("sink: {}", sink.name)),
-            }
-        })
-        .collect::<Vec<_>>();
-    related.sort_by(|left, right| {
-        left.path
-            .cmp(&right.path)
-            .then_with(|| left.line.cmp(&right.line))
-    });
-    related.dedup();
-    let mut detection = DetectedEvidence::from(
-        DetectedEvidenceInput::new(
-            Rule::FlowFanOut,
-            source.path.clone(),
-            Some(source.line),
-            format!(
-                "value {} fans out to {sink_count} independent sinks across {modules} modules",
-                source.name
-            ),
-            metrics,
-        )
-        .with_related_locations(related),
-    );
-    detection.flow_witness = Some(witness("flow_fan_out", witness_path, graph));
     detection.normalize_flow_anchor();
     detection
 }
@@ -520,6 +406,7 @@ fn related_locations(path: &ObservedPath, graph: &FlowGraph) -> Vec<RelatedLocat
         path: graph.nodes[path.source].path.clone(),
         line: graph.nodes[path.source].line,
         name: Some(format!("source: {}", graph.nodes[path.source].name)),
+        entity_key: Some(graph.nodes[path.source].id.clone()),
     }];
     locations.extend(path.edges.iter().map(|index| {
         let edge = &graph.edges[*index];
@@ -527,6 +414,7 @@ fn related_locations(path: &ObservedPath, graph: &FlowGraph) -> Vec<RelatedLocat
             path: graph.nodes[edge.to].path.clone(),
             line: graph.nodes[edge.to].line,
             name: Some(edge.name.clone()),
+            entity_key: Some(graph.nodes[edge.to].id.clone()),
         }
     }));
     locations

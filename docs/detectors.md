@@ -4,12 +4,17 @@ Rules have one owner. Codebase owns source-tree heuristics and repository contex
 
 ## Dataflow analysis
 
-- `reforge.dataflow.excessive_relay` (stable): a complete path meets the configured
+- `reforge.dataflow.excessive_relay` (preview/off): a complete path meets the configured
   function-hop, module-hop, and relay-percentage thresholds.
-- `reforge.dataflow.flow_fan_out` (stable): a complete source reaches more than the configured number of distinct cross-module sink functions.
-- `reforge.dataflow.adapter_flow_bypass` (stable policy): an exact protected-to-sink path does not cross a declared adapter.
+- `reforge.dataflow.flow_fan_out` (preview/off): a complete source reaches more than the configured number of distinct cross-module sink functions.
+- `reforge.dataflow.adapter_flow_bypass` (preview/off): an exact protected-to-sink path does not cross a declared adapter.
 
-All require ordered exact witnesses. Budget truncation, dynamic/ambiguous calls and unsupported language behavior become language-specific partial coverage instead of speculative Evidence. Rust, JavaScript/TypeScript/TSX, and Python support the documented local def-use/return/direct-call subset. The heuristic `reforge.codebase.adapter_boundary_bypass` remains a Codebase rule.
+All require ordered exact witnesses and surface only advisory Issues when
+explicitly enabled. Budget truncation, dynamic/ambiguous calls and unsupported
+language behavior become language-specific partial coverage instead of
+speculative Evidence. Rust, JavaScript/TypeScript/TSX, and Python support the
+documented local def-use/return/direct-call subset. The heuristic
+`reforge.codebase.adapter_boundary_bypass` remains a Codebase rule.
 
 ## Codebase analysis
 
@@ -19,9 +24,10 @@ are not automatic proof that code must be changed, that code is low quality, or
 that a bug exists.
 
 Every rule is described by one internal metadata registry. It declares
-analysis ownership, family, subject kind, supported languages, measurements,
-description, and guidance. Coverage, `reforge rules`, and suppression
-validation consume the same metadata. See the
+analysis ownership, family, allowed subject kinds, per-language capabilities
+and maturity, semantic version, validation basis, default state, measurements,
+description, and guidance. Coverage, `reforge rules`, activation, enforcement,
+and suppression validation consume the same metadata. See the
 [metrics model](metrics-model.md).
 
 ## File and Directory Signals
@@ -176,10 +182,12 @@ Evidence groups generally provide stronger support than isolated matches.
 
 ## Exact adapter policy flow
 
-`reforge.dataflow.adapter_flow_bypass` is an opt-in policy rule backed by an ordered exact
-Rust value-transfer witness from a configured protected path to a configured
-sink without visiting an allowed adapter path. The bounded source set is
-function parameters declared in protected Rust paths. It remains separate from
+`reforge.dataflow.adapter_flow_bypass` is an opt-in preview rule backed by an
+ordered exact value-transfer witness from a configured protected path to a
+configured sink without visiting an allowed adapter path. Each policy selects
+exactly one of Rust, JavaScript, TypeScript, TSX, or Python. The bounded source
+set is function parameters declared in protected paths for that language. It
+remains separate from
 `adapter_boundary_bypass`: the flow detector proves in-scope assignment,
 argument, return, and project-local call edges; the drift detector remains a
 naming and dependency heuristic.
@@ -189,28 +197,13 @@ emits when a witness edge is unresolved, unsupported, or beyond
 `max-function-hops`. Evidence carries numeric measurements and a typed Flow
 witness. A conforming comparison
 path is retained when observed but is not required before an exact bypass can
-be reported. Workspace scans scope `crate::...` resolution to the nearest
-owning Cargo package, while policy sink symbols remain source-level Rust paths.
+be reported. Workspace scans scope Rust `crate::...` resolution to the nearest
+owning Cargo package. Every policy sink is an exact source-level path and
+symbol pair for its declared language.
 
-## Documentation Signals
-
-When the analysis root looks like a project, Reforge checks for a stable
-documentation set.
-
-- `missing_user_guide`: user-guide topics such as installation, quick start,
-  CLI, configuration, output, and troubleshooting are missing.
-- `missing_report_schema_docs`: JSON/YAML fields and compatibility
-  expectations are undocumented.
-- `missing_metrics_model_docs`: measurements, Evidence, Issues, or Coverage
-  are undocumented.
-- `missing_architecture_docs`: source collection, detector boundaries, data flow,
-  or extension points are undocumented.
-- `stale_cli_documentation`: docs mention CLI flags but omit current flags.
-- `stale_schema_documentation`: report-schema docs omit current fields.
-
-Expected docs include a docs index, user guide, configuration reference, report
-schema, metrics model, detector reference, architecture guide, and contributing
-guide.
+Documentation completeness is maintained by repository contract tests rather
+than analyzer rules, so Reforge does not impose its own documentation layout on
+target repositories.
 
 ## Interpreting Detector Output
 
@@ -218,9 +211,10 @@ Choose Issues using repository goals, measurements, cross-file spread, clear
 locations, and Coverage. Treat heuristic Evidence as a prompt for inspection,
 not an automatic refactor instruction.
 
-`issues=0` means no unsuppressed Issues remain. It does not prove that the
-scanned code is healthy or bug-free. Check Coverage and the suppression
-summary when explaining an empty Issue list.
+`issues=0` means no enabled rule surfaced an unsuppressed Issue. It does not
+mean disabled preview observations were evaluated as findings, or prove that
+the scanned code is healthy or bug-free. Check rule activation, Coverage, and
+the suppression summary when explaining an empty Issue list.
 
 ## Filtering and Suppression
 

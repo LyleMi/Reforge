@@ -14,7 +14,7 @@
   "interface": {
     "displayName": "Reforge",
     "shortDescription": "Codebase and Dataflow analysis",
-    "longDescription": "Run Reforge analyses and inspect schema 26 Issues, Evidence, typed Dataflow witnesses, and coverage limitations.",
+    "longDescription": "Run Reforge analyses and inspect schema 27 Issues, Evidence, typed Dataflow witnesses, and coverage limitations.",
     "developerName": "Reforge contributors",
     "category": "Developer Tools",
     "capabilities": ["Read"],

@@ -129,7 +129,7 @@ fn removed_structure_vocabulary_is_rejected() {
 
     std::fs::write(
         root.join("reforge.toml"),
-        "version = 1\n[analysis]\nenabled = [\"codebase\"]\n[structure]\nmax-file-lines = 10\n",
+        "version = 2\n[analysis]\nenabled = [\"codebase\"]\n[structure]\nmax-file-lines = 10\n",
     )
     .unwrap();
     let output = binary()
@@ -202,7 +202,7 @@ fn all_five_report_formats_are_emitted_from_the_same_command() {
                 let _: serde_yaml::Value = serde_yaml::from_slice(&bytes).unwrap();
             }
             "html" => assert!(String::from_utf8_lossy(&bytes).contains("<title>Reforge report")),
-            "human" => assert!(String::from_utf8_lossy(&bytes).contains("schema 26")),
+            "human" => assert!(String::from_utf8_lossy(&bytes).contains("schema 27")),
             _ => unreachable!(),
         }
     }
@@ -210,7 +210,7 @@ fn all_five_report_formats_are_emitted_from_the_same_command() {
 }
 
 #[test]
-fn baseline_with_a_different_analysis_set_is_rejected() {
+fn baseline_with_a_different_analysis_set_is_compared_per_analysis() {
     let root = fixture("baseline");
     let baseline = root.join("codebase.json");
     analyze(&root, Some("codebase"), &baseline);
@@ -227,8 +227,9 @@ fn baseline_with_a_different_analysis_set_is_rejected() {
         ])
         .output()
         .unwrap();
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("analysis set does not match"));
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(report["baseline_comparison"]["issues"].is_object());
     std::fs::remove_dir_all(root).unwrap();
 }
 

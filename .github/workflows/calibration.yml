@@ -1,0 +1,161 @@
+name: Calibration
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: prepare frozen corpus
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout Reforge
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release analyzers
+        run: cargo build --locked --release -p reforge -p reforge-calibrate
+
+      - name: Validate frozen corpus
+        run: target/release/reforge-calibrate corpus validate --manifest calibration/corpus.toml
+
+      - name: Build typed matrix
+        id: matrix
+        shell: bash
+        run: |
+          matrix="$(target/release/reforge-calibrate corpus matrix --manifest calibration/corpus.toml)"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble calibration tools
+        run: |
+          mkdir -p calibration-bundle/calibration
+          cp target/release/reforge calibration-bundle/reforge
+          cp target/release/reforge-calibrate calibration-bundle/reforge-calibrate
+          cp calibration/corpus.toml calibration-bundle/calibration/corpus.toml
+          cp calibration/reforge.toml calibration-bundle/calibration/reforge.toml
+
+      - name: Upload calibration tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: calibration-tools
+          path: calibration-bundle
+          retention-days: 7
+
+  analyze:
+    name: ${{ matrix.repository }} (${{ matrix.language }})
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Download calibration tools
+        uses: actions/download-artifact@v4
+        with:
+          name: calibration-tools
+          path: calibration-run
+
+      - name: Make tools executable
+        run: chmod +x calibration-run/reforge calibration-run/reforge-calibrate
+
+      - name: Checkout frozen repository revision
+        shell: bash
+        env:
+          REPOSITORY: ${{ matrix.repository }}
+          REVISION: ${{ matrix.commit }}
+        run: |
+          git init source
+          git -C source remote add origin "https://github.com/${REPOSITORY}.git"
+          git -C source fetch --depth 1 origin "$REVISION"
+          git -C source checkout --detach FETCH_HEAD
+          test "$(git -C source rev-parse HEAD)" = "$REVISION"
+
+      - name: Run isolated and combined analyses twice
+        shell: bash
+        run: |
+          mkdir -p reports
+          calibration-run/reforge analyze source --config calibration-run/calibration/reforge.toml --analysis codebase --output json --output-file reports/codebase.json --metrics-output reports/metrics.json --reproducible
+          calibration-run/reforge analyze source --config calibration-run/calibration/reforge.toml --analysis codebase --output json --output-file reports/codebase-repeat.json --metrics-output reports/metrics-repeat.json --reproducible
+          calibration-run/reforge analyze source --config calibration-run/calibration/reforge.toml --analysis dataflow --output json --output-file reports/dataflow.json --flow-ir-output reports/flow-ir.json --reproducible
+          calibration-run/reforge analyze source --config calibration-run/calibration/reforge.toml --analysis dataflow --output json --output-file reports/dataflow-repeat.json --flow-ir-output reports/flow-ir-repeat.json --reproducible
+          calibration-run/reforge analyze source --config calibration-run/calibration/reforge.toml --analysis codebase --analysis dataflow --output json --output-file reports/combined.json --reproducible
+          calibration-run/reforge analyze source --config calibration-run/calibration/reforge.toml --analysis codebase --analysis dataflow --output json --output-file reports/combined-repeat.json --reproducible
+
+      - name: Verify isolation, union, coverage, and determinism
+        env:
+          REPOSITORY: ${{ matrix.repository }}
+          REVISION: ${{ matrix.commit }}
+        run: |
+          calibration-run/reforge-calibrate verify-reports \
+            --manifest calibration-run/calibration/corpus.toml \
+            --repository "$REPOSITORY" \
+            --revision "$REVISION" \
+            --codebase reports/codebase.json \
+            --codebase-repeat reports/codebase-repeat.json \
+            --dataflow reports/dataflow.json \
+            --dataflow-repeat reports/dataflow-repeat.json \
+            --combined reports/combined.json \
+            --combined-repeat reports/combined-repeat.json \
+            --metrics reports/metrics.json \
+            --metrics-repeat reports/metrics-repeat.json \
+            --flow-ir reports/flow-ir.json \
+            --flow-ir-repeat reports/flow-ir-repeat.json \
+            --output reports/audit.json
+
+      - name: Upload complete calibration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: calibration-${{ matrix.commit }}
+          path: reports
+          retention-days: 14
+
+  verify:
+    name: verify promotion evidence
+    needs: analyze
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download calibration tools
+        uses: actions/download-artifact@v4
+        with:
+          name: calibration-tools
+          path: calibration-run
+
+      - name: Download calibration evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: calibration-*
+          path: evidence
+
+      - name: Verify release promotion gate
+        shell: bash
+        run: |
+          chmod +x calibration-run/reforge-calibrate
+          audit_args=()
+          while IFS= read -r audit; do
+            audit_args+=(--audit "$audit")
+          done < <(find evidence -name audit.json -type f -print | sort)
+          calibration-run/reforge-calibrate verify-promotion \
+            --corpus calibration-run/calibration/corpus.toml \
+            "${audit_args[@]}" | tee promotion-verification.json
+
+      - name: Upload promotion verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: calibration-promotion-verification
+          path: promotion-verification.json
+          retention-days: 14

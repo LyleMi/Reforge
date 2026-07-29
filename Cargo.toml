@@ -8,6 +8,7 @@ members = [
     "tools/reforge",
     "tools/reforge-unity",
     "tools/reforge-workflow",
+    "tools/reforge-calibrate",
 ]
 default-members = [
     "tools/reforge",

@@ -57,6 +57,11 @@ fn push_function_threshold_detection(
                 threshold,
                 signal.unit(),
             )],
+        )
+        .with_symbol_subject(
+            "function",
+            function.name.clone(),
+            Some(format!("arity:{}", function.parameter_count)),
         )));
 }
 
@@ -166,7 +171,8 @@ fn scan_type_metrics(
                         "members",
                     ),
                 ],
-                )));
+                )
+                .with_symbol_subject("type", type_metric.name.clone(), None)));
         }
     }
 }
@@ -193,7 +199,7 @@ fn scan_file_metrics(
                     options.max_imports,
                     "imports",
                 )],
-            )));
+            ).with_file_subject()));
     }
 
     let public_items = count_public_items(root, traversal);
@@ -211,7 +217,7 @@ fn scan_file_metrics(
                     options.max_public_items,
                     "items",
                 )],
-            )));
+            ).with_file_subject()));
     }
 }
 
@@ -274,7 +280,7 @@ fn scan_function_proliferation(
                     "percent",
                 ),
             ],
-        )));
+        ).with_file_subject()));
 }
 
 fn is_small_simple_function(function: &FunctionMetric) -> bool {

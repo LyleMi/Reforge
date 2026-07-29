@@ -152,5 +152,71 @@ jobs:
           cargo run --locked -p reforge -- analyze . --analysis codebase --analysis dataflow --output json --output-file target/combined.json --reproducible
           $codebase = Get-Content target/codebase.json -Raw | ConvertFrom-Json
           $report = Get-Content target/combined.json -Raw | ConvertFrom-Json
-          if ($codebase.summary.issue_count -ne 0) { throw "Codebase self-analysis must have 0 unsuppressed issues" }
+          if ($codebase.schema_version -ne 27) { throw "unexpected report schema" }
+          if ($codebase.provenance.identity_scheme -ne "reforge-identity-v7") { throw "unexpected identity scheme" }
+          if (-not $codebase.coverage.codebase.rules) { throw "missing Codebase rule coverage" }
+          if (-not $report.coverage.dataflow.languages) { throw "missing Dataflow language coverage" }
           if ($report.producer.name -ne "reforge.analyze") { throw "unexpected report producer" }
+
+  self-audit:
+    name: full-rule self audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release analyzer
+        run: cargo build --locked --release -p reforge
+
+      - name: Run isolated and combined self analyses twice
+        run: |
+          mkdir -p target/self-audit
+          target/release/reforge analyze . --analysis codebase --output json --output-file target/self-audit/codebase.json --metrics-output target/self-audit/metrics.json --reproducible
+          target/release/reforge analyze . --analysis codebase --output json --output-file target/self-audit/codebase-repeat.json --metrics-output target/self-audit/metrics-repeat.json --reproducible
+          target/release/reforge analyze . --analysis dataflow --output json --output-file target/self-audit/dataflow.json --flow-ir-output target/self-audit/flow-ir.json --reproducible
+          target/release/reforge analyze . --analysis dataflow --output json --output-file target/self-audit/dataflow-repeat.json --flow-ir-output target/self-audit/flow-ir-repeat.json --reproducible
+          target/release/reforge analyze . --analysis codebase --analysis dataflow --output json --output-file target/self-audit/combined.json --reproducible
+          target/release/reforge analyze . --analysis codebase --analysis dataflow --output json --output-file target/self-audit/combined-repeat.json --reproducible
+
+      - name: Verify self-audit policy
+        shell: bash
+        run: |
+          cmp target/self-audit/codebase.json target/self-audit/codebase-repeat.json
+          cmp target/self-audit/dataflow.json target/self-audit/dataflow-repeat.json
+          cmp target/self-audit/combined.json target/self-audit/combined-repeat.json
+          cmp target/self-audit/metrics.json target/self-audit/metrics-repeat.json
+          cmp target/self-audit/flow-ir.json target/self-audit/flow-ir-repeat.json
+          test "$(jq '.schema_version' target/self-audit/codebase.json)" = "27"
+          test "$(jq '.summary.issue_count' target/self-audit/codebase.json)" = "0"
+          jq -S '[.issues[] | {id, content_fingerprint}] | sort_by(.id)' target/self-audit/codebase.json > target/self-audit/codebase-issues.json
+          jq -S '[.issues[] | {id, content_fingerprint}] | sort_by(.id)' target/self-audit/dataflow.json > target/self-audit/dataflow-issues.json
+          jq -S -s 'add | sort_by(.id)' target/self-audit/codebase-issues.json target/self-audit/dataflow-issues.json > target/self-audit/isolated-union.json
+          jq -S '[.issues[] | {id, content_fingerprint}] | sort_by(.id)' target/self-audit/combined.json > target/self-audit/combined-issues.json
+          cmp target/self-audit/isolated-union.json target/self-audit/combined-issues.json
+          jq -s -e '.[0].coverage.codebase == .[1].coverage.codebase' target/self-audit/codebase.json target/self-audit/combined.json
+          jq -s -e '.[0].coverage.dataflow == .[1].coverage.dataflow' target/self-audit/dataflow.json target/self-audit/combined.json
+          jq -e '
+            .coverage.dataflow.status as $status
+            | ($status == "observed" or $status == "partial")
+            and (if $status == "partial" then (.coverage.dataflow.limitations | length) > 0 else true end)
+            and all(
+              .coverage.dataflow.languages[];
+              if .status == "unsupported" then (.limitations | length) > 0 else true end
+            )
+          ' target/self-audit/dataflow.json
+
+      - name: Upload self-audit evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: reforge-self-audit
+          path: target/self-audit
+          retention-days: 7

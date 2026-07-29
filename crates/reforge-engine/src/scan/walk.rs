@@ -202,7 +202,7 @@ fn record_file_observations(
                 options.max_file_lines,
                 "lines",
             )],
-        )));
+        ).with_file_subject()));
     }
 
     if options.codebase {
@@ -214,7 +214,7 @@ fn record_file_observations(
                 Some(index + 1),
                 "technical-debt marker found",
                 Vec::new(),
-            )));
+            ).with_file_subject()));
             }
         }
     }
@@ -280,7 +280,7 @@ fn scan_directories(
                     max_dir_files,
                     "source files",
                 )],
-            )));
+            ).with_directory_subject()));
         }
     }
 }

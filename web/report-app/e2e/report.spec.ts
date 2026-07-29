@@ -9,14 +9,16 @@ async function openReport(page: Page) {
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(reportUrl);
-  await expect(page.getByRole("heading", { name: "Refactoring issues" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Refactoring evidence" })).toBeVisible();
   expect(errors).toEqual([]);
 }
 
-test("renders schema 26 issues, nested evidence, and coverage", async ({ page }) => {
+test("renders schema 27 issues, nested evidence, and coverage", async ({ page }) => {
   await openReport(page);
-  await expect(page.getByText("Schema 26 analysis report")).toBeVisible();
+  await expect(page.getByText("Schema 27 analysis report")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Coverage", exact: true })).toBeVisible();
+  await expect(page.getByText("Direct Calls: Partial").first()).toBeVisible();
+  await expect(page.getByText(/unresolved_direct_call/).first()).toBeVisible();
   await expect(page.locator(".issue").first()).toBeVisible();
   await page.locator(".evidence summary").first().click();
   await expect(page.locator(".evidence[open]").first()).toBeVisible();

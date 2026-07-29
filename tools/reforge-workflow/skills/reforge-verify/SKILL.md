@@ -1,11 +1,11 @@
 ---
 name: reforge-verify
-description: Optional guard workflow that verifies an Applied artifact v5 workflow with direct checks and fresh `reforge analyze` schema 26 reports.
+description: Optional guard workflow that verifies an Applied artifact v6 workflow with direct checks and fresh `reforge analyze` schema 27 reports.
 ---
 
 # Reforge Verify
 
-Generated contract: CLI `0.2.0`, report schema `26`, artifact schema `5`.
+Generated contract: CLI `0.2.0`, report schema `27`, artifact schema `6`.
 
 1. Check `reforge-workflow --version`, `status`, and `validate`; require `Applied`.
 2. Run every required command directly with `reforge-workflow check --kind

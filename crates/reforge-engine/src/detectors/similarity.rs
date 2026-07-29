@@ -436,6 +436,7 @@ fn similar_function_detection(
                 path: candidate.path.clone(),
                 line: candidate.line,
                 name: Some(candidate.name.clone()),
+                entity_key: None,
             }
         })
         .collect::<Vec<_>>();
@@ -457,7 +458,8 @@ fn similar_function_detection(
                 "functions",
             )],
         )
-        .with_related_locations(related_locations),
+        .with_related_locations(related_locations)
+        .with_group_subject(),
     )
 }
 

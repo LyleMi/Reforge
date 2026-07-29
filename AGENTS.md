@@ -21,7 +21,7 @@ Use idiomatic Rust formatted by `cargo fmt`; keep four-space indentation and avo
 
 ## Testing Guidelines
 
-Add focused unit tests next to the code they exercise. Name tests by behavior, such as `parses_output_format` or `groups_similar_functions`. When changing analyzer behavior, include tests for execution isolation, exclusions, thresholds, ordering, witnesses, coverage, or report fields as appropriate. Run the workspace suite before submitting changes; after code changes, run both Codebase and Dataflow self-analysis and keep Codebase at `0` unsuppressed Issues. Disclose Dataflow partial coverage and suppressions.
+Add focused unit tests next to the code they exercise. Name tests by behavior, such as `parses_output_format` or `groups_similar_functions`. When changing analyzer behavior, include tests for execution isolation, exclusions, thresholds, ordering, witnesses, coverage, or report fields as appropriate. Run the workspace suite before submitting changes; after code changes, run Codebase, Dataflow, and combined reproducible self-analysis. Verify deterministic output, coverage receipts, and the configured policy gate; disclose Dataflow partial coverage, `unknown` baseline states, and suppressions.
 
 ## Commit & Pull Request Guidelines
 

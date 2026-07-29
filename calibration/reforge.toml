@@ -1,0 +1,72 @@
+version = 2
+
+[analysis]
+enabled = ["codebase", "dataflow"]
+
+[scope]
+include-hidden = false
+include-generated = false
+no-gitignore = false
+exclude-tests = false
+ignore-paths = []
+
+[rules]
+enable = [
+  "reforge.codebase.adapter_boundary_bypass",
+  "reforge.codebase.complex_function",
+  "reforge.codebase.config_key_drift",
+  "reforge.codebase.data_clump",
+  "reforge.codebase.debt_marker",
+  "reforge.codebase.deep_nesting",
+  "reforge.codebase.dependency_cycle",
+  "reforge.codebase.dependency_hub",
+  "reforge.codebase.directory_drift",
+  "reforge.codebase.duplicate_type_shape",
+  "reforge.codebase.file_naming_drift",
+  "reforge.codebase.fixture_factory_drift",
+  "reforge.codebase.function_proliferation",
+  "reforge.codebase.generic_bucket_drift",
+  "reforge.codebase.happy_path_only_tests",
+  "reforge.codebase.import_heavy_file",
+  "reforge.codebase.large_directory",
+  "reforge.codebase.large_file",
+  "reforge.codebase.large_public_surface",
+  "reforge.codebase.large_type",
+  "reforge.codebase.long_function",
+  "reforge.codebase.many_parameters",
+  "reforge.codebase.parallel_implementation",
+  "reforge.codebase.repeated_error_pattern",
+  "reforge.codebase.repeated_literal",
+  "reforge.codebase.shadowed_abstraction",
+  "reforge.codebase.similar_functions",
+  "reforge.codebase.stale_compatibility_path",
+  "reforge.codebase.test_duplication",
+  "reforge.codebase.unused_function",
+  "reforge.dataflow.adapter_flow_bypass",
+  "reforge.dataflow.excessive_relay",
+  "reforge.dataflow.flow_fan_out",
+]
+disable = []
+enforce = []
+
+[codebase]
+preset = "balanced"
+churn = "off"
+max-file-lines = 600
+
+[dataflow.search]
+max-path-steps = 24
+max-function-hops = 8
+max-module-hops = 8
+max-paths-per-source = 100
+max-sinks-per-source = 100
+work-budget = 100000
+
+[dataflow.relay]
+min-function-hops = 4
+min-module-hops = 2
+min-relay-percent = 90
+
+[dataflow.fan-out]
+min-sinks = 4
+min-modules = 3

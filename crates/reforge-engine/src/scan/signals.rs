@@ -100,11 +100,6 @@ impl ScanSignalContext<'_> {
                 &self.scan.parsed_sources,
                 &structure_options,
             )?);
-        self.scan
-            .detections
-            .extend(crate::detectors::documentation::scan_documentation(
-                self.root,
-            )?);
         Ok(())
     }
 

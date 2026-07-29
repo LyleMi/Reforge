@@ -153,7 +153,7 @@ alwaysApply: true
 Use Reforge for maintainability/refactoring scans and approval-gated refactor workflows.
 
 - Run `reforge analyze <target> --output json` before broad cleanup or architecture recommendations.
-- Only when the optional guard was explicitly installed, use `reforge-workflow` artifact v5 commands for approval-gated changes.
+- Only when the optional guard was explicitly installed, use `reforge-workflow` artifact v6 commands for approval-gated changes.
 - Do not edit source during planning. Edit only after an explicit approved Reforge workflow exists.
 - Keep workflow artifacts durable and schema-valid.
 - Do not add suppressions, change thresholds, install dependencies, commit, push, or open pull requests unless the user explicitly asks.

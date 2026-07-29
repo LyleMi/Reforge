@@ -344,12 +344,6 @@ fn known_detection_kinds() -> Vec<String> {
         Rule::AdapterBoundaryBypass,
         Rule::AdapterFlowBypass,
         Rule::StaleCompatibilityPath,
-        Rule::MissingUserGuide,
-        Rule::MissingReportSchemaDocs,
-        Rule::MissingMetricsModelDocs,
-        Rule::MissingArchitectureDocs,
-        Rule::StaleCliDocumentation,
-        Rule::StaleSchemaDocumentation,
         Rule::DependencyCycle,
         Rule::DependencyHub,
     ]

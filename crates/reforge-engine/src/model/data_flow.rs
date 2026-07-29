@@ -3,7 +3,10 @@
 pub struct FlowAnalysisSummary {
     pub functions_analyzed: usize,
     pub exact_edges: usize,
+    pub modeled_edges: usize,
     pub unresolved_edges: usize,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub unresolved_edges_by_language: std::collections::BTreeMap<String, usize>,
     pub truncated_paths: usize,
     pub policy_configured: bool,
     pub protected_sources_evaluated: usize,
@@ -50,7 +53,7 @@ pub enum FlowEdgeKind {
 #[serde(rename_all = "snake_case")]
 pub enum FlowResolution {
     Exact,
-    Partial,
+    Modeled,
     Unresolved,
     Unsupported,
 }

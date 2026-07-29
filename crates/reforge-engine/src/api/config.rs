@@ -8,12 +8,14 @@ pub(super) fn validate_public_keys(value: &toml::Value) -> Result<()> {
             "version",
             "analysis",
             "scope",
+            "rules",
             ANALYSIS_CODEBASE,
             ANALYSIS_DATAFLOW,
             "suppressions",
         ],
     )?;
     validate_table_keys(value, "analysis", &["enabled", "lenses"])?;
+    validate_table_keys(value, "rules", &["enable", "disable", "enforce"])?;
     validate_table_keys(
         value,
         "scope",

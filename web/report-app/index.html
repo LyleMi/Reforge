@@ -8,11 +8,17 @@
   <body>
     <script id="reforge-report-data" type="application/json">
       {
-        "schema_version": 26,
+        "schema_version": 27,
         "producer": { "name": "reforge.analyze", "version": "test" },
         "target": {
           "root": ".",
           "workspace_identity": "development-fixture"
+        },
+        "provenance": {
+          "identity_scheme": "reforge-identity-v7",
+          "scope_digest": "development",
+          "analyses": { "codebase": { "config_digest": "development", "policy_digest": "development" } },
+          "rules": {}
         },
         "summary": { "issue_count": 0, "evidence_count": 0, "scanned_files": 0 },
         "suppression": { "evidence_count": 0, "by_rule": {} },

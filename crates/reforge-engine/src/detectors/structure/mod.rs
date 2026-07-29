@@ -375,6 +375,67 @@ mod tests {
         }
     }
 
+    fn options() -> StructureOptions {
+        StructureOptions {
+            max_function_lines: usize::MAX,
+            max_function_complexity: usize::MAX,
+            max_nesting_depth: usize::MAX,
+            max_function_parameters: usize::MAX,
+            max_type_lines: usize::MAX,
+            max_type_members: usize::MAX,
+            max_imports: usize::MAX,
+            max_public_items: usize::MAX,
+            max_functions_per_file: usize::MAX,
+            max_functions_per_100_lines: usize::MAX,
+            max_small_function_ratio: usize::MAX,
+            min_repeated_literal_occurrences: 2,
+            min_data_clump_occurrences: usize::MAX,
+            max_dir_files: usize::MAX,
+            include_test_structure: false,
+        }
+    }
+
+    #[test]
+    fn ignores_rust_serde_attribute_metadata_literals() -> Result<()> {
+        let source = r#"
+#[derive(serde::Serialize)]
+struct Packet {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    first: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    second: Option<String>,
+}
+"#;
+
+        let detections = scan_structure(&[source_file("src/packet.rs", source)], &options())?;
+
+        assert!(
+            detections
+                .iter()
+                .all(|detection| detection.kind != Rule::RepeatedLiteral),
+            "{detections:#?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn detects_repeated_literals_in_rust_function_bodies() -> Result<()> {
+        let source = r#"
+fn first() -> &'static str { "shared protocol value" }
+fn second() -> &'static str { "shared protocol value" }
+"#;
+
+        let detections = scan_structure(&[source_file("src/packet.rs", source)], &options())?;
+
+        assert!(
+            detections
+                .iter()
+                .any(|detection| detection.kind == Rule::RepeatedLiteral),
+            "{detections:#?}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn collects_bash_function_metrics() -> Result<()> {
         let source = r#"

@@ -9,12 +9,29 @@ use super::*;
 pub struct DetectedEvidence {
     pub semantic_anchor: String,
     pub kind: Rule,
+    pub subject: DetectedSubject,
+    pub language: String,
     pub path: String,
     pub line: Option<usize>,
     pub metrics: Vec<DetectedMeasurement>,
     pub message: String,
     pub related_locations: Vec<RelatedLocation>,
     pub flow_witness: Option<FlowWitness>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DetectedSubject {
+    Repository,
+    Directory,
+    File,
+    Symbol {
+        declaration_kind: String,
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        signature: Option<String>,
+    },
+    Group,
 }
 
 impl DetectedEvidence {

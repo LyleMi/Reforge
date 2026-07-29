@@ -71,11 +71,15 @@ fn normalize_python_module_hint(parent: &Path, raw: &str) -> String {
 }
 
 pub(super) fn module_matches(module: &str, hint: &str) -> bool {
-    let module = module
-        .strip_suffix(".js")
-        .or_else(|| module.strip_suffix(".ts"))
-        .or_else(|| module.strip_suffix(".tsx"))
-        .or_else(|| module.strip_suffix(".py"))
-        .unwrap_or(module);
+    fn without_source_extension(value: &str) -> &str {
+        value
+            .strip_suffix(".js")
+            .or_else(|| value.strip_suffix(".ts"))
+            .or_else(|| value.strip_suffix(".tsx"))
+            .or_else(|| value.strip_suffix(".py"))
+            .unwrap_or(value)
+    }
+    let module = without_source_extension(module);
+    let hint = without_source_extension(hint);
     module == hint || module.ends_with(&format!("/{hint}"))
 }

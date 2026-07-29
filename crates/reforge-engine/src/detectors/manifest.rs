@@ -1,7 +1,8 @@
 use std::sync::LazyLock;
 
 use crate::model::{
-    IssueFamily, MetricId, ObservationSource, Rule, RuleSpec, SubjectKind, serialized_rule,
+    IssueFamily, MetricId, ObservationSource, Rule, RuleLanguageCapability, RuleMaturity, RuleSpec,
+    SubjectKind, ValidationBasis, serialized_rule,
 };
 
 use reforge_schema::{ANALYSIS_CODEBASE, ANALYSIS_DATAFLOW};
@@ -34,11 +35,33 @@ static RULE_SPECS: LazyLock<Vec<RuleSpec>> = LazyLock::new(|| {
             rule: format!("reforge.{}.{}", seed.analysis, serialized_rule(seed.kind)),
             analysis: seed.analysis.into(),
             family: seed.family,
-            subject: seed.subject,
+            allowed_subjects: if seed.kind == Rule::GenericBucketDrift {
+                vec![SubjectKind::Directory, SubjectKind::File]
+            } else {
+                vec![seed.subject]
+            },
             observation_source: seed.observation_source,
-            languages: seed.languages.iter().map(|value| (*value).into()).collect(),
+            language_capabilities: seed
+                .languages
+                .iter()
+                .map(|value| {
+                    (
+                        (*value).into(),
+                        RuleLanguageCapability {
+                            maturity: RuleMaturity::Preview,
+                            capabilities: vec![
+                                observation_capability(seed.observation_source).into(),
+                            ],
+                        },
+                    )
+                })
+                .collect(),
             measurements: seed.measurements.to_vec(),
             description: seed.description.into(),
+            maturity: RuleMaturity::Preview,
+            default_enabled: false,
+            semantic_version: "1.0.0".into(),
+            validation_basis: ValidationBasis::Fixture,
         })
         .collect()
 });
@@ -62,12 +85,17 @@ pub(crate) fn input_metrics(rule: Rule) -> &'static [MetricId] {
     &rule_spec(rule).measurements
 }
 
-pub(crate) fn subject_kind(rule: Rule) -> SubjectKind {
-    rule_spec(rule).subject
-}
-
-pub(crate) fn observation_source(rule: Rule) -> ObservationSource {
-    rule_spec(rule).observation_source
+fn observation_capability(source: ObservationSource) -> &'static str {
+    match source {
+        ObservationSource::Repositories => "repository_inventory",
+        ObservationSource::Directories => "directory_inventory",
+        ObservationSource::Files => "file_inventory",
+        ObservationSource::Functions => "syntax_symbols",
+        ObservationSource::Types => "syntax_types",
+        ObservationSource::FunctionPairs => "syntax_similarity",
+        ObservationSource::DependencyNodes => "static_dependencies",
+        ObservationSource::DataflowSources => "conservative_dataflow",
+    }
 }
 
 impl IssueFamily {

@@ -158,7 +158,8 @@ fn duplicate_shape_detection(group: &[TypeShape], threshold: usize) -> DetectedE
                 .iter()
                 .map(|shape| related_location(&shape.occurrence))
                 .collect(),
-        ),
+        )
+        .with_group_subject(),
     )
 }
 
@@ -200,9 +201,11 @@ fn generic_bucket_detections(
                         path: path.clone(),
                         line: 1,
                         name: None,
+                        entity_key: None,
                     })
                     .collect(),
-            ),
+            )
+            .with_directory_subject(),
         ));
     }
 
@@ -226,7 +229,8 @@ fn generic_bucket_detections(
                     "concepts",
                 )],
             )
-            .with_related_locations(vec![related_location(occurrence)]),
+            .with_related_locations(vec![related_location(occurrence)])
+            .with_file_subject(),
         ));
     }
 
@@ -270,7 +274,8 @@ fn adapter_boundary_bypass_detections(
                     "bypasses",
                 )],
             )
-            .with_related_locations(group.iter().map(related_location).collect()),
+            .with_related_locations(group.iter().map(related_location).collect())
+            .with_group_subject(),
         ));
     }
 
@@ -324,7 +329,8 @@ fn groups_to_detections(
                     "occurrences",
                 )],
             )
-            .with_related_locations(group.iter().map(related_location).collect()),
+            .with_related_locations(group.iter().map(related_location).collect())
+            .with_group_subject(),
         ));
     }
 

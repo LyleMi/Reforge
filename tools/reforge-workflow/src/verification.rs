@@ -8,17 +8,15 @@ pub(crate) struct IssueChanges {
     pub resolved: Vec<String>,
     pub remaining: Vec<String>,
     pub new_issues: Vec<String>,
+    pub unknown: Vec<String>,
 }
 
 pub(crate) fn issue_changes(
     run: &RunArtifact,
     plan: &PlanArtifact,
+    baselines: &[Report],
     fresh: &[Report],
 ) -> IssueChanges {
-    let current = fresh
-        .iter()
-        .flat_map(|report| report.issues.iter().map(|issue| issue.id.clone()))
-        .collect::<BTreeSet<_>>();
     let initial = run
         .initial_issue_ids
         .iter()
@@ -29,10 +27,49 @@ pub(crate) fn issue_changes(
         .iter()
         .cloned()
         .collect::<BTreeSet<_>>();
+    let fresh_by_producer = fresh
+        .iter()
+        .map(|report| (report.producer.name.as_str(), report))
+        .collect::<BTreeMap<_, _>>();
+    let mut states = BTreeMap::new();
+    for baseline in baselines {
+        let Some(current) = fresh_by_producer.get(baseline.producer.name.as_str()) else {
+            continue;
+        };
+        if current.validate_baseline(baseline).is_ok() {
+            states.extend(current.compare_to(baseline).issues);
+        }
+    }
+    let current = fresh
+        .iter()
+        .flat_map(|report| report.issues.iter().map(|issue| issue.id.clone()))
+        .collect::<BTreeSet<_>>();
+    let unknown = states
+        .iter()
+        .filter(|(_, entry)| entry.state == reforge_schema::BaselineState::Unknown)
+        .map(|(id, _)| id.clone())
+        .collect::<BTreeSet<_>>();
     IssueChanges {
-        remaining: selected.intersection(&current).cloned().collect(),
-        resolved: selected.difference(&current).cloned().collect(),
-        new_issues: current.difference(&initial).cloned().collect(),
+        remaining: selected
+            .intersection(&current)
+            .filter(|id| !unknown.contains(*id))
+            .cloned()
+            .collect(),
+        resolved: selected
+            .iter()
+            .filter(|id| {
+                states
+                    .get(*id)
+                    .is_some_and(|entry| entry.state == reforge_schema::BaselineState::Absent)
+            })
+            .cloned()
+            .collect(),
+        new_issues: current
+            .difference(&initial)
+            .filter(|id| !unknown.contains(*id))
+            .cloned()
+            .collect(),
+        unknown: unknown.into_iter().collect(),
     }
 }
 

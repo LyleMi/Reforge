@@ -1,10 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::detectors::manifest::{observation_source, subject_kind};
 use crate::detectors::similarity::{ParsedSourceFile, SourceFile};
-use crate::model::{
-    DetectedEvidence, ObservationSource, RawMetrics, Rule, SubjectKind, serialized_rule,
-};
+use crate::model::{DetectedEvidence, DetectedSubject, RawMetrics, Rule, serialized_rule};
 
 pub(super) fn assign_stable_anchors(
     detections: &mut [DetectedEvidence],
@@ -22,6 +19,17 @@ pub(super) fn assign_stable_anchors(
         qualified_symbols: &qualified_symbols,
     };
     for detection in detections {
+        for location in &mut detection.related_locations {
+            if location.entity_key.is_none() {
+                location.entity_key = Some(location_anchor(
+                    &location.path,
+                    Some(location.line),
+                    raw_metrics,
+                    lookups.sources,
+                    lookups.qualified_symbols,
+                ));
+            }
+        }
         detection.semantic_anchor = detection_anchor(
             detection,
             raw_metrics,
@@ -47,44 +55,51 @@ fn detection_anchor(
     if detection.kind == Rule::DebtMarker {
         return text_anchor(&detection.path, detection.line, sources);
     }
-    match subject_kind(detection.kind) {
-        SubjectKind::Repository => format!("repository:{}", serialized_rule(detection.kind)),
-        SubjectKind::Directory => format!("directory:{}", normalize_anchor_path(&detection.path)),
-        SubjectKind::File => format!("file:{}", normalize_anchor_path(&detection.path)),
-        SubjectKind::Symbol if observation_source(detection.kind) == ObservationSource::Types => {
-            symbol_anchor(
-                "type",
-                &detection.path,
-                detection.line,
-                raw_metrics.types.iter().map(|metric| SymbolMetric {
-                    path: &metric.path,
-                    name: &metric.name,
-                    line: metric.line,
-                    loc: metric.loc,
-                }),
-                AnchorLookups {
-                    sources,
-                    qualified_symbols,
-                },
-            )
+    match &detection.subject {
+        DetectedSubject::Repository => {
+            format!("repository:{}", serialized_rule(detection.kind))
         }
-        SubjectKind::Symbol => symbol_anchor(
-            "function",
-            &detection.path,
-            detection.line,
-            raw_metrics.functions.iter().map(|metric| SymbolMetric {
-                path: &metric.path,
-                name: &metric.name,
-                line: metric.line,
-                loc: metric.loc,
-            }),
-            AnchorLookups {
-                sources,
-                qualified_symbols,
-            },
+        DetectedSubject::Directory => {
+            format!("directory:{}", normalize_anchor_path(&detection.path))
+        }
+        DetectedSubject::File => format!("file:{}", normalize_anchor_path(&detection.path)),
+        DetectedSubject::Symbol {
+            declaration_kind,
+            name,
+            signature,
+        } => direct_symbol_anchor(
+            declaration_kind,
+            name,
+            signature.as_deref(),
+            detection,
+            qualified_symbols,
         ),
-        SubjectKind::Group => group_anchor(detection, raw_metrics, sources, qualified_symbols),
+        DetectedSubject::Group => group_anchor(detection, raw_metrics, sources, qualified_symbols),
     }
+}
+
+fn direct_symbol_anchor(
+    declaration_kind: &str,
+    name: &str,
+    signature: Option<&str>,
+    detection: &DetectedEvidence,
+    qualified_symbols: &BTreeMap<String, String>,
+) -> String {
+    let qualified = detection
+        .line
+        .and_then(|line| {
+            qualified_symbols.get(&symbol_key(declaration_kind, &detection.path, line, name))
+        })
+        .cloned()
+        .unwrap_or_else(|| normalize_symbol(name));
+    format!(
+        "{}:{}:{}::{}:{}",
+        detection.language,
+        declaration_kind,
+        normalize_anchor_path(&detection.path),
+        qualified,
+        signature.unwrap_or("declaration")
+    )
 }
 
 #[derive(Clone, Copy)]

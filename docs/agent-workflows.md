@@ -1,7 +1,7 @@
 # Optional agent guard
 
 `reforge-workflow` is optional; normal analysis does not require it. It consumes reports and never invokes another Reforge tool. All input reports must
-be schema 26 and share workspace identity and source revision. Conflicting content for one Issue ID
+be schema 27 and share workspace identity and source revision. Conflicting content for one Issue ID
 is rejected.
 
 ```bash
@@ -18,7 +18,7 @@ reforge-workflow verify --report report-after.json
 Commands accept `--run <directory>` and otherwise use `.reforge-workflow`. `status` and `validate`
 are read-only.
 
-Artifact v5 has five phases: `Imported -> Planned -> Approved -> Applied -> Verified`. The imported
+Artifact v6 has five phases: `Imported -> Planned -> Approved -> Applied -> Verified`. The imported
 plan contains selection, notes, changes, a target-relative write set, and required checks. Artifact
 v5 files using the earlier migration shape must be regenerated. Approval freezes the plan hash,
 write set, and workspace snapshot.

@@ -120,11 +120,38 @@ pub struct RuleSpec {
     pub rule: String,
     pub analysis: String,
     pub family: IssueFamily,
-    pub subject: SubjectKind,
+    pub allowed_subjects: Vec<SubjectKind>,
     pub observation_source: ObservationSource,
-    pub languages: Vec<String>,
+    pub language_capabilities: BTreeMap<String, RuleLanguageCapability>,
     pub measurements: Vec<MetricId>,
     pub description: String,
+    pub maturity: RuleMaturity,
+    pub default_enabled: bool,
+    pub semantic_version: String,
+    pub validation_basis: ValidationBasis,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleMaturity {
+    Experimental,
+    Preview,
+    Stable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValidationBasis {
+    Fixture,
+    Automated,
+    Maintainer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuleLanguageCapability {
+    pub maturity: RuleMaturity,
+    pub capabilities: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

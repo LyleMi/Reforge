@@ -8,8 +8,8 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use reforge_schema::{
     ANALYSIS_UNITY, AnalysisCoverage, CoverageLimitation, CoverageObservation, CoverageStatus,
-    Evidence, Issue, LanguageCoverage, Location, Measurement, Producer, Report, RuleExecution,
-    Subject, SuppressionSummary, Target,
+    EntityRef, Evidence, Issue, LanguageCoverage, Location, Measurement, Producer, Report,
+    ReportInput, RuleExecution, Subject, SuppressionSummary, Target, default_provenance,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -306,21 +306,23 @@ pub fn analyze(options: &AnalyzeOptions) -> Result<Report> {
     let scan = scan_project(&root, &options.config)?;
     let coverage = unity_coverage(&scan);
     let issues = project_issues(scan.detections);
-    Ok(Report::new(
-        Producer {
+    let provenance = default_provenance(&coverage, &issues);
+    Ok(Report::new(ReportInput {
+        producer: Producer {
             name: "reforge.unity".into(),
             version: env!("CARGO_PKG_VERSION").into(),
             revision: option_env!("REFORGE_BUILD_REVISION").map(str::to_owned),
         },
-        Target {
+        target: Target {
             root: root.to_string_lossy().into_owned(),
             workspace_identity: workspace_identity(&root),
             source_revision: git(&root, &["rev-parse", "HEAD"]),
         },
-        SuppressionSummary::default(),
+        provenance,
+        suppression: SuppressionSummary::default(),
         coverage,
         issues,
-    ))
+    }))
 }
 
 fn scan_project(root: &Path, config: &Config) -> Result<Scan> {
@@ -357,6 +359,7 @@ fn unity_coverage(scan: &Scan) -> BTreeMap<String, AnalysisCoverage> {
                     status,
                     files: scan.assets,
                     functions: 0,
+                    capabilities: BTreeMap::new(),
                     limitations: scan.limitations.clone(),
                 },
             )]),
@@ -377,6 +380,8 @@ fn unity_coverage(scan: &Scan) -> BTreeMap<String, AnalysisCoverage> {
                         qualified_rule(rule.name),
                         RuleExecution {
                             status,
+                            maturity: "experimental".into(),
+                            enabled_source: reforge_schema::RuleActivation::Internal,
                             observations: vec![CoverageObservation {
                                 name: name.into(),
                                 count,

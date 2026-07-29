@@ -21,7 +21,7 @@ mod tests {
             !entry.rule.is_empty()
                 && !entry.description.is_empty()
                 && !entry.family.guidance().is_empty()
-                && !entry.languages.is_empty()
+                && !entry.language_capabilities.is_empty()
         }));
     }
 
@@ -38,13 +38,13 @@ mod tests {
             .iter()
             .map(|entry| entry.family.id())
             .collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(families.len(), 18);
+        assert_eq!(families.len(), 17);
     }
 
     #[test]
     fn readability_rules_share_family_and_subject_kind() {
         let long_function = rule_spec(Rule::LongFunction);
-        assert_eq!(long_function.subject, SubjectKind::Symbol);
+        assert_eq!(long_function.allowed_subjects, [SubjectKind::Symbol]);
         assert_eq!(
             long_function.family,
             IssueFamily::FunctionReadability
@@ -69,8 +69,8 @@ mod tests {
     #[test]
     fn script_languages_are_scoped_to_parsed_detectors() {
         let long_function = rule_spec(Rule::LongFunction);
-        assert!(long_function.languages.contains(&"bash".to_string()));
-        assert!(long_function.languages.contains(&"powershell".to_string()));
+        assert!(long_function.language_capabilities.contains_key("bash"));
+        assert!(long_function.language_capabilities.contains_key("powershell"));
 
         for kind in [
             Rule::UnusedFunction,
@@ -78,8 +78,8 @@ mod tests {
             Rule::DependencyHub,
         ] {
             let entry = rule_spec(kind);
-            assert!(!entry.languages.contains(&"bash".to_string()));
-            assert!(!entry.languages.contains(&"powershell".to_string()));
+            assert!(!entry.language_capabilities.contains_key("bash"));
+            assert!(!entry.language_capabilities.contains_key("powershell"));
         }
     }
 }

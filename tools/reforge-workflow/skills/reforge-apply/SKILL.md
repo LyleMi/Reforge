@@ -1,11 +1,11 @@
 ---
 name: reforge-apply
-description: Optional guard workflow that applies only an explicitly approved Reforge artifact v5 plan within its frozen write set.
+description: Optional guard workflow that applies only an explicitly approved Reforge artifact v6 plan within its frozen write set.
 ---
 
 # Reforge Apply
 
-Generated contract: CLI `0.2.0`, report schema `26`, artifact schema `5`.
+Generated contract: CLI `0.2.0`, report schema `27`, artifact schema `6`.
 
 1. Check `reforge-workflow --version`, `status`, and `validate`; stop on mismatch.
 2. Continue only in `Approved`. Never approve from this skill.

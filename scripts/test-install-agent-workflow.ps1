@@ -16,6 +16,12 @@ function Assert-Missing([string]$Path) {
     }
 }
 
+function Assert-Contains([string]$Path, [string]$Pattern) {
+    if ((Get-Content -LiteralPath $Path -Raw) -notmatch $Pattern) {
+        throw "Expected file to match '$Pattern': $Path"
+    }
+}
+
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 try {
     $helpOutput = & $workflowInstaller -Help | Out-String
@@ -30,6 +36,8 @@ try {
     Assert-File (Join-Path $skills "reforge-analyze\SKILL.md")
     Assert-Missing (Join-Path $skills "reforge-plan")
     Assert-File (Join-Path $agents "reforge-investigator.toml")
+    Assert-Contains (Join-Path $skills "reforge-analyze\SKILL.md") 'report schema `27`'
+    Assert-Contains (Join-Path $agents "reforge-investigator.toml") 'artifact schema 6'
 
     $guardSkills = Join-Path $testRoot "guard-skills"
     $guardAgents = Join-Path $testRoot "guard-agents"
@@ -43,6 +51,8 @@ try {
     Assert-File (Join-Path $plugin ".codex-plugin\plugin.json")
     Assert-File (Join-Path $plugin "skills\reforge-analyze\SKILL.md")
     Assert-Missing (Join-Path $plugin ".codex\agents\reforge-investigator.toml")
+    Assert-Contains (Join-Path $plugin ".codex-plugin\bundle.json") '"report_schema": 27'
+    Assert-Contains (Join-Path $plugin "skills\reforge-analyze\SKILL.md") 'report schema `27`'
 
     $projectRoot = Join-Path $testRoot "all-project"
     & $workflowInstaller -Agent all -ProjectDir $projectRoot -SkipCli

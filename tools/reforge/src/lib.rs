@@ -246,13 +246,6 @@ fn attach_baseline(report: &mut Report, baseline: Option<&Path>) -> Result<()> {
     if let Some(path) = baseline {
         let baseline = load_report(path)?;
         report.validate_baseline(&baseline)?;
-        let downgrades = report.coverage_downgrades(&baseline);
-        if !downgrades.is_empty() {
-            bail!(
-                "baseline coverage degraded for {}; missing issues cannot be classified as resolved",
-                downgrades.join(", ")
-            );
-        }
         report.baseline_comparison = Some(report.compare_to(&baseline));
     }
     Ok(())
@@ -261,13 +254,46 @@ fn attach_baseline(report: &mut Report, baseline: Option<&Path>) -> Result<()> {
 fn gate_failures(report: &Report, gate: Option<GateArg>) -> Result<usize> {
     Ok(match gate {
         None => 0,
-        Some(GateArg::All) => report.issues.len(),
-        Some(GateArg::New) => report
-            .baseline_comparison
-            .as_ref()
-            .context("--gate new requires --baseline")?
-            .new_issue_ids
-            .len(),
+        Some(GateArg::All) => report
+            .issues
+            .iter()
+            .filter(|issue| issue.kind == reforge_schema::IssueKind::Policy)
+            .count(),
+        Some(GateArg::New) => {
+            let comparison = report
+                .baseline_comparison
+                .as_ref()
+                .context("--gate new requires --baseline")?;
+            let current_policy_failures = report
+                .issues
+                .iter()
+                .filter(|issue| issue.kind == reforge_schema::IssueKind::Policy)
+                .filter(|issue| {
+                    comparison.issues.get(&issue.id).is_some_and(|entry| {
+                        matches!(
+                            entry.state,
+                            reforge_schema::BaselineState::New
+                                | reforge_schema::BaselineState::Updated
+                                | reforge_schema::BaselineState::Unknown
+                        )
+                    })
+                })
+                .map(|issue| issue.id.as_str())
+                .collect::<BTreeSet<_>>();
+            let absent_unknown_policy = comparison
+                .issues
+                .iter()
+                .filter(|(id, entry)| {
+                    entry.state == reforge_schema::BaselineState::Unknown
+                        && entry
+                            .reason
+                            .as_deref()
+                            .is_some_and(|reason| reason.starts_with("policy_issue:"))
+                        && !current_policy_failures.contains(id.as_str())
+                })
+                .count();
+            current_policy_failures.len() + absent_unknown_policy
+        }
     })
 }
 

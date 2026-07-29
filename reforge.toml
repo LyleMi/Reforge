@@ -1,7 +1,7 @@
-version = 1
+version = 2
 
 [analysis]
-enabled = ["codebase"]
+enabled = ["codebase", "dataflow"]
 
 [scope]
 include-hidden = false
@@ -12,6 +12,45 @@ ignore-paths = [
   "assets/report-app.js",
   "web/report-app/src/vite-env.d.ts",
 ]
+
+[rules]
+enable = [
+  "reforge.codebase.adapter_boundary_bypass",
+  "reforge.codebase.complex_function",
+  "reforge.codebase.config_key_drift",
+  "reforge.codebase.data_clump",
+  "reforge.codebase.debt_marker",
+  "reforge.codebase.deep_nesting",
+  "reforge.codebase.dependency_cycle",
+  "reforge.codebase.dependency_hub",
+  "reforge.codebase.directory_drift",
+  "reforge.codebase.duplicate_type_shape",
+  "reforge.codebase.file_naming_drift",
+  "reforge.codebase.fixture_factory_drift",
+  "reforge.codebase.function_proliferation",
+  "reforge.codebase.generic_bucket_drift",
+  "reforge.codebase.happy_path_only_tests",
+  "reforge.codebase.import_heavy_file",
+  "reforge.codebase.large_directory",
+  "reforge.codebase.large_file",
+  "reforge.codebase.large_public_surface",
+  "reforge.codebase.large_type",
+  "reforge.codebase.long_function",
+  "reforge.codebase.many_parameters",
+  "reforge.codebase.parallel_implementation",
+  "reforge.codebase.repeated_error_pattern",
+  "reforge.codebase.repeated_literal",
+  "reforge.codebase.shadowed_abstraction",
+  "reforge.codebase.similar_functions",
+  "reforge.codebase.stale_compatibility_path",
+  "reforge.codebase.test_duplication",
+  "reforge.codebase.unused_function",
+  "reforge.dataflow.adapter_flow_bypass",
+  "reforge.dataflow.excessive_relay",
+  "reforge.dataflow.flow_fan_out",
+]
+disable = []
+enforce = []
 
 [codebase]
 preset = "balanced"
@@ -40,8 +79,3 @@ min-modules = 3
 rule = "reforge.codebase.dependency_hub"
 path = "crates/reforge-engine/src/detectors/similarity.rs"
 reason = "The similarity facade intentionally coordinates parsing, indexing, comparison, and detector reporting."
-
-[[suppressions]]
-rule = "reforge.codebase.generic_bucket_drift"
-path = "crates/reforge-schema/src/lib.rs"
-reason = "The schema crate deliberately owns the small, cohesive public report contract in a single module."

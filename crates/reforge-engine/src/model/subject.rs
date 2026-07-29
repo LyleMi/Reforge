@@ -46,12 +46,6 @@ define_rules!(
     ExcessiveRelay,
     FlowFanOut,
     StaleCompatibilityPath,
-    MissingUserGuide,
-    MissingReportSchemaDocs,
-    MissingMetricsModelDocs,
-    MissingArchitectureDocs,
-    StaleCliDocumentation,
-    StaleSchemaDocumentation,
     DependencyCycle,
     DependencyHub,
 );
@@ -84,6 +78,8 @@ pub struct RelatedLocation {
     pub path: String,
     pub line: usize,
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -79,6 +79,8 @@ fn rule_execution(
     if entry.kind == Rule::AdapterFlowBypass && !context.input.flow_analysis.policy_configured {
         return RuleExecution {
             status: CoverageStatus::NotApplicable,
+            maturity: "preview".into(),
+            enabled_source: reforge_schema::RuleActivation::Internal,
             observations: Vec::new(),
             limitations: vec![CoverageLimitation {
                 code: "policy_not_configured".into(),
@@ -90,6 +92,8 @@ fn rule_execution(
     if !applicable {
         return RuleExecution {
             status: CoverageStatus::NotApplicable,
+            maturity: "preview".into(),
+            enabled_source: reforge_schema::RuleActivation::Internal,
             observations: Vec::new(),
             limitations: Vec::new(),
         };
@@ -101,6 +105,8 @@ fn rule_execution(
         } else {
             CoverageStatus::Partial
         },
+        maturity: "preview".into(),
+        enabled_source: reforge_schema::RuleActivation::Internal,
         observations: vec![CoverageObservation {
             name: observation_name(entry.observation_source).into(),
             count: observation_count(entry, context),
@@ -203,7 +209,7 @@ fn detector_requires_parse(entry: &crate::model::RuleSpec) -> bool {
     matches!(
         entry.observation_source,
         O::Functions | O::Types | O::FunctionPairs | O::DataflowSources
-    ) || entry.languages.iter().any(|language| {
+    ) || entry.language_capabilities.keys().any(|language| {
         !matches!(
             language.as_str(),
             "repository" | "language_neutral_paths"
@@ -215,7 +221,7 @@ fn detector_is_applicable(
     entry: &crate::model::RuleSpec,
     detected_languages: &BTreeSet<String>,
 ) -> bool {
-    entry.languages.iter().any(|language| {
+    entry.language_capabilities.keys().any(|language| {
         matches!(language.as_str(), "repository" | "language_neutral_paths")
             || detected_languages.contains(language)
     })

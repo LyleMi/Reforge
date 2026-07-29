@@ -36,7 +36,8 @@ pub(super) fn happy_path_test_detections(test_files: Vec<(usize, Vec<Occurrence>
                         "test cases",
                     )],
                 )
-                .with_related_locations(locations),
+                .with_related_locations(locations)
+                .with_group_subject(),
             ))
         })
         .collect()
@@ -53,6 +54,7 @@ pub(super) fn test_case_occurrences(file: &SourceFile, family: LanguageFamily) -
                     path: file.display_path.clone(),
                     line: index + 1,
                     name: test_case_name(trimmed, family),
+                    entity_key: None,
                 })
             } else {
                 None

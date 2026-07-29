@@ -13,8 +13,13 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  calibration:
+    name: calibration gate
+    uses: ./.github/workflows/calibration.yml
+
   build:
     name: build (${{ matrix.os }})
+    needs: calibration
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

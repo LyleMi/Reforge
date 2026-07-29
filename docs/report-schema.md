@@ -1,13 +1,42 @@
-# Report schema 26
+# Report schema 27
 
-The public Rust type is `reforge_schema::Report`. The top-level fields are `schema_version`, `producer`, `target`, `summary`, `suppression`, `coverage`, `issues`, and optional `baseline_comparison`.
+`reforge_schema::Report` contains `schema_version`, `producer`, `target`,
+`provenance`, `summary`, `suppression`, `coverage`, `issues`, and optional
+`baseline_comparison`. Unknown fields are rejected.
 
-An Issue contains `id`, explicit `analysis`, `family`, canonical `subject`, readable `title`, `guidance`, and Evidence. `analysis` must name a key in the report's Coverage map; consumers never infer ownership from a family prefix. Its `ri6-*` ID hashes only family and subject, so adding or reordering Evidence does not change Issue identity.
+Provenance records identity scheme `reforge-identity-v7`, the evaluated scope
+digest, per-analysis configuration and policy digests, and each evaluated
+rule's semantic version and evaluation digest.
 
-Evidence contains `id`, `rule`, `message`, measurements, locations, and an optional typed Flow witness. Its `re6-*` ID hashes only rule and semantic anchor. Flow witnesses expose source and sink symbols, ordered steps, hop counts, and resolution; internal graph node IDs are not report identity or display text.
+An Issue contains `kind = advisory | policy`, explicit analysis and family,
+typed Subject, readable prose, Evidence, an `ri7-*` ID, and a versioned
+`content_fingerprint` (`rc7-*`). Subject entities contain independent `key`,
+`path`, and optional
+`symbol` fields; groups contain structured entity members. Symbol keys use
+language, qualified owner, declaration kind, name, and signature or stable
+disambiguator. Prose, ordering, checkout location, comments, and line numbers
+do not define identity.
 
-Coverage is keyed by analysis. Each entry records overall status, actual scanned files, and cross-rule limitations. Every discovered language has its own status, file/function counts, and limitations; unsupported Dataflow languages remain visible. Rule execution contains one or more named observations with explicit count and unit, plus rule-local limitations. Zero Evidence therefore does not erase the scanned denominator.
+Evidence has an `re7-*` ID derived from rule and semantic anchor. Measurements,
+thresholds, evidence-set changes, and substantive witness changes update the
+Issue content fingerprint. Flow witnesses expose typed source/sink symbols,
+ordered steps, hop counts, and `exact`, `modeled`, `unresolved`, or
+`unsupported` resolution. Only all-exact, value-preserving paths can be policy
+witnesses.
 
-Reports never contain raw metrics, Flow IR, arbitrary extensions, or internal ontology fields. Unknown fields and older or transitional schemas are rejected.
+Coverage is keyed by analysis and language. Language entries include capability
+receipts for syntax, symbols, lexical scopes, local def-use, direct calls,
+call/return composition, field flow, and dynamic dispatch. Rule entries print
+once with maturity, activation source, status, observations, and limitations.
+Zero Evidence never erases the observed denominator.
 
-Schema 26's wire shape was tightened before release. Regenerate reports and baselines that used the earlier schema 26 migration shape.
+Baseline comparison maps every current or previous Issue ID to `new`,
+`unchanged`, `updated`, `absent`, or `unknown`, with an optional reason. A
+matching ID with a changed content fingerprint is `updated`. Scope, relevant
+configuration/policy, rule semantics/evaluation, analysis availability, or
+coverage changes make otherwise unprovable additions/disappearances `unknown`.
+Workspace identity mismatch is an error. Producer name and identity scheme must
+match, but producer versions and unrelated analysis sets may differ.
+
+Schema 26 and earlier reports are rejected with the 0.2 upgrade guide. There is
+no compatibility reader or implicit migration.

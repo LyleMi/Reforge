@@ -38,10 +38,19 @@ pub struct Config {
     engine: crate::scan::config::ConfigFile,
     enabled: BTreeSet<Analysis>,
     scope: ScopeConfig,
+    rules: RuleSelection,
+    source: toml::Value,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RuleSelection {
+    enabled: BTreeSet<String>,
+    disabled: BTreeSet<String>,
+    enforced: BTreeSet<String>,
 }
 
 impl Config {
-    pub const DEFAULT_TOML: &'static str = r#"version = 1
+    pub const DEFAULT_TOML: &'static str = r#"version = 2
 
 [analysis]
 enabled = ["codebase"]
@@ -52,6 +61,11 @@ include-generated = false
 no-gitignore = false
 exclude-tests = false
 ignore-paths = []
+
+[rules]
+enable = []
+disable = []
+enforce = []
 
 [codebase]
 preset = "balanced"
@@ -86,9 +100,9 @@ min-modules = 3
         let version = table
             .get("version")
             .and_then(toml::Value::as_integer)
-            .context("reforge.toml must declare `version = 1`")?;
-        if version != 1 {
-            bail!("unsupported reforge.toml version {version}; expected version 1");
+            .context("reforge.toml must declare `version = 2`")?;
+        if version != 2 {
+            bail!("unsupported reforge.toml version {version}; expected version 2");
         }
         validate_public_keys(&value)?;
         validate_public_values(&value)?;
@@ -98,10 +112,13 @@ min-modules = 3
         let enabled = parse_enabled(value_at(&value, "analysis.enabled"))?;
         let scope = parse_scope(&value)?;
         validate_suppressions(&value)?;
+        let rules = parse_rule_selection(&value)?;
         Ok(Self {
             engine: crate::scan::config::parse_config_value(&value)?,
             enabled,
             scope,
+            rules,
+            source: value,
         })
     }
 
@@ -137,6 +154,87 @@ min-modules = 3
             self.scope.ignore_paths = ignore_paths.to_vec();
         }
     }
+
+    fn rule_enabled(&self, rule: &str, default_enabled: bool) -> bool {
+        !self.rules.disabled.contains(rule)
+            && (self.rules.enabled.contains(rule)
+                || self.rules.enforced.contains(rule)
+                || default_enabled)
+    }
+
+    fn rule_enforced(&self, rule: &str) -> bool {
+        self.rules.enforced.contains(rule)
+    }
+}
+
+fn parse_rule_selection(value: &toml::Value) -> Result<RuleSelection> {
+    let registered = crate::detectors::manifest::rule_registry()
+        .iter()
+        .map(|entry| (entry.rule.as_str(), entry))
+        .collect::<BTreeMap<_, _>>();
+    let enabled = parse_rule_set(value, "rules.enable", &registered)?;
+    let disabled = parse_rule_set(value, "rules.disable", &registered)?;
+    let enforced = parse_rule_set(value, "rules.enforce", &registered)?;
+    validate_disjoint_rule_sets(&enabled, &disabled, &enforced)?;
+    for rule in &enforced {
+        let entry = registered
+            .get(rule.as_str())
+            .expect("enforced rule was validated against registry");
+        if entry.maturity != crate::model::RuleMaturity::Stable {
+            bail!("rules.enforce only accepts stable rules; `{rule}` is preview");
+        }
+    }
+    Ok(RuleSelection {
+        enabled,
+        disabled,
+        enforced,
+    })
+}
+
+fn parse_rule_set(
+    value: &toml::Value,
+    key: &str,
+    registered: &BTreeMap<&str, &crate::model::RuleSpec>,
+) -> Result<BTreeSet<String>> {
+    let Some(values) = value_at(value, key) else {
+        return Ok(BTreeSet::new());
+    };
+    let values = values
+        .as_array()
+        .with_context(|| format!("{key} must be an array"))?;
+    let mut parsed = BTreeSet::new();
+    for (index, value) in values.iter().enumerate() {
+        let rule = value
+            .as_str()
+            .with_context(|| format!("{key}[{index}] must be a string"))?;
+        if !rule.starts_with("reforge.") || rule.matches('.').count() < 2 {
+            bail!("{key}[{index}] must use a complete rule ID");
+        }
+        if !registered.contains_key(rule) {
+            bail!("unknown rule `{rule}` in {key}");
+        }
+        if !parsed.insert(rule.to_owned()) {
+            bail!("duplicate rule `{rule}` in {key}");
+        }
+    }
+    Ok(parsed)
+}
+
+fn validate_disjoint_rule_sets(
+    enabled: &BTreeSet<String>,
+    disabled: &BTreeSet<String>,
+    enforced: &BTreeSet<String>,
+) -> Result<()> {
+    for (left, left_name, right, right_name) in [
+        (enabled, "rules.enable", disabled, "rules.disable"),
+        (enforced, "rules.enforce", disabled, "rules.disable"),
+        (enabled, "rules.enable", enforced, "rules.enforce"),
+    ] {
+        if let Some(rule) = left.intersection(right).next() {
+            bail!("rule `{rule}` appears in both {left_name} and {right_name}");
+        }
+    }
+    Ok(())
 }
 
 fn validate_public_values(value: &toml::Value) -> Result<()> {
@@ -284,7 +382,7 @@ fn analyze_selected(options: &AnalyzeOptions) -> Result<Report> {
             .context("--flow-ir-output requires the dataflow analysis")?;
         write_debug_output(path, program)?;
     }
-    Ok(build_report(run, &root, &options.config.enabled))
+    Ok(build_report(run, &root, &options.config))
 }
 
 fn write_debug_output(path: &Path, value: &impl serde::Serialize) -> Result<()> {
@@ -306,14 +404,19 @@ pub fn rules(analyses: &BTreeSet<Analysis>) -> Vec<serde_json::Value> {
                 "rule": entry.rule,
                 "analysis": entry.analysis,
                 "family": entry.family.qualified(&entry.analysis),
-                "subject": subject_name(entry.subject),
+                "subjects": entry.allowed_subjects.iter().map(|subject| subject_name(*subject)).collect::<Vec<_>>(),
                 "observation": {
                     "source": observation_source_name(entry.observation_source),
                     "unit": observation_unit(entry.observation_source),
                 },
                 "description": entry.description,
                 "guidance": entry.family.guidance(),
-                "languages": entry.languages,
+                "maturity": entry.maturity,
+                "semantic_version": entry.semantic_version,
+                "validation_basis": entry.validation_basis,
+                "default_enabled": entry.default_enabled,
+                "enforceable": entry.maturity == crate::model::RuleMaturity::Stable,
+                "languages": entry.language_capabilities,
                 "measurements": entry.measurements.iter().map(|metric| metric.to_string()).collect::<Vec<_>>(),
             })
         })

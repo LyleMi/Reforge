@@ -207,6 +207,7 @@ fn collect_function_signals(
                 path: file.display_path.clone(),
                 line: index + 1,
                 name: Some(name.clone()),
+                entity_key: None,
             },
             words,
             file_words: file_words.to_vec(),
@@ -246,6 +247,7 @@ fn collect_fixture_factories(file: &SourceFile, file_words: &[String], signals: 
                 path: file.display_path.clone(),
                 line: index + 1,
                 name: Some(name),
+                entity_key: None,
             },
         ));
     }
@@ -275,6 +277,7 @@ fn collect_type_shapes(file: &SourceFile, signals: &mut DriftSignals) {
                     path: file.display_path.clone(),
                     line: start_line,
                     name: Some(name),
+                    entity_key: None,
                 },
                 fields,
             });
@@ -324,6 +327,7 @@ fn collect_config_keys(file: &SourceFile, signals: &mut DriftSignals) {
                         path: file.display_path.clone(),
                         line: line_number,
                         name: Some(literal),
+                        entity_key: None,
                     },
                 ));
             }
@@ -336,6 +340,7 @@ fn collect_config_keys(file: &SourceFile, signals: &mut DriftSignals) {
                     path: file.display_path.clone(),
                     line: line_number,
                     name: Some(key),
+                    entity_key: None,
                 },
             ));
         }
@@ -375,6 +380,15 @@ fn collect_generic_bucket_signals(
     let Some(stem) = file.path.file_stem().and_then(|stem| stem.to_str()) else {
         return;
     };
+    if file
+        .path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        == Some("rs")
+        && matches!(stem, "lib" | "main" | "mod")
+    {
+        return;
+    }
     let stem_words = split_identifier_words(stem);
     if stem_words
         .iter()
@@ -394,6 +408,7 @@ fn collect_generic_bucket_signals(
                     path: file.display_path.clone(),
                     line: 1,
                     name: Some(stem.to_string()),
+                    entity_key: None,
                 },
             ));
         }
@@ -454,6 +469,7 @@ fn push_bypass(
         path: file.display_path.clone(),
         line,
         name: Some(name.to_string()),
+        entity_key: None,
     });
 }
 

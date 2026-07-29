@@ -14,6 +14,8 @@ use super::thresholds::{
 };
 
 mod data_flow;
+#[cfg(test)]
+pub(crate) use data_flow::DataFlowSinkConfig;
 pub(crate) use data_flow::{DataFlowBoundaryConfig, DataFlowConfig};
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -234,11 +236,21 @@ fn validate_data_flow_boundary(boundary: &DataFlowBoundaryConfig) -> Result<()> 
     }
     if boundary.protected_paths.is_empty()
         || boundary.adapter_paths.is_empty()
-        || boundary.sink_symbols.is_empty()
+        || boundary.sinks.is_empty()
     {
         bail!(
-            "dataflow boundary {:?} requires protected-paths, adapter-paths, and sink-symbols",
+            "dataflow policy {:?} requires protected-paths, adapter-paths, and sinks",
             boundary.name
+        );
+    }
+    if !matches!(
+        boundary.language.as_str(),
+        "rust" | "javascript" | "typescript" | "tsx" | "python"
+    ) {
+        bail!(
+            "dataflow policy {:?} has unsupported language {:?}",
+            boundary.name,
+            boundary.language
         );
     }
     for pattern in boundary
@@ -249,12 +261,12 @@ fn validate_data_flow_boundary(boundary: &DataFlowBoundaryConfig) -> Result<()> 
     {
         validate_boundary_pattern(&boundary.name, pattern)?;
     }
-    for symbol in &boundary.sink_symbols {
-        if !is_fully_qualified_rust_symbol(symbol) {
+    for sink in &boundary.sinks {
+        validate_boundary_pattern(&boundary.name, &sink.path)?;
+        if sink.symbol.trim().is_empty() {
             bail!(
-                "dataflow boundary {:?} sink symbol {:?} must be a fully qualified crate:: Rust function",
-                boundary.name,
-                symbol
+                "dataflow policy {:?} contains an empty sink symbol",
+                boundary.name
             );
         }
     }
@@ -269,18 +281,6 @@ fn validate_boundary_pattern(boundary: &str, pattern: &str) -> Result<()> {
         format!("dataflow boundary {boundary:?} contains invalid glob {pattern:?}")
     })?;
     Ok(())
-}
-
-fn is_fully_qualified_rust_symbol(symbol: &str) -> bool {
-    let mut segments = symbol.split("::");
-    segments.next() == Some("crate")
-        && segments.clone().count() >= 1
-        && segments.all(|segment| {
-            !segment.is_empty()
-                && segment.chars().enumerate().all(|(index, ch)| {
-                    ch == '_' || ch.is_ascii_alphanumeric() && (index > 0 || !ch.is_ascii_digit())
-                })
-        })
 }
 
 fn apply_config_defaults(args: &mut EffectiveConfig, config: Option<&ConfigFile>) {
@@ -320,9 +320,13 @@ mod tests {
     fn boundary() -> DataFlowBoundaryConfig {
         DataFlowBoundaryConfig {
             name: "http-client".into(),
+            language: "rust".into(),
             protected_paths: vec!["src/application/**".into()],
             adapter_paths: vec!["src/adapters/http/**".into()],
-            sink_symbols: vec!["crate::transport::send".into()],
+            sinks: vec![DataFlowSinkConfig {
+                path: "src/transport.rs".into(),
+                symbol: "crate::transport::send".into(),
+            }],
             exempt_paths: vec!["src/bin/**".into()],
         }
     }
@@ -370,12 +374,12 @@ mod tests {
                 .contains("duplicate")
         );
         config.boundaries.truncate(1);
-        config.boundaries[0].sink_symbols = vec!["transport::send".into()];
+        config.boundaries[0].language = "brainfuck".into();
         assert!(
             validate_data_flow_config(&config)
                 .unwrap_err()
                 .to_string()
-                .contains("fully qualified")
+                .contains("unsupported language")
         );
         config.boundaries[0] = boundary();
         config.boundaries[0].protected_paths = vec!["[invalid".into()];

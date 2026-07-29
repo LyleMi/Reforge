@@ -367,6 +367,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "reforge-calibrate"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "reforge-engine",
+ "reforge-output",
+ "reforge-schema",
+ "serde",
+ "serde_json",
+ "sha2",
+ "toml",
+]
+
+[[package]]
 name = "reforge-engine"
 version = "0.2.0"
 dependencies = [
@@ -412,6 +427,7 @@ dependencies = [
  "anyhow",
  "serde",
  "serde_json",
+ "serde_yaml",
  "sha2",
 ]
 

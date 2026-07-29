@@ -29,6 +29,8 @@ pub(super) struct FlowEdge {
 #[derive(Debug, Clone)]
 pub(super) struct FunctionRecord {
     pub symbol: String,
+    pub public: bool,
+    pub owner: Option<usize>,
     pub crate_key: String,
     pub module: String,
     pub start_byte: usize,
@@ -39,14 +41,6 @@ pub(super) struct FunctionRecord {
     pub return_node: NodeId,
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct CallRecord {
-    pub target: String,
-    pub function_index: usize,
-    pub path: String,
-    pub line: usize,
-}
-
 #[derive(Debug, Default)]
 pub(super) struct FlowGraph {
     pub nodes: Vec<FlowLocation>,
@@ -54,13 +48,17 @@ pub(super) struct FlowGraph {
     pub functions: Vec<FunctionRecord>,
     pub functions_by_symbol: BTreeMap<String, Vec<usize>>,
     pub imports: BTreeMap<String, BTreeMap<String, String>>,
-    pub calls: Vec<CallRecord>,
     pub unresolved_reasons: BTreeMap<String, usize>,
+    pub unresolved_by_language: BTreeMap<String, usize>,
 }
 
 impl FlowGraph {
-    pub fn unresolved(&mut self, reason: impl Into<String>) {
+    pub fn unresolved(&mut self, language: &str, reason: impl Into<String>) {
         *self.unresolved_reasons.entry(reason.into()).or_insert(0) += 1;
+        *self
+            .unresolved_by_language
+            .entry(language.to_owned())
+            .or_insert(0) += 1;
     }
 
     pub fn add_edge(&mut self, edge: FlowEdge) {
@@ -83,12 +81,6 @@ impl FlowGraph {
                 && left.to == right.to
                 && left.kind == right.kind
                 && left.call_site == right.call_site
-        });
-        self.calls.sort_by(|left, right| {
-            left.path
-                .cmp(&right.path)
-                .then_with(|| left.line.cmp(&right.line))
-                .then_with(|| left.target.cmp(&right.target))
         });
     }
 }

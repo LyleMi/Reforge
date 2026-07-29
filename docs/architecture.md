@@ -6,7 +6,7 @@
 - `crates/reforge-unity-engine` independently owns Unity scanning, rules,
   coverage, and report construction; it depends on the shared schema, not the
   core engine.
-- `crates/reforge-schema` owns the strict schema 26 `Report`, stable identities,
+- `crates/reforge-schema` owns the strict schema 27 `Report`, stable identities,
   typed witnesses, coverage, and baseline comparison.
 - `crates/reforge-output` owns human, JSON, YAML, SARIF, and embedded HTML
   rendering.
@@ -43,7 +43,7 @@ aggregation family, output subject kind, input observation source, language
 support, measurements, and a rule-specific description. Families
 are an aggregation and identity mechanism, not an additional user workflow:
 after suppression, the engine groups Evidence by family and Subject into
-schema 26 Issues; schema projection alone creates `re6-*` Evidence IDs.
+schema 27 Issues; schema projection alone creates `re7-*` Evidence IDs.
 
 The engine returns the public `Report` directly. Debug metrics and Flow IR take
 separate explicit sidecar paths and never enter the report. Flow IR is only

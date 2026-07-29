@@ -297,21 +297,25 @@ fn has_external_reference(
 }
 
 fn unused_function_detection(definition: FunctionDefinition) -> DetectedEvidence {
-    crate::model::DetectedEvidence::from(DetectedEvidenceInput::new(
-        Rule::UnusedFunction,
-        definition.path,
-        Some(definition.line),
-        format!(
-            "function `{}` has no references outside its own body",
-            definition.name
-        ),
-        vec![DetectedMeasurement::threshold(
-            MetricId::FunctionReferences,
-            0,
-            1,
-            "references",
-        )],
-    ))
+    let symbol = definition.name.clone();
+    crate::model::DetectedEvidence::from(
+        DetectedEvidenceInput::new(
+            Rule::UnusedFunction,
+            definition.path,
+            Some(definition.line),
+            format!(
+                "function `{}` has no references outside its own body",
+                definition.name
+            ),
+            vec![DetectedMeasurement::threshold(
+                MetricId::FunctionReferences,
+                0,
+                1,
+                "references",
+            )],
+        )
+        .with_symbol_subject("function", symbol, None),
+    )
 }
 
 fn is_inside_rust_test_module(node: Node<'_>, context: UnusedFunctionContext<'_>) -> bool {

@@ -214,24 +214,55 @@ pub(super) fn render_values(values: &[serde_json::Value], format: TextFormatArg)
         TextFormatArg::Yaml => serde_yaml::to_writer(std::io::stdout().lock(), values)?,
         TextFormatArg::Human => {
             for entry in values {
+                let subjects = entry["subjects"]
+                    .as_array()
+                    .map(|values| {
+                        values
+                            .iter()
+                            .filter_map(|value| value.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
+                let languages = entry["languages"]
+                    .as_object()
+                    .map(|values| {
+                        values
+                            .iter()
+                            .map(|(language, capability)| {
+                                let maturity = capability["maturity"].as_str().unwrap_or("unknown");
+                                let capabilities = capability["capabilities"]
+                                    .as_array()
+                                    .map(|values| {
+                                        values
+                                            .iter()
+                                            .filter_map(|value| value.as_str())
+                                            .collect::<Vec<_>>()
+                                            .join("+")
+                                    })
+                                    .unwrap_or_default();
+                                format!("{language}={maturity}[{capabilities}]")
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
                 println!(
-                    "{}\n  analysis: {}\n  family: {}\n  subject: {}\n  observation: {} ({})\n  description: {}\n  guidance: {}\n  languages: {}\n  measurements: {}\n",
+                    "{}\n  analysis: {}\n  family: {}\n  subjects: {}\n  maturity: {}\n  semantic version: {}\n  validation basis: {}\n  default enabled: {}\n  enforceable: {}\n  observation: {} ({})\n  description: {}\n  guidance: {}\n  languages: {}\n  measurements: {}\n",
                     entry["rule"].as_str().unwrap_or_default(),
                     entry["analysis"].as_str().unwrap_or_default(),
                     entry["family"].as_str().unwrap_or_default(),
-                    entry["subject"].as_str().unwrap_or_default(),
+                    subjects,
+                    entry["maturity"].as_str().unwrap_or_default(),
+                    entry["semantic_version"].as_str().unwrap_or_default(),
+                    entry["validation_basis"].as_str().unwrap_or_default(),
+                    entry["default_enabled"].as_bool().unwrap_or_default(),
+                    entry["enforceable"].as_bool().unwrap_or_default(),
                     entry["observation"]["source"].as_str().unwrap_or_default(),
                     entry["observation"]["unit"].as_str().unwrap_or_default(),
                     entry["description"].as_str().unwrap_or_default(),
                     entry["guidance"].as_str().unwrap_or_default(),
-                    entry["languages"]
-                        .as_array()
-                        .map(|values| values
-                            .iter()
-                            .filter_map(|value| value.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", "))
-                        .unwrap_or_default(),
+                    languages,
                     entry["measurements"]
                         .as_array()
                         .map(|values| values

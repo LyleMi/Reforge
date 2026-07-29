@@ -309,6 +309,60 @@ export function validateAuth() {}
     );
 }
 
+const LARGE_GENERIC_RUST_MODULE: &str = r#"
+pub fn parse_auth_token() {}
+pub fn build_cache_store() {}
+pub fn validate_retry_policy() {}
+pub fn map_route_pattern() {}
+pub fn write_audit_sink() {}
+pub fn resolve_workspace_graph() {}
+pub fn collect_source_metrics() {}
+pub fn render_report_packet() {}
+pub fn compare_baseline_state() {}
+pub fn verify_release_digest() {}
+pub fn summarize_coverage_receipt() {}
+pub fn normalize_entity_identity() {}
+pub fn project_issue_evidence() {}
+pub fn configure_dataflow_search() {}
+pub fn load_calibration_manifest() {}
+pub fn validate_corpus_license() {}
+pub fn create_action_matrix() {}
+pub fn inspect_promotion_evidence() {}
+"#;
+
+#[test]
+fn skips_rust_crate_and_module_entry_files_as_generic_buckets() {
+    let files = vec![
+        source_file("crates/example/src/lib.rs", LARGE_GENERIC_RUST_MODULE),
+        source_file("crates/example/src/main.rs", LARGE_GENERIC_RUST_MODULE),
+        source_file("crates/example/src/model/mod.rs", LARGE_GENERIC_RUST_MODULE),
+    ];
+
+    let detections = scan_concept_drift(&files, &options());
+
+    assert!(
+        detections
+            .iter()
+            .all(|detection| detection.kind != Rule::GenericBucketDrift),
+        "{detections:#?}"
+    );
+}
+
+#[test]
+fn detects_real_rust_utils_files_as_generic_buckets() {
+    let detections = scan_concept_drift(
+        &[source_file("src/utils.rs", LARGE_GENERIC_RUST_MODULE)],
+        &options(),
+    );
+
+    assert!(
+        detections
+            .iter()
+            .any(|detection| detection.kind == Rule::GenericBucketDrift),
+        "{detections:#?}"
+    );
+}
+
 #[test]
 fn skips_generic_bucket_drift_in_tests_by_default() {
     let files = vec![

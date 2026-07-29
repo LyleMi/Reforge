@@ -18,15 +18,38 @@ pub(super) fn has_literal_ancestor(mut node: Node<'_>) -> bool {
     false
 }
 
-pub(super) fn has_repeated_literal_noise_ancestor(mut node: Node<'_>) -> bool {
+pub(super) fn has_repeated_literal_noise_ancestor(
+    mut node: Node<'_>,
+    traversal: StructureTraversal<'_>,
+) -> bool {
     while let Some(parent) = node.parent() {
         if is_import_or_export_node(parent) {
+            return true;
+        }
+        if traversal.family == LanguageFamily::Rust
+            && parent.kind() == "attribute_item"
+            && parent
+                .utf8_text(traversal.source.as_bytes())
+                .ok()
+                .is_some_and(is_serde_attribute)
+        {
             return true;
         }
         node = parent;
     }
 
     false
+}
+
+fn is_serde_attribute(attribute: &str) -> bool {
+    attribute
+        .trim_start()
+        .strip_prefix("#[")
+        .is_some_and(|body| {
+            body.trim_start()
+                .strip_prefix("serde")
+                .is_some_and(|rest| rest.trim_start().starts_with('('))
+        })
 }
 
 fn is_import_or_export_node(node: Node<'_>) -> bool {
@@ -203,6 +226,7 @@ pub(super) fn occurrence(file: &SourceFile, node: Node<'_>, name: Option<String>
         path: file.display_path.clone(),
         line: node.start_position().row + 1,
         name,
+        entity_key: None,
     }
 }
 

@@ -358,6 +358,7 @@ pub(super) fn collect_data_clumps(
             path: file.display_path.clone(),
             line: function.line,
             name: Some(function.name.clone()),
+            entity_key: None,
         },
     ));
 }

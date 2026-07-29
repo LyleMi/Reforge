@@ -160,5 +160,6 @@ pub(super) fn related_location(occurrence: &Occurrence) -> RelatedLocation {
         path: occurrence.path.clone(),
         line: occurrence.line,
         name: occurrence.name.clone(),
+        entity_key: None,
     }
 }

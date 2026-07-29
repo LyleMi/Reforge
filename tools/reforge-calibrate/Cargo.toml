@@ -1,0 +1,21 @@
+[package]
+name = "reforge-calibrate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+toml.workspace = true
+reforge-engine = { path = "../../crates/reforge-engine" }
+reforge-output = { path = "../../crates/reforge-output" }
+reforge-schema = { path = "../../crates/reforge-schema" }
+
+[lints]
+workspace = true

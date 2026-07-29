@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-pub(crate) const SCHEMA_VERSION: u16 = 5;
+pub(crate) const SCHEMA_VERSION: u16 = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
@@ -121,6 +121,7 @@ pub(crate) struct VerificationArtifact {
     pub resolved_issue_ids: Vec<String>,
     pub remaining_issue_ids: Vec<String>,
     pub new_issue_ids: Vec<String>,
+    pub unknown_issue_ids: Vec<String>,
 }
 
 #[cfg(test)]
@@ -128,15 +129,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn v5_plan_round_trips_notes_and_rejects_removed_fields() {
+    fn v6_plan_round_trips_notes_and_rejects_removed_fields() {
         let plan = PlanArtifact {
             artifact_schema_version: SCHEMA_VERSION,
             goal: "split boundary".into(),
-            selected_issue_ids: vec!["ri6-example".into()],
+            selected_issue_ids: vec!["ri7-example".into()],
             notes: vec!["keep the public API stable".into()],
             changes: vec![PlannedChange {
                 description: "extract adapter".into(),
-                issue_ids: vec!["ri6-example".into()],
+                issue_ids: vec!["ri7-example".into()],
                 paths: vec!["src/adapter.rs".into()],
             }],
             write_set: vec!["src".into()],

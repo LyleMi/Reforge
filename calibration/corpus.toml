@@ -1,0 +1,100 @@
+version = 1
+frozen-at = "2026-07-29"
+report-schema = 27
+
+[collection]
+clone-command = "git clone --filter=blob:none https://github.com/{repository}.git && git checkout --detach {commit}"
+codebase-command = "reforge analyze . --analysis codebase --output json --reproducible"
+dataflow-command = "reforge analyze . --analysis dataflow --output json --reproducible"
+combined-command = "reforge analyze . --analysis codebase --analysis dataflow --output json --reproducible"
+reports = "CI calibration artifacts only; never commit complete third-party reports"
+
+[[repositories]]
+repository = "BurntSushi/ripgrep"
+language = "rust"
+commit = "dffd776a737dc19a48b758dd6a621de113794121"
+license = "MIT OR Unlicense"
+
+[[repositories]]
+repository = "ast-grep/ast-grep"
+language = "rust"
+commit = "a7a07ae6cb7cad74d6b0193a381e43290c8f973f"
+license = "MIT"
+
+[[repositories]]
+repository = "hyperium/hyper"
+language = "rust"
+commit = "116a9dfec5e38bd77993dac9b61520a29d002321"
+license = "MIT"
+
+[[repositories]]
+repository = "serde-rs/json"
+language = "rust"
+commit = "a3e9758ffc88247ab82182cb2505867768a702e3"
+license = "MIT OR Apache-2.0"
+
+[[repositories]]
+repository = "BurntSushi/walkdir"
+language = "rust"
+commit = "6fd031c82ba5a4204b4ce6eae73dacb00dc072ec"
+license = "MIT OR Unlicense"
+
+[[repositories]]
+repository = "sindresorhus/p-limit"
+language = "javascript"
+commit = "df476048d023ff868cd45b35ee47f5fb0ca2b25a"
+license = "MIT"
+
+[[repositories]]
+repository = "eslint/eslint"
+language = "javascript"
+commit = "151ba3f5834a0909e8b9b1736f4889ac694c0104"
+license = "MIT"
+
+[[repositories]]
+repository = "vitejs/vite"
+language = "typescript"
+commit = "8a245726944ed29225920d49be77c33c6e03afc8"
+license = "MIT"
+
+[[repositories]]
+repository = "typescript-eslint/typescript-eslint"
+language = "typescript"
+commit = "2afcea2e5a241a4c2f054fddf8e27f8671f9568e"
+license = "MIT"
+
+[[repositories]]
+repository = "react-hook-form/react-hook-form"
+language = "tsx"
+commit = "e2444e784d920ff6662681645dbf29823a3129ab"
+license = "MIT"
+
+[[repositories]]
+repository = "pallets/click"
+language = "python"
+commit = "00e592cea702e0b2caa0dee42489fdb1c22cd845"
+license = "BSD-3-Clause"
+
+[[repositories]]
+repository = "pallets/itsdangerous"
+language = "python"
+commit = "672971d66a2ef9f85151e53283113f33d642dabd"
+license = "BSD-3-Clause"
+
+[[repositories]]
+repository = "pallets/flask"
+language = "python"
+commit = "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81"
+license = "BSD-3-Clause"
+
+[[repositories]]
+repository = "Textualize/rich"
+language = "python"
+commit = "9d8f9a372cc5916fd4781fec207ced7ddac2f08f"
+license = "MIT"
+
+[[repositories]]
+repository = "encode/httpx"
+language = "python"
+commit = "b5addb64f0161ff6bfe94c124ef76f6a1fba5254"
+license = "BSD-3-Clause"

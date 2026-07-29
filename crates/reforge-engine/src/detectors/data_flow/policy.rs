@@ -24,6 +24,7 @@ struct EffectiveBoundary<'a> {
     protected: PathSet,
     adapters: PathSet,
     exempt: PathSet,
+    sinks: Vec<usize>,
 }
 
 struct CandidatePath {
@@ -39,7 +40,7 @@ pub(super) fn evaluate_policies(
 ) -> Result<PolicyResult> {
     let policies = policies
         .iter()
-        .map(|config| EffectiveBoundary::new(root, config))
+        .map(|config| EffectiveBoundary::new(root, graph, config))
         .collect::<Result<Vec<_>>>()?;
     let mut detections = Vec::new();
     let mut truncated_paths = 0;
@@ -98,6 +99,7 @@ fn policy_sources(policy: &EffectiveBoundary<'_>, graph: &FlowGraph) -> Vec<usiz
         .filter_map(|(index, node)| {
             (policy.protected.matches(&node.path)
                 && !policy.exempt.matches(&node.path)
+                && node.language == policy.config.language
                 && node.kind == crate::model::FlowNodeKind::Parameter)
                 .then_some(index)
         })
@@ -105,18 +107,8 @@ fn policy_sources(policy: &EffectiveBoundary<'_>, graph: &FlowGraph) -> Vec<usiz
 }
 
 fn policy_sinks(policy: &EffectiveBoundary<'_>, graph: &FlowGraph) -> Vec<usize> {
-    let mut sinks = graph
-        .calls
-        .iter()
-        .filter(|call| policy.config.sink_symbols.contains(&call.target))
-        .filter(|call| !policy.exempt.matches(&call.path))
-        .flat_map(|call| {
-            graph.functions[call.function_index]
-                .parameter_nodes
-                .iter()
-                .copied()
-        })
-        .collect::<Vec<_>>();
+    let mut sinks = policy.sinks.clone();
+    sinks.retain(|sink| !policy.exempt.matches(&graph.nodes[*sink].path));
     sinks.sort_unstable();
     sinks.dedup();
     sinks
@@ -176,14 +168,53 @@ fn detections_for_candidates(
 }
 
 impl EffectiveBoundary<'_> {
-    fn new<'a>(root: &Path, config: &'a DataFlowBoundaryConfig) -> Result<EffectiveBoundary<'a>> {
+    fn new<'a>(
+        root: &Path,
+        graph: &FlowGraph,
+        config: &'a DataFlowBoundaryConfig,
+    ) -> Result<EffectiveBoundary<'a>> {
+        let mut sinks = Vec::new();
+        for sink in &config.sinks {
+            let matches = graph
+                .functions
+                .iter()
+                .filter(|function| function.public)
+                .filter(|function| function.symbol == sink.symbol)
+                .filter(|function| {
+                    let location = &graph.nodes[function.return_node];
+                    location.language == config.language
+                        && path_matches(root, &location.path, &sink.path)
+                })
+                .collect::<Vec<_>>();
+            if matches.len() != 1 {
+                anyhow::bail!(
+                    "dataflow policy {:?} sink {}#{} matched {} public source symbols; expected exactly one",
+                    config.name,
+                    sink.path,
+                    sink.symbol,
+                    matches.len()
+                );
+            }
+            sinks.extend(matches[0].parameter_nodes.iter().copied());
+        }
         Ok(EffectiveBoundary {
             config,
             protected: PathSet::new(root, &config.protected_paths)?,
             adapters: PathSet::new(root, &config.adapter_paths)?,
             exempt: PathSet::new(root, &config.exempt_paths)?,
+            sinks,
         })
     }
+}
+
+fn path_matches(root: &Path, actual: &str, configured: &str) -> bool {
+    let root = normalize(&root.to_string_lossy());
+    let actual = normalize(actual);
+    let actual = actual
+        .strip_prefix(&root)
+        .unwrap_or(&actual)
+        .trim_start_matches('/');
+    actual == normalize(configured).trim_start_matches('/')
 }
 
 struct PathSet {
@@ -288,7 +319,15 @@ fn detection_for_path(
             ),
             metrics,
         )
-        .with_related_locations(related),
+        .with_related_locations(related)
+        .with_subject(
+            crate::model::DetectedSubject::Symbol {
+                declaration_kind: "function".into(),
+                name: source.function.clone(),
+                signature: None,
+            },
+            source.language.clone(),
+        ),
     );
     detection.flow_witness = Some(witness);
     detection.normalize_flow_anchor();
@@ -352,6 +391,7 @@ fn location(node: &FlowLocation, step: &str) -> RelatedLocation {
         path: node.path.clone(),
         line: node.line,
         name: Some(format!("{step}: {}", node.name)),
+        entity_key: Some(node.id.clone()),
     }
 }
 

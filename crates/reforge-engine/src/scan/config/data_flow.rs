@@ -40,9 +40,17 @@ impl Default for DataFlowConfig {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub(crate) struct DataFlowBoundaryConfig {
     pub name: String,
+    pub language: String,
     pub protected_paths: Vec<String>,
     pub adapter_paths: Vec<String>,
-    pub sink_symbols: Vec<String>,
+    pub sinks: Vec<DataFlowSinkConfig>,
     #[serde(default)]
     pub exempt_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub(crate) struct DataFlowSinkConfig {
+    pub path: String,
+    pub symbol: String,
 }

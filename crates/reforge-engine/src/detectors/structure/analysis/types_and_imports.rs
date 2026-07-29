@@ -283,7 +283,7 @@ impl StructureSignalCollector<'_, '_> {
     pub(super) fn collect_literal_occurrence(&mut self, node: Node<'_>) {
         if is_literal_node(node)
             && !has_literal_ancestor(node)
-            && !has_repeated_literal_noise_ancestor(node)
+            && !has_repeated_literal_noise_ancestor(node, self.traversal)
             && let Ok(text) = node.utf8_text(self.traversal.source.as_bytes())
             && let Some(literal) = normalize_literal(text)
         {

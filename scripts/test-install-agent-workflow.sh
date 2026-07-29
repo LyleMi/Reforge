@@ -21,8 +21,8 @@ run_workflow_installer --skills-only --skills-dir "$test_root/skills" --agent-di
 test -f "$test_root/skills/reforge-analyze/SKILL.md"
 test ! -e "$test_root/skills/reforge-plan"
 test -f "$test_root/agents/reforge-investigator.toml"
-grep -q 'report schema `26`' "$test_root/skills/reforge-analyze/SKILL.md"
-grep -q 'artifact schema 5' "$test_root/agents/reforge-investigator.toml"
+grep -q 'report schema `27`' "$test_root/skills/reforge-analyze/SKILL.md"
+grep -q 'artifact schema 6' "$test_root/agents/reforge-investigator.toml"
 if grep -Eqi 'legacy issue envelope|schema-v3 InvestigationArtifact' "$test_root/skills/reforge-analyze/SKILL.md" "$test_root/agents/reforge-investigator.toml"; then
     echo "installed workflow contains a stale schema contract" >&2
     exit 1
@@ -38,6 +38,8 @@ run_workflow_installer --plugin --plugin-dir "$test_root/plugin" --skip-agent --
 test -f "$test_root/plugin/.codex-plugin/plugin.json"
 test -f "$test_root/plugin/.codex-plugin/bundle.json"
 test ! -e "$test_root/plugin/.codex/agents/reforge-investigator.toml"
+grep -q '"report_schema": 27' "$test_root/plugin/.codex-plugin/bundle.json"
+grep -q 'report schema `27`' "$test_root/plugin/skills/reforge-analyze/SKILL.md"
 
 run_workflow_installer --agent claude --project-dir "$test_root/claude-project" --skip-cli
 test -f "$test_root/claude-project/CLAUDE.md"
@@ -72,7 +74,7 @@ test -f "$test_root/all-project/.claude/skills/reforge-analyze/SKILL.md"
 test -f "$test_root/all-project/.opencode/skills/reforge-analyze/SKILL.md"
 test -f "$test_root/all-project/.codebuddy/skills/reforge-analyze/SKILL.md"
 test -f "$test_root/all-project/.agents/skills/reforge-analyze/SKILL.md"
-grep -q 'report schema `26`' "$test_root/all-project/.agents/skills/reforge-analyze/SKILL.md"
+grep -q 'report schema `27`' "$test_root/all-project/.agents/skills/reforge-analyze/SKILL.md"
 
 for portable_agent in claude gemini opencode codebuddy cursor generic; do
     portable_root="$test_root/$portable_agent-global"

@@ -148,7 +148,8 @@ impl FunctionAnalyzer<'_> {
             return;
         }
         if left.kind() != "identifier" {
-            self.graph.unresolved("unsupported Rust assignment target");
+            self.graph
+                .unresolved("rust", "unsupported Rust assignment target");
             return;
         }
         let Some(name) = text(left, self.file) else {
@@ -156,7 +157,7 @@ impl FunctionAnalyzer<'_> {
         };
         if self.resolve_binding(&name).is_none() {
             self.graph
-                .unresolved("assignment to unresolved Rust binding");
+                .unresolved("rust", "assignment to unresolved Rust binding");
             return;
         }
         let line = left.start_position().row + 1;
@@ -209,32 +210,35 @@ impl FunctionAnalyzer<'_> {
             | "for_expression" => {
                 if contains_binding_use(expression, self.file, &self.scopes) {
                     self.graph
-                        .unresolved("unsupported Rust control-flow value merge");
+                        .unresolved("rust", "unsupported Rust control-flow value merge");
                 }
                 self.process_control(expression);
                 Vec::new()
             }
             "block" => self.process_block(expression, false),
             "closure_expression" => {
-                self.graph.unresolved("unsupported Rust closure flow");
+                self.graph
+                    .unresolved("rust", "unsupported Rust closure flow");
                 Vec::new()
             }
             "await_expression" => {
-                self.graph.unresolved("unsupported Rust async flow");
+                self.graph
+                    .unresolved("rust", "unsupported Rust async flow");
                 Vec::new()
             }
             "field_expression" => self.eval_field(expression, FlowEdgeKind::FieldRead),
             "macro_invocation" => {
-                self.graph.unresolved("unsupported Rust macro flow");
+                self.graph
+                    .unresolved("rust", "unsupported Rust macro flow");
                 Vec::new()
             }
             kind if is_literal(kind) => Vec::new(),
             _ => {
                 if contains_binding_use(expression, self.file, &self.scopes) {
-                    self.graph.unresolved(format!(
-                        "unsupported Rust {} value transform",
-                        expression.kind()
-                    ));
+                    self.graph.unresolved(
+                        "rust",
+                        format!("unsupported Rust {} value transform", expression.kind()),
+                    );
                 }
                 Vec::new()
             }
@@ -252,7 +256,7 @@ impl FunctionAnalyzer<'_> {
 
         if !matches!(function.kind(), "identifier" | "scoped_identifier") {
             self.graph
-                .unresolved("unsupported Rust method or function-value call");
+                .unresolved("rust", "unsupported Rust method or function-value call");
             return Vec::new();
         }
         let Some(raw_target) = text(function, self.file) else {
@@ -264,7 +268,7 @@ impl FunctionAnalyzer<'_> {
             resolve_function(&raw_target, &crate_key, &module, self.graph)
         else {
             self.graph
-                .unresolved(format!("unresolved Rust call {raw_target}"));
+                .unresolved("rust", format!("unresolved Rust call {raw_target}"));
             return Vec::new();
         };
         self.record_resolved_call(target, target_index, argument_nodes, line, call_ordinal)
@@ -276,7 +280,8 @@ impl FunctionAnalyzer<'_> {
         };
         let sources = self.eval_expr(value);
         if sources.is_empty() {
-            self.graph.unresolved("unresolved Rust field base");
+            self.graph
+                .unresolved("rust", "unresolved Rust field base");
             return Vec::new();
         }
         let name = field
@@ -344,7 +349,7 @@ impl FunctionAnalyzer<'_> {
             .clone();
         if argument_nodes.len() != parameter_groups.len() {
             self.graph
-                .unresolved(format!("argument arity mismatch for {target}"));
+                .unresolved("rust", format!("argument arity mismatch for {target}"));
             return Vec::new();
         }
         for (index, (argument, parameters)) in argument_nodes
@@ -355,7 +360,10 @@ impl FunctionAnalyzer<'_> {
         {
             if !parameter_groups_exact[index] {
                 self.graph
-                    .unresolved(format!("unsupported destructured parameter for {target}"));
+                    .unresolved(
+                        "rust",
+                        format!("unsupported destructured parameter for {target}"),
+                    );
                 continue;
             }
             for parameter in parameters {
@@ -389,12 +397,6 @@ impl FunctionAnalyzer<'_> {
             name: format!("return from {target}"),
             call_site: Some(call_site),
             transition: CallTransition::Return,
-        });
-        self.graph.calls.push(CallRecord {
-            target,
-            function_index: target_index,
-            path: self.file.file.display_path.clone(),
-            line,
         });
         vec![result]
     }
@@ -438,7 +440,14 @@ impl FunctionAnalyzer<'_> {
                 from: source,
                 to: target,
                 kind,
-                resolution: FlowResolution::Exact,
+                resolution: if matches!(
+                    kind,
+                    FlowEdgeKind::FieldRead | FlowEdgeKind::FieldWrite | FlowEdgeKind::Mutation
+                ) {
+                    FlowResolution::Modeled
+                } else {
+                    FlowResolution::Exact
+                },
                 path: self.file.file.display_path.clone(),
                 line,
                 name: name.clone(),
