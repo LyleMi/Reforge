@@ -2,10 +2,10 @@
 
 Every core rule is a refactoring-inspection claim, not a defect prediction,
 health score, generic priority, or automatic architecture inference. All cards
-inherit these non-goals. Identity is the schema 27 typed subject plus the
-rule-specific semantic anchor; prose, ordering, checkout location, and line
-numbers are not identity. Measurement, threshold, evidence-set, or witness
-changes update the issue content fingerprint.
+inherit these non-goals. A finding's identity comes from its typed subject and
+the rule-specific semantic anchor, not prose, ordering, checkout location, or
+line numbers. Measurement, threshold, evidence-set, or witness changes update
+the finding's content fingerprint.
 
 All rules below are currently `preview`, `default_enabled = false`,
 `validation_basis = fixture`, semantic version `1.0.0`, and ineligible for

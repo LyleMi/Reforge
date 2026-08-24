@@ -1,6 +1,7 @@
-# Report schema 27
+# Report format
 
-`reforge_schema::Report` contains `schema_version`, `producer`, `target`,
+The current report format uses `schema_version = 27`. `reforge_schema::Report`
+contains `schema_version`, `producer`, `target`,
 `provenance`, `summary`, `suppression`, `coverage`, `issues`, and optional
 `baseline_comparison`. Unknown fields are rejected.
 
@@ -38,5 +39,6 @@ coverage changes make otherwise unprovable additions/disappearances `unknown`.
 Workspace identity mismatch is an error. Producer name and identity scheme must
 match, but producer versions and unrelated analysis sets may differ.
 
-Schema 26 and earlier reports are rejected with the 0.2 upgrade guide. There is
-no compatibility reader or implicit migration.
+Older report formats are rejected rather than silently converted. Regenerate
+them with the current analyzer so their findings and Coverage describe the same
+analysis behavior.

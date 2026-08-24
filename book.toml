@@ -1,6 +1,6 @@
 [book]
 title = "Reforge"
-description = "Documentation for the Reforge refactoring-signal CLI"
+description = "Find structural risks, inspect the evidence, and build reviewable refactoring gates with Reforge."
 authors = ["Reforge contributors"]
 language = "en"
 src = "docs"
@@ -13,6 +13,7 @@ create-missing = false
 default-theme = "light"
 preferred-dark-theme = "navy"
 no-section-label = true
+smart-punctuation = true
 git-repository-url = "https://github.com/LyleMi/Reforge"
 edit-url-template = "https://github.com/LyleMi/Reforge/edit/main/{path}"
 site-url = "/Reforge/"

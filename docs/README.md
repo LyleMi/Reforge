@@ -1,46 +1,63 @@
-# Auditable refactoring guardrails for agent-written code
+<div class="docs-hero">
+  <img src="assets/reforge-logo.png" alt="" class="docs-hero-logo">
+  <div class="docs-eyebrow">Structural analysis for real codebases</div>
+  <h1>See what deserves a refactor.<br><span>See the evidence first.</span></h1>
+  <p>Reforge finds structural risks in human- and agent-written code, explains every finding, and makes gaps in analysis visible.</p>
+  <div class="docs-actions">
+    <a class="primary" href="user-guide.html">Get started</a>
+    <a class="secondary" href="sample/">Explore a live report <span aria-hidden="true">→</span></a>
+  </div>
+</div>
 
-Reforge is a local analyzer and CI gate for structural risk in human- and agent-written repositories. Every decision unit is a typed Issue backed by explicit Evidence; every report also states Coverage, limitations, and suppressions.
+<div class="quick-command" aria-label="Quick start command">
+  <code>reforge analyze . --output html --output-file reforge-report.html</code>
+</div>
 
-It is designed to answer three questions:
+## From signal to decision
 
-1. What refactoring risk was observed?
-2. What measurements, locations, or exact value-flow witness support it?
-3. What could the selected analyses not observe?
+Reforge does not hide structural observations behind a score. It gives reviewers the context needed to decide whether a change is worthwhile.
 
-Reforge does not upload code, collect telemetry, or emit a health, severity, priority, or defect-probability score.
+<div class="feature-grid">
+  <div class="feature-card findings">
+    <span class="feature-number">01</span>
+    <h3>Find the pressure points</h3>
+    <p>Surface duplication, oversized responsibilities, dependency tangles, naming drift, and difficult value paths.</p>
+  </div>
+  <div class="feature-card evidence">
+    <span class="feature-number">02</span>
+    <h3>Inspect the evidence</h3>
+    <p>Trace each finding back to its rule, measurements, source locations, and exact value-flow witness when available.</p>
+  </div>
+  <div class="feature-card coverage">
+    <span class="feature-number">03</span>
+    <h3>Know the limits</h3>
+    <p>See partial and unsupported analysis explicitly. No findings never means more coverage than Reforge actually observed.</p>
+  </div>
+</div>
 
-## Quick start
+## Choose the right analysis
 
-Unix:
+<div class="analysis-grid">
+  <div class="analysis-card">
+    <div class="analysis-label">Default</div>
+    <h3>Codebase</h3>
+    <p>Review structure across files, functions, types, dependencies, naming, duplication, tests, and repository history.</p>
+    <a href="analyses.html">Learn about Codebase →</a>
+  </div>
+  <div class="analysis-card">
+    <div class="analysis-label">Opt in</div>
+    <h3>Dataflow</h3>
+    <p>Follow conservative value paths to inspect relay depth, fan-out, and configured boundary policies.</p>
+    <a href="dataflow.html">Learn about Dataflow →</a>
+  </div>
+</div>
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.sh | sh
-reforge analyze .
-```
+## Designed for review, not scoring
 
-PowerShell:
+Findings are inspection prompts—not severity labels, priorities, or defect predictions. Reforge runs locally, uploads no source code, and collects no telemetry. Use it interactively, generate a standalone HTML report, or compare reviewed JSON baselines in CI.
 
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.ps1)))
-reforge analyze .
-```
-
-Codebase runs by default. Select Dataflow explicitly, or pass both analyses to reuse one workspace index:
-
-```sh
-reforge analyze . --analysis dataflow --output json --reproducible
-reforge analyze . --analysis codebase --analysis dataflow --reproducible
-```
-
-View the [live self-analysis](sample/) or continue with the [User Guide](user-guide.md).
-
-## Documentation map
-
-- [Analyses](analyses.md), [Dataflow](dataflow.md), and [rule cards](rule-cards.md)
-- [Configuration](configuration.md) and [schema 27](report-schema.md)
-- [HTML report](report-app.md) and [agent workflows](agent-workflows.md)
-- [Upgrading from 0.1 to 0.2](upgrading-to-0.2.md)
-- [Architecture](architecture.md), [calibration](calibration-samples.md), and [release](release.md)
-
-Codebase supports Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks, Python, Go, Java, C#, Kotlin, PHP, Ruby, Bash, and PowerShell. Dataflow currently builds exact conservative paths for Rust, JavaScript/TypeScript/TSX, and Python.
+<div class="next-links">
+  <a href="user-guide.html"><strong>Install and run</strong><span>From first analysis to a readable report</span></a>
+  <a href="configuration.html"><strong>Configure Reforge</strong><span>Scope, rules, thresholds, and policies</span></a>
+  <a href="rule-cards.html"><strong>Browse the rules</strong><span>Claims, capabilities, and exceptions</span></a>
+</div>

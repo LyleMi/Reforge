@@ -2,22 +2,24 @@
 
 [Overview](README.md)
 
-# Use Reforge
+# Get started
 
 - [User Guide](user-guide.md)
-- [Analyses](analyses.md)
-- [Dataflow](dataflow.md)
 - [Configuration](configuration.md)
-- [Report Schema](report-schema.md)
-- [Upgrading from 0.1 to 0.2](upgrading-to-0.2.md)
-- [HTML Report](report-app.md)
 
-# Understand Results
+# Understand Reforge
 
-- [Metrics Model](metrics-model.md)
+- [Analyses](analyses.md)
+- [Rule Reference](rule-cards.md)
+- [Dataflow](dataflow.md)
 
-# Maintain Reforge
+# Work with results
+
+- [Evidence and Measurements](metrics-model.md)
+- [HTML Reports](report-app.md)
+- [Report Format](report-schema.md)
+
+# Project
 
 - [Architecture](architecture.md)
 - [Contributing](contributing.md)
-- [Release](release.md)

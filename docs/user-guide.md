@@ -58,7 +58,7 @@ Reforge intentionally emits no health score, severity, priority, or defect proba
 
 ## Baselines and CI gates
 
-A baseline must use schema 27 with the same producer name, identity scheme, and workspace identity. Producer versions and unrelated analysis sets may differ. Coverage, scope, configuration, policy, or rule-semantic changes produce an `unknown` baseline state instead of claiming that an Issue is new or resolved.
+A baseline must use a compatible report format with the same producer, identity scheme, and workspace identity. Producer versions and unrelated analysis sets may differ. Coverage, scope, configuration, policy, or rule-semantic changes produce an `unknown` baseline state instead of claiming that an Issue is new or resolved.
 
 After reviewing and storing a baseline report, gate new, updated, or unknown policy Issues with:
 
@@ -75,4 +75,4 @@ reforge analyze . --output json --output-file current.json \
 
 ## Troubleshooting
 
-Use Coverage and its capability limitations when zero Issues are reported. Regenerate schema 26 and older reports rather than editing them. If a Dataflow policy is rejected, verify that it names one supported language and that every source and sink path/symbol names exactly one frontend declaration.
+Use Coverage and its capability limitations when zero Issues are reported. Regenerate incompatible older reports rather than editing them. If a Dataflow policy is rejected, verify that it names one supported language and that every source and sink path/symbol names exactly one frontend declaration.

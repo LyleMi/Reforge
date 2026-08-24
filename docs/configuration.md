@@ -73,5 +73,3 @@ The versioned file is parsed as optional typed fields. Reforge then creates one
 complete effective configuration by applying built-in defaults, preset,
 configuration file, `--set`, and CLI scope overrides in that order. `reforge
 config show` prints every effective leaf together with its source.
-
-Reforge 0.2 does not discover or translate `reforge-scan.toml`, `reforge-flow.toml`, or `reforge-unity.toml`.

@@ -158,7 +158,7 @@ removed, or renamed:
 - Mention the compatibility impact in the pull request.
 
 Consumers should rely on stable Issue and Evidence IDs, typed measurements,
-Coverage, and typed Dataflow witnesses. Schema 27 does not emit priority,
+Coverage, and typed Dataflow witnesses. The report format does not emit priority,
 confidence, severity, or hotspot ranking.
 
 ## Commits and Pull Requests

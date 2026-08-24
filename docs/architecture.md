@@ -3,18 +3,11 @@
 - `tools/reforge` is a thin CLI and configuration boundary.
 - `crates/reforge-engine` owns workspace indexing, execution planning,
   Codebase and Dataflow analysis, evidence aggregation, and report creation.
-- `crates/reforge-unity-engine` independently owns Unity scanning, rules,
-  coverage, and report construction; it depends on the shared schema, not the
-  core engine.
-- `crates/reforge-schema` owns the strict schema 27 `Report`, stable identities,
+- `crates/reforge-schema` owns the public `Report`, stable identities,
   typed witnesses, coverage, and baseline comparison.
 - `crates/reforge-output` owns human, JSON, YAML, SARIF, and embedded HTML
   rendering.
 - `web/report-app` owns the offline HTML interface.
-- `tools/reforge-unity` is an experimental CLI over the independent Unity
-  engine and emits producer `reforge.unity`.
-- `tools/reforge-workflow` is an optional report consumer; it is not part of
-  analyzer execution.
 
 The engine builds one shared workspace index. Each selected source is walked,
 read, language-classified, and parsed once; Codebase and Dataflow consume the
@@ -43,7 +36,7 @@ aggregation family, output subject kind, input observation source, language
 support, measurements, and a rule-specific description. Families
 are an aggregation and identity mechanism, not an additional user workflow:
 after suppression, the engine groups Evidence by family and Subject into
-schema 27 Issues; schema projection alone creates `re7-*` Evidence IDs.
+Issues; schema projection alone creates stable Evidence IDs.
 
 The engine returns the public `Report` directly. Debug metrics and Flow IR take
 separate explicit sidecar paths and never enter the report. Flow IR is only

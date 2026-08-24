@@ -1,6 +1,6 @@
 # HTML report
 
-The offline React app renders the compact schema 27 report: Issues, nested
+The offline React app renders a Reforge report: Issues, nested
 Evidence and measurements, typed Dataflow witnesses, per-analysis coverage,
 suppression totals, and optional baseline comparison. It does not render raw
 metrics, Flow IR, arbitrary JSON extensions, or internal ontology fields.
