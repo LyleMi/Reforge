@@ -35,11 +35,7 @@ static RULE_SPECS: LazyLock<Vec<RuleSpec>> = LazyLock::new(|| {
             rule: format!("reforge.{}.{}", seed.analysis, serialized_rule(seed.kind)),
             analysis: seed.analysis.into(),
             family: seed.family,
-            allowed_subjects: if seed.kind == Rule::GenericBucketDrift {
-                vec![SubjectKind::Directory, SubjectKind::File]
-            } else {
-                vec![seed.subject]
-            },
+            allowed_subjects: allowed_subjects(seed),
             observation_source: seed.observation_source,
             language_capabilities: seed
                 .languages
@@ -65,6 +61,20 @@ static RULE_SPECS: LazyLock<Vec<RuleSpec>> = LazyLock::new(|| {
         })
         .collect()
 });
+
+fn allowed_subjects(seed: RuleSpecSeed) -> Vec<SubjectKind> {
+    match (seed.subject, seed.kind) {
+        (SubjectKind::Directory, Rule::GenericBucketDrift) => vec![
+            SubjectKind::Repository,
+            SubjectKind::Directory,
+            SubjectKind::File,
+        ],
+        (SubjectKind::Directory, _) => {
+            vec![SubjectKind::Repository, SubjectKind::Directory]
+        }
+        _ => vec![seed.subject],
+    }
+}
 
 pub(crate) fn rule_registry() -> &'static [RuleSpec] {
     &RULE_SPECS

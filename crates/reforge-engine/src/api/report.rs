@@ -48,6 +48,10 @@ mod tests {
     use super::*;
     use crate::evidence_analysis::DetectedEvidenceInput;
     use crate::model::{DetectedMeasurement, MetricId};
+    use reforge_schema::{
+        AnalysisCoverage, CoverageStatus, Producer, ReportInput, SuppressionSummary, Target,
+        default_provenance, issue_id,
+    };
 
     fn detected(kind: Rule, metric: DetectedMeasurement) -> DetectedEvidence {
         let input =
@@ -98,5 +102,67 @@ mod tests {
             ("imports".to_string(), &imports),
         ]);
         assert_eq!(aggregate_issues(&detections, &Config::defaults()).len(), 2);
+    }
+
+    #[test]
+    fn root_directory_finding_projects_to_a_valid_repository_subject() {
+        let root = DetectedEvidence::from(
+            DetectedEvidenceInput::new(
+                Rule::LargeDirectory,
+                ".",
+                None,
+                "repository root contains too many source files",
+                vec![DetectedMeasurement::threshold(
+                    MetricId::DirectorySourceFiles,
+                    101,
+                    100,
+                    "files",
+                )],
+            )
+            .with_directory_subject(),
+        );
+        let detections = BTreeMap::from([("root".to_string(), &root)]);
+        let issues = aggregate_issues(&detections, &Config::defaults());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].subject, Subject::Repository);
+        assert_eq!(
+            issues[0].id,
+            issue_id(&issues[0].family, &Subject::Repository)
+        );
+
+        let coverage = BTreeMap::from([(
+            ANALYSIS_CODEBASE.into(),
+            AnalysisCoverage {
+                status: CoverageStatus::Observed,
+                scanned_files: 101,
+                languages: BTreeMap::new(),
+                rules: BTreeMap::new(),
+                limitations: Vec::new(),
+            },
+        )]);
+        let report = Report::new(ReportInput {
+            producer: Producer {
+                name: "reforge.analyze".into(),
+                version: env!("CARGO_PKG_VERSION").into(),
+                revision: None,
+            },
+            target: Target {
+                root: "/workspace".into(),
+                workspace_identity: "rw5-root-subject-test".into(),
+                source_revision: None,
+            },
+            provenance: default_provenance(&coverage, &issues),
+            suppression: SuppressionSummary::default(),
+            coverage,
+            issues,
+        });
+
+        report.validate().unwrap();
+        let json = serde_json::to_value(&report).unwrap();
+        assert_eq!(json["issues"][0]["subject"]["kind"], "repository");
+        let round_trip: Report = serde_json::from_value(json).unwrap();
+        round_trip.validate().unwrap();
+        assert_eq!(round_trip.issues[0].id, report.issues[0].id);
     }
 }

@@ -83,6 +83,9 @@ pub(super) fn aggregate_issues(
 fn candidate_subject(detection: &DetectedEvidence) -> Subject {
     match &detection.subject {
         crate::model::DetectedSubject::Repository => Subject::Repository,
+        crate::model::DetectedSubject::Directory if is_repository_root(&detection.path) => {
+            Subject::Repository
+        }
         crate::model::DetectedSubject::Directory => Subject::Directory {
             entity: reforge_schema::EntityRef::new(
                 detection.semantic_anchor.clone(),
@@ -133,6 +136,12 @@ fn candidate_subject(detection: &DetectedEvidence) -> Subject {
             Subject::Group { members }
         }
     }
+}
+
+fn is_repository_root(path: &str) -> bool {
+    std::path::Path::new(path)
+        .components()
+        .all(|component| matches!(component, std::path::Component::CurDir))
 }
 
 fn convert_evidence(detection: &DetectedEvidence) -> Evidence {
