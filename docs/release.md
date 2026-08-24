@@ -4,6 +4,13 @@ The core release contains only the `reforge` binary and the `reforge-analyze`
 skill. The installer and release archives must not add compatibility binaries
 or optional workspace products.
 
+Release archives are `reforge-linux-x86_64.tar.gz`,
+`reforge-macos-x86_64.tar.gz`, `reforge-macos-aarch64.tar.gz`, and
+`reforge-windows-x86_64.zip`. Each contains the native binary, README, LICENSE,
+and `reforge-analyze` skill. The release also publishes `SHA256SUMS`; the remote
+installers require it and verify the extracted binary's version before an
+atomic install.
+
 Before publishing, run:
 
 ```sh

@@ -2,6 +2,18 @@
 
 Reforge 0.2 intentionally does not read or migrate 0.1 reports or unversioned configuration.
 
+Install the fixed v0.2.0 release before regenerating configuration and baselines:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/LyleMi/Reforge/v0.2.0/scripts/install.sh | sh -s -- --version v0.2.0
+reforge --version
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/LyleMi/Reforge/v0.2.0/scripts/install.ps1))) -Version v0.2.0
+reforge --version
+```
+
 - Replace `scan` and the separate `reforge-scan` / `reforge-flow` commands with `reforge analyze`. Codebase is the default; select `--analysis dataflow` explicitly or pass both `--analysis codebase --analysis dataflow`.
 - Replace `analysis.lenses` with `analysis.enabled`; the removed key is rejected explicitly.
 - Replace `catalog` with `rules`.

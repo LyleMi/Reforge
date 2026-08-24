@@ -1,38 +1,46 @@
-# Reforge
+# Auditable refactoring guardrails for agent-written code
 
-Reforge turns source analysis into a compact chain:
+Reforge is a local analyzer and CI gate for structural risk in human- and agent-written repositories. Every decision unit is a typed Issue backed by explicit Evidence; every report also states Coverage, limitations, and suppressions.
 
-`analyze → issue → evidence → measurement → coverage`
+It is designed to answer three questions:
 
-It is designed for local audits and CI gates. It does not emit a health score,
-severity, priority, or defect prediction.
+1. What refactoring risk was observed?
+2. What measurements, locations, or exact value-flow witness support it?
+3. What could the selected analyses not observe?
+
+Reforge does not upload code, collect telemetry, or emit a health, severity, priority, or defect-probability score.
 
 ## Quick start
 
-Reforge requires Rust 1.85 or newer.
+Unix:
 
 ```sh
-cargo run -p reforge -- analyze .
-cargo run -p reforge -- analyze . --output html --output-file reforge-report.html
-cargo run -p reforge -- rules
+curl -fsSL https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.sh | sh
+reforge analyze .
 ```
 
-With no `--analysis`, Codebase runs alone. Select Dataflow explicitly, or use
-`--analysis codebase --analysis dataflow` to run both over one workspace index.
+PowerShell:
 
-## Core documentation
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.ps1)))
+reforge analyze .
+```
 
-- [User Guide](user-guide.md)
-- [Analyses](analyses.md)
-- [Dataflow](dataflow.md)
-- [Configuration](configuration.md)
-- [Report Schema](report-schema.md)
+Codebase runs by default. Select Dataflow explicitly, or pass both analyses to reuse one workspace index:
+
+```sh
+reforge analyze . --analysis dataflow --output json --reproducible
+reforge analyze . --analysis codebase --analysis dataflow --reproducible
+```
+
+View the [live self-analysis](sample/) or continue with the [User Guide](user-guide.md).
+
+## Documentation map
+
+- [Analyses](analyses.md), [Dataflow](dataflow.md), and [rule cards](rule-cards.md)
+- [Configuration](configuration.md) and [schema 27](report-schema.md)
+- [HTML report](report-app.md) and [agent workflows](agent-workflows.md)
 - [Upgrading from 0.1 to 0.2](upgrading-to-0.2.md)
-- [HTML Report](report-app.md)
-- [Architecture](architecture.md)
-- [Contributing](contributing.md)
-- [Release](release.md)
+- [Architecture](architecture.md), [calibration](calibration-samples.md), and [release](release.md)
 
-Codebase supports Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks,
-Python, Go, Java, C#, Kotlin, PHP, Ruby, Bash, and PowerShell. Dataflow currently
-builds exact conservative paths for Rust, JavaScript/TypeScript/TSX, and Python.
+Codebase supports Rust, JavaScript, TypeScript/TSX, Vue SFC script blocks, Python, Go, Java, C#, Kotlin, PHP, Ruby, Bash, and PowerShell. Dataflow currently builds exact conservative paths for Rust, JavaScript/TypeScript/TSX, and Python.

@@ -1,36 +1,78 @@
 # User guide
 
-## Installation
+## Install
 
-Install the release archive for your platform or run `cargo install --path
-tools/reforge` from a source checkout.
+The verified release installer chooses the supported asset for the current OS and CPU, validates it against the release `SHA256SUMS`, checks `reforge --version`, and atomically installs the binary. It also installs the `reforge-analyze` Codex skill unless disabled.
 
-Run the default Codebase analysis with:
+Unix:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.sh | sh
+# Pin a release or choose a destination:
+curl -fsSL https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.sh | \
+  sh -s -- --version v0.2.0 --bin-dir "$HOME/.local/bin"
+```
+
+The Unix default is `${REFORGE_INSTALL_DIR:-$HOME/.local/bin}`. Supported assets are Linux x86_64 and macOS x86_64/aarch64.
+
+PowerShell:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.ps1)))
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.ps1))) -Version v0.2.0 -BinDir C:\Tools\Reforge
+```
+
+Windows x86_64 defaults to `%LOCALAPPDATA%\Reforge\bin`. Use `--skip-skill` or `-SkipSkill` to install only the binary. Neither installer edits PATH; when necessary it prints the exact command to add the selected directory. Re-running an installer safely replaces the same version or upgrades it.
+
+From a source checkout, the existing `scripts/install-reforge.sh`, `scripts/install-reforge.ps1`, and `.bat` wrapper remain available for `cargo install --path` development workflows.
+
+## Analyze
+
+Run the default Codebase analysis:
 
 ```sh
 reforge analyze . --reproducible
 ```
 
-Dataflow is explicit: use `--analysis dataflow` alone, or repeat
-`--analysis codebase --analysis dataflow` for one combined report. Use `--output`
-and `--output-file` for human, HTML, JSON, YAML, or SARIF reports. A baseline
-must have schema 27, the same producer name, identity scheme, and workspace
-identity. Producer versions and unrelated analysis sets may differ. Coverage,
-scope, configuration, policy, or rule-semantic changes produce an `unknown`
-baseline state instead of claiming that an Issue is new or resolved.
+Dataflow is explicit. Run it alone or combine both core analyses over one workspace index:
 
-Debug data stays outside the report:
+```sh
+reforge analyze . --analysis dataflow --output json --reproducible
+reforge analyze . --analysis codebase --analysis dataflow --reproducible
+```
+
+Use `--output` and `--output-file` for human, HTML, JSON, YAML, or SARIF reports. Raw Codebase metrics and the complete Flow IR are opt-in debug sidecars:
 
 ```sh
 reforge analyze . --analysis codebase --metrics-output metrics.json
 reforge analyze . --analysis dataflow --flow-ir-output flow-ir.json
 ```
 
-`reforge rules` lists each rule, owning analysis, description, supported languages, default state, and measurements. `reforge init`, `reforge config validate`, and `reforge config show` own configuration.
+## Read a report
+
+Treat `issues` as the only decision units. Each Issue owns one typed subject and one or more Evidence records. Evidence identifies the rule and may include measurements, locations, and an ordered Dataflow witness.
+
+Read Coverage before interpreting absence. Check the selected analysis status, every language receipt, capability limitation, rule execution, and suppression count. An empty Issue list is an observed zero only where Coverage is observable. Dataflow never represents a partial or unresolved path as exact.
+
+Reforge intentionally emits no health score, severity, priority, or defect probability.
+
+## Baselines and CI gates
+
+A baseline must use schema 27 with the same producer name, identity scheme, and workspace identity. Producer versions and unrelated analysis sets may differ. Coverage, scope, configuration, policy, or rule-semantic changes produce an `unknown` baseline state instead of claiming that an Issue is new or resolved.
+
+After reviewing and storing a baseline report, gate new, updated, or unknown policy Issues with:
+
+```sh
+reforge analyze . --output json --output-file current.json \
+  --baseline reforge-baseline.json --gate new --reproducible
+```
+
+`--gate all` fails on every current policy Issue. Rules are preview/off by default; enable and enforce the selected rule IDs in versioned `reforge.toml`.
+
+## Configuration and rules
+
+`reforge init` writes a versioned configuration. Use `reforge config validate`, `reforge config show`, and `reforge rules --output json` to inspect effective settings and rule contracts. Durable settings belong in `reforge.toml`; temporary overrides use `--set key=value`.
 
 ## Troubleshooting
 
-Use Coverage and its capability limitations when zero Issues are reported.
-Regenerate schema 26 reports rather than editing them. If a Dataflow policy is
-rejected, verify that its one language matches the source and each sink path and
-symbol names exactly one frontend declaration.
+Use Coverage and its capability limitations when zero Issues are reported. Regenerate schema 26 and older reports rather than editing them. If a Dataflow policy is rejected, verify that it names one supported language and that every source and sink path/symbol names exactly one frontend declaration.
