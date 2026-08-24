@@ -125,6 +125,7 @@ pre,
   min-width: 0;
   padding-top: 3.2rem;
   padding-bottom: 6rem;
+  font-size: 16px;
   line-height: 1.72;
   overflow-wrap: anywhere;
 }
@@ -139,7 +140,7 @@ pre,
 
 .content main h1 {
   margin: 0 0 0.85em;
-  font-size: clamp(2.15rem, 5vw, 3.15rem);
+  font-size: clamp(34px, 5vw, 48px);
   line-height: 1.08;
 }
 
@@ -147,7 +148,7 @@ pre,
   margin-top: 2.7em;
   padding-bottom: 0.42em;
   border-bottom: 1px solid var(--reforge-line);
-  font-size: 1.65rem;
+  font-size: 25px;
 }
 
 .content main h3 {
@@ -236,7 +237,7 @@ pre,
 .docs-eyebrow {
   margin-bottom: 0.8rem;
   color: var(--reforge-blue-deep);
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -247,7 +248,7 @@ pre,
   z-index: 1;
   max-width: 760px;
   margin-bottom: 1.2rem;
-  font-size: clamp(2.5rem, 6vw, 4.4rem);
+  font-size: clamp(40px, 6vw, 64px);
   line-height: 1.02;
 }
 
@@ -261,7 +262,7 @@ pre,
   max-width: 670px;
   margin: 0;
   color: var(--reforge-muted);
-  font-size: 1.12rem;
+  font-size: 18px;
   line-height: 1.65;
 }
 
@@ -357,21 +358,21 @@ pre,
 .feature-number {
   color: var(--reforge-muted);
   font-family: monospace;
-  font-size: 0.72rem;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .feature-card h3,
 .analysis-card h3 {
   margin: 0.55rem 0 0.5rem;
-  font-size: 1.08rem;
+  font-size: 18px;
 }
 
 .feature-card p,
 .analysis-card p {
   margin: 0;
   color: var(--reforge-muted);
-  font-size: 0.92rem;
+  font-size: 15px;
   line-height: 1.6;
 }
 
@@ -390,7 +391,7 @@ pre,
   border-radius: 999px;
   background: color-mix(in srgb, var(--reforge-blue) 11%, transparent);
   color: var(--reforge-blue-deep);
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -399,7 +400,7 @@ pre,
 .analysis-card a {
   display: inline-block;
   margin-top: 1rem;
-  font-size: 0.9rem;
+  font-size: 14px;
   font-weight: 700;
   text-decoration: none;
 }
@@ -426,8 +427,13 @@ pre,
 
 .next-links span {
   color: var(--reforge-muted);
-  font-size: 0.82rem;
+  font-size: 13px;
   line-height: 1.45;
+}
+
+.section-action {
+  margin: -1.6rem 0 3rem;
+  font-weight: 700;
 }
 
 @media (max-width: 760px) {

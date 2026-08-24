@@ -58,10 +58,11 @@ jobs:
       - name: Install mdBook
         run: cargo install mdbook --version "$MDBOOK_VERSION" --locked
 
-      - name: Generate current sample report
+      - name: Generate Codebase example report
         run: |
           mkdir -p docs/sample
           cargo run --locked --release -p reforge -- analyze . \
+            --config .github/pages/reforge.toml \
             --output html \
             --output-file docs/sample/index.html \
             --reproducible

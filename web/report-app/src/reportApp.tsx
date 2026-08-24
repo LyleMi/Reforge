@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import "./coverage.css";
 import { parseEmbeddedReport, subjectLabel } from "./reportModel";
 import type { Evidence, Issue, Report } from "./reportTypes";
 
@@ -60,10 +61,11 @@ function ReportView({ report }: { report: Report }) {
     return counts;
   }, {});
   return <main>
-    <header><div><span className="eyebrow">Schema 27 analysis report</span><h1>Refactoring evidence</h1><p>{report.producer.name} {report.producer.version}</p></div><div className="scan-meta"><b>{report.summary.issue_count} issues</b><span>{report.summary.evidence_count} evidence</span><span>{report.summary.scanned_files} files</span></div></header>
+    <header><div><span className="eyebrow">Reforge analysis report</span><h1>Refactoring evidence</h1><p>{report.producer.name} {report.producer.version}</p></div><div className="scan-meta"><b>{report.summary.issue_count} {report.summary.issue_count === 1 ? "issue" : "issues"}</b><span>{report.summary.evidence_count} evidence {report.summary.evidence_count === 1 ? "item" : "items"}</span><span>{report.summary.scanned_files} files</span></div></header>
     <section className="cards"><article className="card"><span>Issues</span><strong>{report.summary.issue_count}</strong></article><article className="card"><span>Evidence</span><strong>{report.summary.evidence_count}</strong></article><article className="card"><span>Suppressed</span><strong>{report.suppression.evidence_count}</strong></article></section>
     {report.baseline_comparison && <section className="panel"><h2>Baseline</h2><p>{Object.entries(baselineCounts).sort().map(([state, count]) => `${count} ${state}`).join(" · ")}</p></section>}
-    <section className="panel"><h2>Coverage</h2>{analyses.map(name => {
+    <section><div className="list-heading"><h2>Issues and evidence</h2><div className="filters"><input aria-label="Filter issues" placeholder="Search issues and evidence" value={query} onChange={event => setQuery(event.target.value)} /><select aria-label="Analysis" value={analysis} onChange={event => setAnalysis(event.target.value)}><option value="">All analyses</option>{analyses.map(value => <option value={value} key={value}>{label(value)}</option>)}</select><select aria-label="Kind" value={kind} onChange={event => setKind(event.target.value)}><option value="">Advisory and policy</option><option value="policy">Policy</option><option value="advisory">Advisory</option></select><select aria-label="Maturity" value={maturity} onChange={event => setMaturity(event.target.value)}><option value="">All maturities</option><option value="stable">Stable</option><option value="preview">Preview</option><option value="experimental">Experimental</option></select><select aria-label="Baseline state" value={baseline} onChange={event => setBaseline(event.target.value)}><option value="">All baseline states</option>{["new", "updated", "unknown", "unchanged", "absent"].map(value => <option value={value} key={value}>{label(value)}</option>)}</select></div></div>{issues.length ? issues.map(issue => <IssueView issue={issue} maturity={issueMaturity(issue)} baseline={issueBaseline(issue)} key={issue.id} />) : <p className="empty">No issues reported.</p>}</section>
+    <details className="panel coverage-panel" open={report.summary.issue_count === 0}><summary><h2>Coverage</h2><span>{analyses.map(name => `${label(name)}: ${label(report.coverage[name].status)}`).join(" · ")}</span></summary>{analyses.map(name => {
       const coverage = report.coverage[name];
       return <article className="coverage" key={name}><h3>{label(name)}</h3><span className={`status ${coverage.status}`}>{label(coverage.status)}</span><p>{coverage.scanned_files} scanned files</p>
         {Object.entries(coverage.languages ?? {}).map(([language, counts]) => <div key={language}>
@@ -81,8 +83,7 @@ function ReportView({ report }: { report: Report }) {
             {rule.limitations?.map(item => <p key={`${ruleName}-${item.code}`}>{item.code} ({item.count}): {item.message}</p>)}
           </div>)}
       </article>;
-    })}</section>
-    <section><div className="list-heading"><h2>Issues and evidence</h2><div className="filters"><input aria-label="Filter issues" placeholder="Search issues and evidence" value={query} onChange={event => setQuery(event.target.value)} /><select aria-label="Analysis" value={analysis} onChange={event => setAnalysis(event.target.value)}><option value="">All analyses</option>{analyses.map(value => <option value={value} key={value}>{label(value)}</option>)}</select><select aria-label="Kind" value={kind} onChange={event => setKind(event.target.value)}><option value="">Advisory and policy</option><option value="policy">Policy</option><option value="advisory">Advisory</option></select><select aria-label="Maturity" value={maturity} onChange={event => setMaturity(event.target.value)}><option value="">All maturities</option><option value="stable">Stable</option><option value="preview">Preview</option><option value="experimental">Experimental</option></select><select aria-label="Baseline state" value={baseline} onChange={event => setBaseline(event.target.value)}><option value="">All baseline states</option>{["new", "updated", "unknown", "unchanged", "absent"].map(value => <option value={value} key={value}>{label(value)}</option>)}</select></div></div>{issues.length ? issues.map(issue => <IssueView issue={issue} maturity={issueMaturity(issue)} baseline={issueBaseline(issue)} key={issue.id} />) : <p className="empty">No issues reported.</p>}</section>
+    })}</details>
     <footer>{report.target.workspace_identity} · absence is meaningful only for observed analyses.</footer>
   </main>;
 }

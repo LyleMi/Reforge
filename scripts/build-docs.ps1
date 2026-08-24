@@ -11,7 +11,7 @@ Push-Location $repoRoot
 try {
     if (-not $SkipSample) {
         New-Item -ItemType Directory -Force "docs/sample" | Out-Null
-        cargo run "--locked" "-p" reforge "--" analyze . "--output" html "--output-file" "docs/sample/index.html" "--reproducible"
+        cargo run "--locked" "-p" reforge "--" analyze . "--config" ".github/pages/reforge.toml" "--output" html "--output-file" "docs/sample/index.html" "--reproducible"
         if ($LASTEXITCODE -ne 0) {
             throw "failed to generate the sample report"
         }

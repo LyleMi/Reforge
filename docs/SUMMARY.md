@@ -9,9 +9,9 @@
 
 # Understand Reforge
 
-- [Analyses](analyses.md)
+- [Codebase Analysis](analyses.md)
 - [Rule Reference](rule-cards.md)
-- [Dataflow](dataflow.md)
+- [Dataflow (Advanced)](dataflow.md)
 
 # Work with results
 

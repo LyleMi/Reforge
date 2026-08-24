@@ -15,7 +15,7 @@
   <a href="https://lylemi.github.io/Reforge/"><img alt="Documentation" src="https://img.shields.io/badge/docs-read-1556ad"></a>
 </p>
 
-Reforge is a local analyzer for maintainers and coding agents. It surfaces refactoring opportunities such as duplicated implementations, oversized responsibilities, dependency tangles, naming drift, and values relayed across too many boundaries.
+Reforge is a local codebase analyzer for maintainers and coding agents. It surfaces refactoring opportunities such as duplicated implementations, oversized responsibilities, dependency tangles, and naming drift.
 
 Every finding includes the source locations and measurements that produced it. Reports also say what could not be analyzed, so an empty result is never presented as stronger evidence than it is.
 
@@ -31,7 +31,9 @@ reforge analyze .
 On Windows PowerShell:
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.ps1)))
+$installer = Join-Path $env:TEMP "install-reforge.ps1"
+irm https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.ps1 -OutFile $installer
+& $installer
 reforge analyze .
 ```
 
@@ -42,36 +44,23 @@ reforge analyze . --output html --output-file reforge-report.html
 ```
 
 <p align="center">
-  <a href="https://lylemi.github.io/Reforge/sample/"><img src="assets/report-preview.png" alt="Reforge HTML report with findings, supporting evidence, and analysis coverage" width="960"></a>
+  <a href="https://lylemi.github.io/Reforge/sample/"><strong>Explore an example Codebase report →</strong></a>
 </p>
 
-<p align="center">
-  <a href="https://lylemi.github.io/Reforge/sample/"><strong>Explore a live report →</strong></a>
-</p>
+## What Codebase finds
 
-## What you get
-
-| | What it tells you |
+| Area | Examples |
 | --- | --- |
-| **Findings** | A concrete piece of code or group of files worth reviewing |
-| **Evidence** | The rule, locations, measurements, and—when applicable—the exact value path behind a finding |
-| **Coverage** | Which languages and capabilities were observed, partial, or unsupported |
-| **Baselines** | Whether a reviewed finding is new, changed, unchanged, or no longer present |
+| **Responsibilities** | Large files, long or complex functions, deep nesting, broad public surfaces |
+| **Duplication** | Similar functions, repeated literals, repeated test setup, overlapping type shapes |
+| **Architecture drift** | Dependency cycles, generic buckets, parallel implementations, boundary bypasses |
+| **Repository consistency** | Naming drift, stale compatibility paths, TODO/FIXME clusters |
 
-Reforge does not turn these signals into a health score, severity, or defect prediction. A finding is an inspection prompt: the evidence stays visible, and the decision stays with the reviewer.
+Each finding points to a concrete subject and includes the rule, source locations, and measurements that produced it. Coverage shows which languages and capabilities were actually observed. Reforge does not turn these signals into a health score, severity, or defect prediction—the decision stays with the reviewer.
 
-## Codebase and Dataflow
+Codebase supports Rust, JavaScript, TypeScript/TSX, Vue, Python, Go, Java, C#, Kotlin, PHP, Ruby, Bash, and PowerShell. Dependency rules also recognize C and C++.
 
-**Codebase** looks for structural signals in files, functions, types, dependencies, naming, duplication, tests, and repository history. It supports Rust, JavaScript, TypeScript/TSX, Vue, Python, Go, Java, C#, Kotlin, PHP, Ruby, Bash, and PowerShell; dependency rules also recognize C and C++.
-
-**Dataflow** traces conservative value paths in Rust, JavaScript, TypeScript/TSX, and Python. Use it when you want to inspect relayed values, fan-out, or a configured boundary policy:
-
-```sh
-reforge analyze . --analysis dataflow
-reforge analyze . --analysis codebase --analysis dataflow
-```
-
-Both analyses run locally. Reforge does not upload source code or collect telemetry.
+Analysis runs locally. Reforge does not upload source code or collect telemetry.
 
 ## Use it in CI
 
@@ -87,10 +76,12 @@ Rules begin as opt-in previews. This keeps adoption deliberate: enable the signa
 ## Learn more
 
 - [Documentation](https://lylemi.github.io/Reforge/) — start here for installation, configuration, and report interpretation
-- [Analysis guide](docs/analyses.md) — understand Codebase and Dataflow
+- [Codebase guide](docs/analyses.md) — understand what is analyzed and how to review findings
 - [Rule reference](docs/rule-cards.md) — see every available signal and its intended limits
 - [Configuration reference](docs/configuration.md) — tune scope, thresholds, policies, and suppressions
 - [Contributing](docs/contributing.md) — build and test Reforge locally
+
+Reforge also includes an advanced, opt-in [Dataflow analysis](docs/dataflow.md) for exact value-path and boundary-policy inspection.
 
 ## Development
 

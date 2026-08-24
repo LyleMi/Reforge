@@ -1,0 +1,22 @@
+.coverage-panel {
+  margin-top: 22px;
+}
+
+.coverage-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.coverage-panel > summary h2 {
+  margin: 0;
+}
+
+.coverage-panel > summary span {
+  color: #637b7f;
+}
+
+.coverage-panel[open] > summary {
+  margin-bottom: 16px;
+}

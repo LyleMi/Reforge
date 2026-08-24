@@ -1,0 +1,21 @@
+version = 2
+
+[analysis]
+enabled = ["codebase"]
+
+[scope]
+exclude-tests = true
+ignore-paths = [
+  "assets/report-app.js",
+  "web/report-app/src/vite-env.d.ts",
+  "tools/reforge-workflow",
+  "crates/reforge-unity-engine",
+  "tools/reforge-unity",
+]
+
+[rules]
+enable = ["reforge.codebase.large_file"]
+
+[codebase]
+churn = "off"
+max-file-lines = 500

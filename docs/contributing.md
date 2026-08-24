@@ -91,7 +91,7 @@ building or serving the site locally:
 cargo install mdbook --version 0.5.4 --locked
 ```
 
-On Windows, generate the current self-analysis sample and serve the site with:
+On Windows, generate the Codebase example report and serve the site with:
 
 ```powershell
 .\scripts\serve-docs.ps1
@@ -111,7 +111,7 @@ sh scripts/build-docs.sh
 ```
 
 The published documentation root is
-`https://lylemi.github.io/Reforge/`; the generated self-analysis is published at
+`https://lylemi.github.io/Reforge/`; the generated Codebase example is published at
 `https://lylemi.github.io/Reforge/sample/`. Repository administrators must set
 `Settings > Pages > Build and deployment > Source` to `GitHub Actions` before
 the Pages workflow can deploy for the first time. Keep the `github-pages`

@@ -18,8 +18,11 @@ The Unix default is `${REFORGE_INSTALL_DIR:-$HOME/.local/bin}`. Supported assets
 PowerShell:
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.ps1)))
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.ps1))) -Version v0.2.0 -BinDir C:\Tools\Reforge
+$installer = Join-Path $env:TEMP "install-reforge.ps1"
+irm https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.ps1 -OutFile $installer
+& $installer
+# Pin a release or choose a destination:
+& $installer -Version v0.2.0 -BinDir C:\Tools\Reforge
 ```
 
 Windows x86_64 defaults to `%LOCALAPPDATA%\Reforge\bin`. Use `--skip-skill` or `-SkipSkill` to install only the binary. Neither installer edits PATH; when necessary it prints the exact command to add the selected directory. Re-running an installer safely replaces the same version or upgrades it.
