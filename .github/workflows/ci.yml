@@ -80,6 +80,9 @@ jobs:
       - name: Test agent workflow distribution
         run: sh scripts/test-install-agent-workflow.sh
 
+      - name: Test verified Unix installer
+        run: sh scripts/test-install.sh
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -143,6 +146,11 @@ jobs:
 
       - name: Build
         run: cargo build --locked --workspace
+
+      - name: Test verified PowerShell installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\scripts\test-install.ps1
 
       - name: Smoke test analyses
         shell: pwsh

@@ -28,15 +28,15 @@ jobs:
           - os: ubuntu-latest
             artifact: reforge-linux-x86_64
             binary: reforge
-            suffix: ""
           - os: windows-latest
             artifact: reforge-windows-x86_64
             binary: reforge.exe
-            suffix: ".exe"
-          - os: macos-latest
-            artifact: reforge-macos
+          - os: macos-15-intel
+            artifact: reforge-macos-x86_64
             binary: reforge
-            suffix: ""
+          - os: macos-15
+            artifact: reforge-macos-aarch64
+            binary: reforge
 
     steps:
       - name: Checkout
@@ -75,9 +75,15 @@ jobs:
       - name: Smoke test packaged binary
         shell: pwsh
         run: |
-          & "target/release/${{ matrix.binary }}" --version
+          $version = (& "target/release/${{ matrix.binary }}" --version | Out-String).Trim()
+          if ($version -ne "reforge 0.2.0") {
+            throw "unexpected packaged version: $version"
+          }
           if (-not (Test-Path "dist/skills/reforge-analyze/SKILL.md")) {
             throw "core skill is missing from the release artifact"
+          }
+          if (-not (Test-Path "dist/README.md") -or -not (Test-Path "dist/LICENSE")) {
+            throw "release documentation is missing"
           }
 
       - name: Upload artifact
@@ -95,14 +101,22 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
     steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v4
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
+      - name: Generate SHA-256 manifest
+        working-directory: artifacts
+        run: sha256sum reforge-* | sort -k2 > SHA256SUMS
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
-          generate_release_notes: true
+          body_path: .github/release-notes-v0.2.0.md
+          fail_on_unmatched_files: true
