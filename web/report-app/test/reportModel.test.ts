@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeLocale, resolveLocale } from "../src/locale";
-import { translatedLabel } from "../src/reportApp";
+import { normalizeLocale, resolveLocale, translatedLabel } from "../src/locale";
 import { subjectLabel, validateReport } from "../src/reportModel";
 import type { Report } from "../src/reportTypes";
 
