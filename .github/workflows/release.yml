@@ -121,5 +121,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
-          body_path: .github/release-notes-v0.2.0.md
+          body_path: .github/release-notes-${{ github.ref_name }}.md
           fail_on_unmatched_files: true
