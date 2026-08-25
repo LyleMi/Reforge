@@ -15,6 +15,7 @@ build = "build.rs"
 [dependencies]
 anyhow.workspace = true
 globset.workspace = true
+hex.workspace = true
 ignore.workspace = true
 reforge-schema.workspace = true
 serde.workspace = true

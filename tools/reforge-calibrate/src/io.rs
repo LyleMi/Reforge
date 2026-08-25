@@ -27,7 +27,7 @@ pub(crate) fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
 }
 
 pub(crate) fn sha256_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 pub(crate) fn sha256_file(path: &Path) -> Result<String> {
@@ -41,5 +41,5 @@ pub(crate) fn short_digest(domain: &str, value: &str) -> String {
     digest.update(domain.as_bytes());
     digest.update([0]);
     digest.update(value.as_bytes());
-    format!("{domain}-{:x}", digest.finalize())[..domain.len() + 17].into()
+    format!("{domain}-{}", hex::encode(digest.finalize()))[..domain.len() + 17].into()
 }

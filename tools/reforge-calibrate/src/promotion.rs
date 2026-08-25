@@ -149,7 +149,7 @@ fn audit_set_digest(audits: &[ReportAudit]) -> String {
         digest.update(report_digest.as_bytes());
         digest.update([0]);
     }
-    format!("{:x}", digest.finalize())
+    hex::encode(digest.finalize())
 }
 
 fn validate_summaries(
