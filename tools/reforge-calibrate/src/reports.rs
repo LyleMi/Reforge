@@ -194,7 +194,7 @@ fn aggregate_digest(artifacts: &BTreeMap<String, String>) -> String {
         digest.update(value.as_bytes());
         digest.update([0]);
     }
-    format!("{:x}", digest.finalize())
+    hex::encode(digest.finalize())
 }
 
 #[cfg(test)]

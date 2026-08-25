@@ -221,7 +221,7 @@ fn file_hash(path: &Path) -> Result<String> {
 }
 
 fn bytes_hash(bytes: &[u8]) -> String {
-    format!("sha256-{:x}", Sha256::digest(bytes))
+    format!("sha256-{}", hex::encode(Sha256::digest(bytes)))
 }
 
 #[cfg(test)]

@@ -194,7 +194,7 @@ fn workspace_identity(root: &Path) -> String {
             .replace('\\', "/")
             .as_bytes(),
     );
-    format!("rw5-{}", &format!("{digest:x}")[..20])
+    format!("rw5-{}", &hex::encode(digest)[..20])
 }
 
 fn git(root: &Path, args: &[&str]) -> Option<String> {

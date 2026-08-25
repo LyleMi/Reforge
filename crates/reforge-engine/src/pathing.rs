@@ -39,7 +39,7 @@ pub(crate) fn workspace_identity(root: &Path) -> String {
             .replace('\\', "/")
             .as_bytes(),
     );
-    let hash = format!("{:x}", digest.finalize());
+    let hash = hex::encode(digest.finalize());
     format!("rw5-{}", &hash[..20])
 }
 

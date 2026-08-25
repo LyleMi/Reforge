@@ -404,7 +404,7 @@ fn stable_id(prefix: &str, parts: &[&str]) -> String {
         digest.update(part.as_bytes());
         digest.update([0]);
     }
-    let hash = format!("{:x}", digest.finalize());
+    let hash = hex::encode(digest.finalize());
     format!("{prefix}-{}", &hash[..20])
 }
 

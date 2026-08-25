@@ -115,5 +115,5 @@ fn provenance_digest(label: &str, values: &[String]) -> String {
         hash.update(value.as_bytes());
         hash.update([0]);
     }
-    format!("rp7-{:x}", hash.finalize())[..24].to_owned()
+    format!("rp7-{}", hex::encode(hash.finalize()))[..24].to_owned()
 }

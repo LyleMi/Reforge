@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+hex.workspace = true
 reforge-schema.workspace = true
 reforge-output.workspace = true
 serde.workspace = true
