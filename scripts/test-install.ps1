@@ -1,8 +1,11 @@
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$metadata = cargo metadata --manifest-path (Join-Path $repoRoot "Cargo.toml") --locked --no-deps --format-version 1 | ConvertFrom-Json
+$version = ($metadata.packages | Where-Object name -eq "reforge-cli").version
+$releaseTag = "v$version"
 $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("reforge-installer-test-" + [guid]::NewGuid().ToString("N"))
-$releaseDir = Join-Path $testRoot "releases\v0.2.0"
+$releaseDir = Join-Path $testRoot "releases\$releaseTag"
 $packageDir = Join-Path $testRoot "package"
 $server = $null
 try {
@@ -23,14 +26,14 @@ try {
     Start-Sleep -Milliseconds 750
 
     $env:REFORGE_RELEASE_BASE_URL = "http://127.0.0.1:$port/releases"
-    $env:REFORGE_LATEST_VERSION = "v0.2.0"
+    $env:REFORGE_LATEST_VERSION = $releaseTag
     $env:CODEX_HOME = Join-Path $testRoot "codex"
     $binDir = Join-Path $testRoot "bin"
     & (Join-Path $repoRoot "scripts\install.ps1") -BinDir $binDir
-    if ((& (Join-Path $binDir "reforge.exe") --version) -ne "reforge 0.2.0") { throw "installed binary version mismatch" }
+    if ((& (Join-Path $binDir "reforge.exe") --version) -ne "reforge $version") { throw "installed binary version mismatch" }
     if (-not (Test-Path (Join-Path $env:CODEX_HOME "skills\reforge-analyze\SKILL.md"))) { throw "skill was not installed" }
 
-    & (Join-Path $repoRoot "scripts\install.ps1") -Version v0.2.0 -BinDir $binDir
+    & (Join-Path $repoRoot "scripts\install.ps1") -Version $releaseTag -BinDir $binDir
     $skipRoot = Join-Path $testRoot "skip-codex"
     $env:CODEX_HOME = $skipRoot
     & (Join-Path $repoRoot "scripts\install.ps1") -BinDir (Join-Path $testRoot "skip-bin") -SkipSkill
@@ -51,4 +54,3 @@ try {
     Remove-Item Env:REFORGE_LATEST_VERSION -ErrorAction SilentlyContinue
     if (Test-Path $testRoot) { Remove-Item -Recurse -Force $testRoot }
 }
-

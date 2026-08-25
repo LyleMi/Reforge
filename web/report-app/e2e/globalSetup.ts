@@ -20,7 +20,7 @@ export default function generateReport() {
       "--locked",
       "--quiet",
       "-p",
-      "reforge",
+      "reforge-cli",
       "--manifest-path",
       resolve(repositoryRoot, "Cargo.toml"),
       "--",

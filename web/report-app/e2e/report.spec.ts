@@ -15,8 +15,9 @@ async function openReport(page: Page) {
 
 test("renders schema 27 issues, nested evidence, and coverage", async ({ page }) => {
   await openReport(page);
-  await expect(page.getByText("Schema 27 analysis report")).toBeVisible();
+  await expect(page.getByText("Reforge analysis report")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Coverage", exact: true })).toBeVisible();
+  await page.locator(".coverage-panel summary").click();
   await expect(page.getByText("Direct Calls: Partial").first()).toBeVisible();
   await expect(page.getByText(/unresolved_direct_call/).first()).toBeVisible();
   await expect(page.locator(".issue").first()).toBeVisible();

@@ -17,7 +17,7 @@ Before publishing, run:
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 cargo test --locked --workspace --all-targets --all-features
-cargo build --release -p reforge
+cargo build --release -p reforge-cli
 cargo run --locked -p reforge-calibrate -- corpus validate --manifest calibration/corpus.toml
 cargo run --locked -p reforge-calibrate -- verify-promotion --corpus calibration/corpus.toml
 ```
