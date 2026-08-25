@@ -58,20 +58,8 @@ jobs:
       - name: Install mdBook
         run: cargo install mdbook --version "$MDBOOK_VERSION" --locked
 
-      - name: Generate Codebase example report
-        run: |
-          mkdir -p docs/sample
-          cargo run --locked --release -p reforge-cli -- analyze . \
-            --config .github/pages/reforge.toml \
-            --output html \
-            --output-file docs/sample/index.html \
-            --reproducible
-
-      - name: Validate Codebase example report
-        run: node scripts/validate-pages-sample.mjs docs/sample/index.html
-
-      - name: Build documentation
-        run: mdbook build --dest-dir _site
+      - name: Build documentation, sample, and Playground
+        run: node scripts/build-pages.mjs _site
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Try Reforge in a browser with deliberately constructed, repository-owned examples.">
+    <title>Reforge Playground</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="hero">
+      <nav><a href="../">Reforge docs</a><label><span data-i18n="language">Language</span><select id="locale" aria-label="Language"><option value="en">EN</option><option value="zh-CN">中文</option></select></label></nav>
+      <p class="eyebrow">Reforge Playground</p>
+      <h1 data-i18n="headline">Inspect the evidence before installing</h1>
+      <p data-i18n="intro">Three deliberately constructed, repository-owned examples show one Reforge rule at a time. Analysis runs during the Pages build; no code is uploaded.</p>
+    </header>
+    <main>
+      <section aria-labelledby="scenarios-heading">
+        <h2 id="scenarios-heading" data-i18n="scenarios">Choose a scenario</h2>
+        <div id="scenario-cards" class="scenario-cards"></div>
+      </section>
+      <article id="scenario-detail" class="detail" aria-live="polite">
+        <div class="detail-heading"><div><p id="scenario-rule" class="eyebrow"></p><h2 id="scenario-title"></h2><p id="scenario-summary"></p></div><a id="report-link" class="primary" href="#" data-i18n="openReport">Open interactive report</a></div>
+        <div class="review-grid">
+          <section><h3 data-i18n="reviewQuestion">Review question</h3><p id="scenario-question"></p></section>
+          <section><h3 data-i18n="reasonableException">Reasonable exception</h3><p id="scenario-exception"></p></section>
+        </div>
+        <section><h3 data-i18n="source">Complete source</h3><div id="source-files"></div></section>
+        <section><h3 data-i18n="configuration">Configuration</h3><pre><code id="scenario-config"></code></pre></section>
+        <section><h3 data-i18n="reproduce">Reproduce locally</h3><pre><code id="scenario-command"></code></pre></section>
+      </article>
+    </main>
+    <footer data-i18n="footer">These examples are intentionally small and do not evaluate any third-party project.</footer>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

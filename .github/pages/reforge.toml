@@ -12,6 +12,7 @@ ignore-paths = [
   "tools/reforge-workflow",
   "crates/reforge-unity-engine",
   "tools/reforge-unity",
+  "playground/fixtures",
 ]
 
 [rules]

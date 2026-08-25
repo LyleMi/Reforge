@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+process.env.NO_PROXY = [process.env.NO_PROXY, "127.0.0.1", "localhost"].filter(Boolean).join(",");
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -9,6 +11,11 @@ export default defineConfig({
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   globalSetup: "./e2e/globalSetup.ts",
   outputDir: "../../target/playwright/test-results",
+  webServer: {
+    command: "node e2e/serve.mjs",
+    url: "http://127.0.0.1:4174/playground/",
+    reuseExistingServer: !process.env.CI,
+  },
   use: {
     ...devices["Desktop Chrome"],
     colorScheme: "light",

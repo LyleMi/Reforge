@@ -1,3 +1,4 @@
+import type { Locale } from "./locale";
 import type { Report, Subject } from "./reportTypes";
 
 export const REPORT_SCHEMA_VERSION = 27;
@@ -72,9 +73,11 @@ export function parseEmbeddedReport(): { report?: Report; error?: string } {
   }
 }
 
-export function subjectLabel(subject: Subject): string {
-  if (subject.kind === "repository") return "repository";
-  if (subject.kind === "symbol") return `${subject.entity.symbol ?? subject.entity.key} in ${subject.entity.path}`;
-  if (subject.kind === "group") return `${subject.members.length} related items`;
+export function subjectLabel(subject: Subject, locale: Locale = "en"): string {
+  if (subject.kind === "repository") return locale === "zh-CN" ? "仓库" : "repository";
+  if (subject.kind === "symbol") return locale === "zh-CN"
+    ? `${subject.entity.path} 中的 ${subject.entity.symbol ?? subject.entity.key}`
+    : `${subject.entity.symbol ?? subject.entity.key} in ${subject.entity.path}`;
+  if (subject.kind === "group") return locale === "zh-CN" ? `${subject.members.length} 个相关项` : `${subject.members.length} related items`;
   return subject.entity.path;
 }

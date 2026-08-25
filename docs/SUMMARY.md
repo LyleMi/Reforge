@@ -2,6 +2,8 @@
 
 [Overview](README.md)
 
+- [Try the Playground / 在线体验](playground.md)
+
 # Get started
 
 - [User Guide](user-guide.md)

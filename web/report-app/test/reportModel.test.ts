@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { normalizeLocale, resolveLocale } from "../src/locale";
+import { translatedLabel } from "../src/reportApp";
 import { subjectLabel, validateReport } from "../src/reportModel";
 import type { Report } from "../src/reportTypes";
 
@@ -12,6 +14,25 @@ const report = (overrides: Partial<Report> = {}): Report => ({
   coverage: { codebase: { status: "observed", scanned_files: 2 } },
   issues: [],
   ...overrides,
+});
+
+describe("report locale", () => {
+  it("normalizes supported Chinese locale forms", () => {
+    expect(normalizeLocale("zh")).toBe("zh-CN");
+    expect(normalizeLocale("zh-CN")).toBe("zh-CN");
+    expect(normalizeLocale("fr")).toBeUndefined();
+  });
+
+  it("uses query, storage, browser, then English priority", () => {
+    expect(resolveLocale({ search: "?lang=en", stored: "zh-CN", browserLanguages: ["zh"] })).toBe("en");
+    expect(resolveLocale({ search: "", stored: "zh", browserLanguages: ["en-US"] })).toBe("zh-CN");
+    expect(resolveLocale({ search: "", stored: null, browserLanguages: ["fr-FR", "zh-CN"] })).toBe("zh-CN");
+    expect(resolveLocale({ search: "", stored: null, browserLanguages: ["fr-FR"] })).toBe("en");
+  });
+
+  it("falls back to the existing English formatter for unknown labels", () => {
+    expect(translatedLabel("zh-CN", "future_status")).toBe("Future Status");
+  });
 });
 
 describe("schema 27 report model", () => {

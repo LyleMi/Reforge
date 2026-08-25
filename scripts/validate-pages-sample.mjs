@@ -65,6 +65,9 @@ try {
 
 const errors = [];
 const issues = Array.isArray(report.issues) ? report.issues : [];
+if (JSON.stringify(report).includes("playground/fixtures")) {
+  errors.push("Playground fixture paths must be excluded from self-analysis");
+}
 if (issues.length < MIN_ISSUES || issues.length > MAX_ISSUES) {
   errors.push(
     `expected ${MIN_ISSUES}-${MAX_ISSUES} issues, found ${issues.length}`,

@@ -2,6 +2,28 @@
   margin-top: 22px;
 }
 
+.report-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.language-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #526d71;
+  font-size: 13px;
+}
+
+.language-picker select {
+  border: 1px solid #c2d3cf;
+  border-radius: 999px;
+  background: #fff;
+  color: #17333a;
+  padding: 7px 12px;
+}
+
 .coverage-panel > summary {
   display: flex;
   align-items: center;
@@ -19,4 +41,12 @@
 
 .coverage-panel[open] > summary {
   margin-bottom: 16px;
+}
+
+.limitations-list {
+  margin: 8px 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff0e8;
+  color: #743c27;
 }

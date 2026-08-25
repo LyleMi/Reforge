@@ -1,45 +1,96 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "./coverage.css";
+import { initialLocale, persistLocale, type Locale } from "./locale";
 import { parseEmbeddedReport, subjectLabel } from "./reportModel";
-import type { Evidence, Issue, Report } from "./reportTypes";
+import type { CoverageLimitation, Evidence, Issue, Report } from "./reportTypes";
 
 const label = (value: string) => value.replace(/[._]/g, " ").replace(/\b\w/g, character => character.toUpperCase());
 const location = (path: string, line?: number) => line ? `${path}:${line}` : path;
 
-function Witness({ evidence }: { evidence: Evidence }) {
+const messages = {
+  en: {
+    reportEyebrow: "Reforge analysis report", title: "Refactoring evidence", issue: "issue", issues: "issues",
+    evidence: "evidence", item: "item", items: "items", files: "files", issuesCard: "Issues",
+    evidenceCard: "Evidence", suppressed: "Suppressed", baseline: "Baseline", list: "Issues and evidence",
+    filter: "Filter issues", search: "Search issues and evidence", analysis: "Analysis", allAnalyses: "All analyses",
+    kind: "Kind", allKinds: "Advisory and policy", policy: "Policy", advisory: "Advisory", maturity: "Maturity",
+    allMaturities: "All maturities", baselineState: "Baseline state", allBaseline: "All baseline states",
+    noIssues: "No issues reported.", coverage: "Coverage", scannedFiles: "scanned files", threshold: "threshold",
+    functionHops: "function hops", moduleHops: "module hops", reportUnavailable: "Report unavailable",
+    absence: "absence is meaningful only for observed analyses.", language: "Report language", limitations: "Limitations",
+    errorLead: "The embedded report could not be loaded.", details: "Technical details",
+  },
+  "zh-CN": {
+    reportEyebrow: "Reforge 分析报告", title: "重构证据", issue: "个问题", issues: "个问题",
+    evidence: "条证据", item: "项", items: "项", files: "个文件", issuesCard: "问题",
+    evidenceCard: "证据", suppressed: "已抑制", baseline: "基线", list: "问题与证据",
+    filter: "筛选问题", search: "搜索问题与证据", analysis: "分析类型", allAnalyses: "全部分析",
+    kind: "类型", allKinds: "建议与策略", policy: "策略", advisory: "建议", maturity: "成熟度",
+    allMaturities: "全部成熟度", baselineState: "基线状态", allBaseline: "全部基线状态",
+    noIssues: "没有符合条件的问题。", coverage: "覆盖情况", scannedFiles: "个已扫描文件", threshold: "阈值",
+    functionHops: "次函数跳转", moduleHops: "次模块跳转", reportUnavailable: "报告不可用",
+    absence: "仅当分析状态为“已观测”时，没有发现问题才具有明确含义。", language: "报告语言", limitations: "分析限制",
+    errorLead: "无法载入嵌入的报告。", details: "技术详情",
+  },
+} as const;
+
+type MessageKey = keyof typeof messages.en;
+const enumTranslations: Record<Locale, Record<string, string>> = {
+  en: {},
+  "zh-CN": {
+    codebase: "代码库", dataflow: "数据流", observed: "已观测", partial: "部分覆盖",
+    partially_observed: "部分观测", unsupported: "不支持", not_applicable: "不适用", exact: "精确",
+    modeled: "建模", unresolved: "未解析", stable: "稳定", preview: "预览", experimental: "实验性",
+    enable: "显式启用", enforce: "强制执行", default: "默认", disabled: "已禁用", internal: "内部",
+    new: "新增", updated: "已更新", unknown: "未知", unchanged: "未变化", absent: "已消失",
+    policy: "策略", advisory: "建议", functions: "函数", files: "文件",
+  },
+};
+
+const t = (locale: Locale, key: MessageKey) => messages[locale][key];
+export const translatedLabel = (locale: Locale, value: string) => enumTranslations[locale][value] ?? label(value);
+
+function LanguagePicker({ locale, onChange }: { locale: Locale; onChange: (locale: Locale) => void }) {
+  return <label className="language-picker"><span>{t(locale, "language")}</span><select aria-label={t(locale, "language")} value={locale} onChange={event => onChange(event.target.value as Locale)}><option value="en">EN</option><option value="zh-CN">中文</option></select></label>;
+}
+
+function Limitations({ items, locale }: { items?: CoverageLimitation[]; locale: Locale }) {
+  if (!items?.length) return null;
+  return <div className="limitations-list"><strong>{t(locale, "limitations")}</strong>{items.map(item => <p key={item.code}>{item.code} ({item.count}): {item.message}</p>)}</div>;
+}
+
+function Witness({ evidence, locale }: { evidence: Evidence; locale: Locale }) {
   const witness = evidence.witness;
   if (!witness) return null;
   return <div className="flow-witness">
     <b>{witness.source.symbol} → {witness.sink.symbol}</b>
-    <small>{witness.function_hops} function hops · {witness.module_hops} module hops · {label(witness.resolution)}</small>
+    <small>{witness.function_hops} {t(locale, "functionHops")} · {witness.module_hops} {t(locale, "moduleHops")} · {translatedLabel(locale, witness.resolution)}</small>
     <ol>{witness.ordered_steps.map((step, index) =>
-      <li key={`${step.path}-${step.symbol}-${index}`}>{label(step.operation)} · {location(step.path, step.line)} · {step.symbol}</li>)}
+      <li key={`${step.path}-${step.symbol}-${index}`}>{translatedLabel(locale, step.operation)} · {location(step.path, step.line)} · {step.symbol}</li>)}
     </ol>
   </div>;
 }
 
-function IssueView({ issue, maturity, baseline }: { issue: Issue; maturity: string; baseline: string }) {
+function IssueView({ issue, maturity, baseline, locale }: { issue: Issue; maturity: string; baseline: string; locale: Locale }) {
   return <article className="issue">
-    <div><span className="eyebrow">{issue.family}</span><div className="issue-meta"><span className={`badge ${issue.kind}`}>{label(issue.kind)}</span><span className="badge">{label(maturity)}</span>{baseline && <span className={`badge ${baseline}`}>{label(baseline)}</span>}</div><h3>{issue.title}</h3><p>{issue.guidance}</p><small>{subjectLabel(issue.subject)} · {issue.id}</small></div>
+    <div><span className="eyebrow">{issue.family}</span><div className="issue-meta"><span className={`badge ${issue.kind}`}>{translatedLabel(locale, issue.kind)}</span><span className="badge">{translatedLabel(locale, maturity)}</span>{baseline && <span className={`badge ${baseline}`}>{translatedLabel(locale, baseline)}</span>}</div><h3>{issue.title}</h3><p>{issue.guidance}</p><small>{subjectLabel(issue.subject, locale)} · {issue.id}</small></div>
     {issue.evidence.map(evidence => <details className="evidence" key={evidence.id}>
       <summary>{evidence.rule}: {evidence.message}</summary>
       <div className="locations">{evidence.locations?.map(item => <code key={`${item.path}-${item.line}-${item.symbol}`}>{location(item.path, item.line)}{item.symbol ? ` · ${item.symbol}` : ""}</code>)}</div>
-      {evidence.measurements?.length ? <dl>{evidence.measurements.map(item => <React.Fragment key={item.name}><dt>{label(item.name)}</dt><dd>{String(item.value)} {item.unit}{item.threshold === undefined ? "" : ` (threshold ${String(item.threshold)})`}</dd></React.Fragment>)}</dl> : null}
-      <Witness evidence={evidence} />
+      {evidence.measurements?.length ? <dl>{evidence.measurements.map(item => <React.Fragment key={item.name}><dt>{translatedLabel(locale, item.name)}</dt><dd>{String(item.value)} {translatedLabel(locale, item.unit)}{item.threshold === undefined ? "" : ` (${t(locale, "threshold")} ${String(item.threshold)})`}</dd></React.Fragment>)}</dl> : null}
+      <Witness evidence={evidence} locale={locale} />
     </details>)}
   </article>;
 }
 
-function ReportView({ report }: { report: Report }) {
+function ReportView({ report, locale, onLocaleChange }: { report: Report; locale: Locale; onLocaleChange: (locale: Locale) => void }) {
   const [query, setQuery] = useState("");
   const [analysis, setAnalysis] = useState("");
   const [kind, setKind] = useState("");
   const [maturity, setMaturity] = useState("");
   const [baseline, setBaseline] = useState("");
   const analyses = Object.keys(report.coverage).sort();
-  const issueMaturity = (issue: Issue) => issue.evidence
-    .map(evidence => report.coverage[issue.analysis]?.rules?.[evidence.rule]?.maturity)
-    .find(Boolean) ?? "unknown";
+  const issueMaturity = (issue: Issue) => issue.evidence.map(evidence => report.coverage[issue.analysis]?.rules?.[evidence.rule]?.maturity).find(Boolean) ?? "unknown";
   const issueBaseline = (issue: Issue) => report.baseline_comparison?.issues[issue.id]?.state ?? "";
   const baselineRank: Record<string, number> = { new: 0, updated: 1, unknown: 2, unchanged: 3, absent: 4, "": 5 };
   const issues = useMemo(() => report.issues.filter(issue =>
@@ -53,43 +104,50 @@ function ReportView({ report }: { report: Report }) {
     || baselineRank[issueBaseline(left)] - baselineRank[issueBaseline(right)]
     || left.analysis.localeCompare(right.analysis)
     || left.family.localeCompare(right.family)
-    || subjectLabel(left.subject).localeCompare(subjectLabel(right.subject))
+    || subjectLabel(left.subject, locale).localeCompare(subjectLabel(right.subject, locale))
     || left.id.localeCompare(right.id)
-  ), [report, query, analysis, kind, maturity, baseline]);
+  ), [report, query, analysis, kind, maturity, baseline, locale]);
   const baselineCounts = Object.values(report.baseline_comparison?.issues ?? {}).reduce<Record<string, number>>((counts, entry) => {
     counts[entry.state] = (counts[entry.state] ?? 0) + 1;
     return counts;
   }, {});
   return <main>
-    <header><div><span className="eyebrow">Reforge analysis report</span><h1>Refactoring evidence</h1><p>{report.producer.name} {report.producer.version}</p></div><div className="scan-meta"><b>{report.summary.issue_count} {report.summary.issue_count === 1 ? "issue" : "issues"}</b><span>{report.summary.evidence_count} evidence {report.summary.evidence_count === 1 ? "item" : "items"}</span><span>{report.summary.scanned_files} files</span></div></header>
-    <section className="cards"><article className="card"><span>Issues</span><strong>{report.summary.issue_count}</strong></article><article className="card"><span>Evidence</span><strong>{report.summary.evidence_count}</strong></article><article className="card"><span>Suppressed</span><strong>{report.suppression.evidence_count}</strong></article></section>
-    {report.baseline_comparison && <section className="panel"><h2>Baseline</h2><p>{Object.entries(baselineCounts).sort().map(([state, count]) => `${count} ${state}`).join(" · ")}</p></section>}
-    <section><div className="list-heading"><h2>Issues and evidence</h2><div className="filters"><input aria-label="Filter issues" placeholder="Search issues and evidence" value={query} onChange={event => setQuery(event.target.value)} /><select aria-label="Analysis" value={analysis} onChange={event => setAnalysis(event.target.value)}><option value="">All analyses</option>{analyses.map(value => <option value={value} key={value}>{label(value)}</option>)}</select><select aria-label="Kind" value={kind} onChange={event => setKind(event.target.value)}><option value="">Advisory and policy</option><option value="policy">Policy</option><option value="advisory">Advisory</option></select><select aria-label="Maturity" value={maturity} onChange={event => setMaturity(event.target.value)}><option value="">All maturities</option><option value="stable">Stable</option><option value="preview">Preview</option><option value="experimental">Experimental</option></select><select aria-label="Baseline state" value={baseline} onChange={event => setBaseline(event.target.value)}><option value="">All baseline states</option>{["new", "updated", "unknown", "unchanged", "absent"].map(value => <option value={value} key={value}>{label(value)}</option>)}</select></div></div>{issues.length ? issues.map(issue => <IssueView issue={issue} maturity={issueMaturity(issue)} baseline={issueBaseline(issue)} key={issue.id} />) : <p className="empty">No issues reported.</p>}</section>
-    <details className="panel coverage-panel" open={report.summary.issue_count === 0}><summary><h2>Coverage</h2><span>{analyses.map(name => `${label(name)}: ${label(report.coverage[name].status)}`).join(" · ")}</span></summary>{analyses.map(name => {
+    <div className="report-toolbar"><LanguagePicker locale={locale} onChange={onLocaleChange} /></div>
+    <header><div><span className="eyebrow">{t(locale, "reportEyebrow")}</span><h1>{t(locale, "title")}</h1><p>{report.producer.name} {report.producer.version}</p></div><div className="scan-meta"><b>{report.summary.issue_count} {t(locale, report.summary.issue_count === 1 ? "issue" : "issues")}</b><span>{report.summary.evidence_count} {t(locale, "evidence")} {t(locale, report.summary.evidence_count === 1 ? "item" : "items")}</span><span>{report.summary.scanned_files} {t(locale, "files")}</span></div></header>
+    <section className="cards"><article className="card"><span>{t(locale, "issuesCard")}</span><strong>{report.summary.issue_count}</strong></article><article className="card"><span>{t(locale, "evidenceCard")}</span><strong>{report.summary.evidence_count}</strong></article><article className="card"><span>{t(locale, "suppressed")}</span><strong>{report.suppression.evidence_count}</strong></article></section>
+    {report.baseline_comparison && <section className="panel"><h2>{t(locale, "baseline")}</h2><p>{Object.entries(baselineCounts).sort().map(([state, count]) => `${count} ${translatedLabel(locale, state)}`).join(" · ")}</p></section>}
+    <section><div className="list-heading"><h2>{t(locale, "list")}</h2><div className="filters"><input aria-label={t(locale, "filter")} placeholder={t(locale, "search")} value={query} onChange={event => setQuery(event.target.value)} /><select aria-label={t(locale, "analysis")} value={analysis} onChange={event => setAnalysis(event.target.value)}><option value="">{t(locale, "allAnalyses")}</option>{analyses.map(value => <option value={value} key={value}>{translatedLabel(locale, value)}</option>)}</select><select aria-label={t(locale, "kind")} value={kind} onChange={event => setKind(event.target.value)}><option value="">{t(locale, "allKinds")}</option><option value="policy">{t(locale, "policy")}</option><option value="advisory">{t(locale, "advisory")}</option></select><select aria-label={t(locale, "maturity")} value={maturity} onChange={event => setMaturity(event.target.value)}><option value="">{t(locale, "allMaturities")}</option>{["stable", "preview", "experimental"].map(value => <option value={value} key={value}>{translatedLabel(locale, value)}</option>)}</select><select aria-label={t(locale, "baselineState")} value={baseline} onChange={event => setBaseline(event.target.value)}><option value="">{t(locale, "allBaseline")}</option>{["new", "updated", "unknown", "unchanged", "absent"].map(value => <option value={value} key={value}>{translatedLabel(locale, value)}</option>)}</select></div></div>{issues.length ? issues.map(issue => <IssueView issue={issue} maturity={issueMaturity(issue)} baseline={issueBaseline(issue)} locale={locale} key={issue.id} />) : <p className="empty">{t(locale, "noIssues")}</p>}</section>
+    <details className="panel coverage-panel" open={report.summary.issue_count === 0}><summary><h2>{t(locale, "coverage")}</h2><span>{analyses.map(name => `${translatedLabel(locale, name)}: ${translatedLabel(locale, report.coverage[name].status)}`).join(" · ")}</span></summary>{analyses.map(name => {
       const coverage = report.coverage[name];
-      return <article className="coverage" key={name}><h3>{label(name)}</h3><span className={`status ${coverage.status}`}>{label(coverage.status)}</span><p>{coverage.scanned_files} scanned files</p>
+      return <article className="coverage" key={name}><h3>{translatedLabel(locale, name)}</h3><span className={`status ${coverage.status}`}>{translatedLabel(locale, coverage.status)}</span><p>{coverage.scanned_files} {t(locale, "scannedFiles")}</p>
         {Object.entries(coverage.languages ?? {}).map(([language, counts]) => <div key={language}>
-          <small>{label(language)}: {label(counts.status)} · {counts.files} files · {counts.functions} functions</small>
-          {counts.limitations?.map(item => <p key={`${language}-${item.code}`}>{item.code} ({item.count}): {item.message}</p>)}
+          <small>{translatedLabel(locale, language)}: {translatedLabel(locale, counts.status)} · {counts.files} {t(locale, "files")} · {counts.functions} {translatedLabel(locale, "functions")}</small>
+          <Limitations items={counts.limitations} locale={locale} />
           {Object.entries(counts.capabilities ?? {}).map(([capability, receipt]) => <div key={`${language}-${capability}`}>
-            <small>{label(capability)}: {label(receipt.status)}</small>
-            {receipt.limitations?.map(item => <p key={`${language}-${capability}-${item.code}`}>{item.code} ({item.count}): {item.message}</p>)}
+            <small>{translatedLabel(locale, capability)}: {translatedLabel(locale, receipt.status)}</small>
+            <Limitations items={receipt.limitations} locale={locale} />
           </div>)}
         </div>)}
-        {coverage.limitations?.map(item => <p key={item.code}>{item.code} ({item.count}): {item.message}</p>)}
+        <Limitations items={coverage.limitations} locale={locale} />
         {Object.entries(coverage.rules ?? {}).map(([ruleName, rule]) =>
-          <div key={ruleName}><p>{ruleName}: {label(rule.maturity)} · {label(rule.enabled_source)} · {label(rule.status)}</p>
-            {rule.observations?.map(item => <small key={item.name}>{label(item.name)}: {item.count} {item.unit}</small>)}
-            {rule.limitations?.map(item => <p key={`${ruleName}-${item.code}`}>{item.code} ({item.count}): {item.message}</p>)}
+          <div key={ruleName}><p>{ruleName}: {translatedLabel(locale, rule.maturity)} · {translatedLabel(locale, rule.enabled_source)} · {translatedLabel(locale, rule.status)}</p>
+            {rule.observations?.map(item => <small key={item.name}>{translatedLabel(locale, item.name)}: {item.count} {translatedLabel(locale, item.unit)}</small>)}
+            <Limitations items={rule.limitations} locale={locale} />
           </div>)}
       </article>;
     })}</details>
-    <footer>{report.target.workspace_identity} · absence is meaningful only for observed analyses.</footer>
+    <footer>{report.target.workspace_identity} · {t(locale, "absence")}</footer>
   </main>;
 }
 
 export function App() {
   const parsed = useMemo(parseEmbeddedReport, []);
-  if (parsed.error) return <main className="error"><h1>Report unavailable</h1><p>{parsed.error}</p></main>;
-  return <ReportView report={parsed.report!} />;
+  const [locale, setLocale] = useState<Locale>(initialLocale);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.title = locale === "zh-CN" ? "Reforge 分析报告" : "Reforge analysis report";
+  }, [locale]);
+  const changeLocale = (next: Locale) => { persistLocale(next); setLocale(next); };
+  if (parsed.error) return <main className="error"><LanguagePicker locale={locale} onChange={changeLocale} /><h1>{t(locale, "reportUnavailable")}</h1><p>{t(locale, "errorLead")}</p><details><summary>{t(locale, "details")}</summary><p>{parsed.error}</p></details></main>;
+  return <ReportView report={parsed.report!} locale={locale} onLocaleChange={changeLocale} />;
 }

@@ -1,0 +1,11 @@
+version = 2
+
+[analysis]
+enabled = ["codebase"]
+
+[rules]
+enable = ["reforge.codebase.long_function"]
+
+[codebase]
+churn = "off"
+max-function-lines = 18

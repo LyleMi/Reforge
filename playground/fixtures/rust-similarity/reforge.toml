@@ -1,0 +1,13 @@
+version = 2
+
+[analysis]
+enabled = ["codebase"]
+
+[rules]
+enable = ["reforge.codebase.similar_functions"]
+
+[codebase]
+churn = "off"
+function-similarity = 0.80
+min-similar-functions = 3
+min-function-tokens = 12

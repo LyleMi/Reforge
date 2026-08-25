@@ -39,3 +39,17 @@ test("has no horizontal overflow on mobile", async ({ page }) => {
   const widths = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
   expect(widths[0]).toBeLessThanOrEqual(widths[1]);
 });
+
+test("switches locale, persists it, and lets query override storage", async ({ page }) => {
+  await openReport(page);
+  const originalTitles = (await page.locator(".issue h3").allTextContents()).sort();
+  const originalEvidence = (await page.locator(".evidence summary").allTextContents()).sort();
+  await page.getByLabel("Report language").selectOption("zh-CN");
+  await expect(page.getByRole("heading", { name: "重构证据" })).toBeVisible();
+  expect((await page.locator(".issue h3").allTextContents()).sort()).toEqual(originalTitles);
+  expect((await page.locator(".evidence summary").allTextContents()).sort()).toEqual(originalEvidence);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "重构证据" })).toBeVisible();
+  await page.goto(`${reportUrl}?lang=en`);
+  await expect(page.getByRole("heading", { name: "Refactoring evidence" })).toBeVisible();
+});

@@ -12,6 +12,7 @@ ignore-paths = [
   "assets/report-app.js",
   "crates/reforge-output/assets/report-app.js",
   "web/report-app/src/vite-env.d.ts",
+  "playground/fixtures",
 ]
 
 [rules]

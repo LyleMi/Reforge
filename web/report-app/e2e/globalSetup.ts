@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { cpSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,4 +45,20 @@ export default function generateReport() {
     ],
     { cwd: repositoryRoot, stdio: "inherit" },
   );
+
+  const siteRoot = resolve(repositoryRoot, "target/playwright/site");
+  cpSync(resolve(repositoryRoot, "playground"), resolve(siteRoot, "playground"), { recursive: true });
+  for (const scenario of ["rust-similarity", "typescript-cycle", "python-long-function"]) {
+    const fixture = resolve(repositoryRoot, "playground/fixtures", scenario);
+    const output = resolve(siteRoot, "playground/reports", scenario, "index.html");
+    mkdirSync(dirname(output), { recursive: true });
+    execFileSync(
+      "cargo",
+      [
+        "run", "--locked", "--quiet", "-p", "reforge-cli", "--manifest-path", resolve(repositoryRoot, "Cargo.toml"), "--",
+        "analyze", fixture, "--config", resolve(fixture, "reforge.toml"), "--output", "html", "--output-file", output, "--reproducible",
+      ],
+      { cwd: repositoryRoot, stdio: "inherit" },
+    );
+  }
 }

@@ -5,7 +5,7 @@
 <h1 align="center">Reforge</h1>
 
 <p align="center">
-  Find structural risks in a codebase, understand the evidence, and keep reviewed refactors from drifting back.
+  Evidence-backed structural analysis for codebases changing faster than they can be reviewed.
 </p>
 
 <p align="center">
@@ -15,9 +15,39 @@
   <a href="https://lylemi.github.io/Reforge/"><img alt="Documentation" src="https://img.shields.io/badge/docs-read-1556ad"></a>
 </p>
 
-Reforge is a local codebase analyzer for maintainers and coding agents. It surfaces refactoring opportunities such as duplicated implementations, oversized responsibilities, dependency tangles, and naming drift.
+Reforge is a local CLI that shows maintainers where a codebase is becoming
+harder to change. It finds duplicated implementations, oversized
+responsibilities, dependency tangles, and architecture drift across the whole
+repository—including patterns introduced gradually by coding agents.
 
-Every finding includes the source locations and measurements that produced it. Reports also say what could not be analyzed, so an empty result is never presented as stronger evidence than it is.
+It does not assign an opaque health score or ask you to trust a generated
+summary. Every finding includes the source locations, measurements, and rule
+that produced it. Every report also records what Reforge could and could not
+analyze.
+
+<p align="center">
+  <a href="https://lylemi.github.io/Reforge/playground/"><strong>Try the bilingual Playground / 在线体验 →</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://lylemi.github.io/Reforge/sample/"><strong>Explore Reforge's self-analysis report →</strong></a>
+</p>
+
+## See the evidence behind a finding
+
+This finding came from Reforge analyzing its own report application:
+
+```text
+Function readability: ReportView in web/report-app/src/reportApp.tsx
+
+  Rule:        reforge.codebase.complex_function
+  Location:    web/report-app/src/reportApp.tsx:33
+  Measurement: estimated complexity 15 (threshold 14)
+  Guidance:    Reduce the function to a clear sequence of named responsibilities.
+```
+
+The location makes the finding inspectable. The measurement explains why it
+was reported. The threshold can be tuned, and a legitimate exception can be
+suppressed with its reason preserved. Reforge makes the case for review; it
+does not pretend that a measurement can decide the refactor for you.
 
 ## Get started
 
@@ -25,7 +55,6 @@ Install the latest release on Linux or macOS:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.sh | sh
-reforge analyze .
 ```
 
 On Windows PowerShell:
@@ -34,13 +63,6 @@ On Windows PowerShell:
 $installer = Join-Path $env:TEMP "install-reforge.ps1"
 irm https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.ps1 -OutFile $installer
 & $installer
-reforge analyze .
-```
-
-Reforge runs the Codebase analysis by default. Generate a standalone HTML report to explore the findings:
-
-```sh
-reforge analyze . --output html --output-file reforge-report.html
 ```
 
 Rust users can alternatively build and install the command from crates.io:
@@ -53,9 +75,46 @@ The crates.io package installs the `reforge` binary only. Use the verified
 release installer above when you also want the bundled `reforge-analyze` Codex
 skill.
 
-<p align="center">
-  <a href="https://lylemi.github.io/Reforge/sample/"><strong>Explore an example Codebase report →</strong></a>
-</p>
+Reforge runs Codebase analysis by default. Its rules begin as opt-in previews,
+so adopting Reforge does not immediately impose someone else's definition of
+maintainability. Initialize a configuration, then enable a small starter set:
+
+```sh
+reforge init
+```
+
+In the generated `reforge.toml`, start with:
+
+```toml
+[rules]
+enable = [
+  "reforge.codebase.large_file",
+  "reforge.codebase.long_function",
+  "reforge.codebase.dependency_cycle",
+  "reforge.codebase.similar_functions",
+]
+```
+
+Run the review in your repository or generate a standalone HTML report:
+
+```sh
+reforge analyze .
+reforge analyze . --output html --output-file reforge-report.html
+```
+
+## Built for repository-level review
+
+| Need | What Reforge provides |
+| --- | --- |
+| Find change pressure beyond style errors | Project-wide signals for responsibilities, duplication, dependencies, and drift |
+| Verify why something was flagged | Source locations, measurements, thresholds, and rule provenance |
+| Trust an empty report appropriately | Coverage receipts and explicit analysis limitations |
+| Keep an accepted refactor from regressing | Reproducible baselines and CI gates for new or changed findings |
+| Keep source code private | Local analysis with no uploads or telemetry |
+
+Reforge complements compilers, linters, and security scanners. Its job is not
+to prove correctness or find vulnerabilities; it identifies structural
+pressure that deserves a maintainer's judgment before the next refactor.
 
 ## What Codebase finds
 

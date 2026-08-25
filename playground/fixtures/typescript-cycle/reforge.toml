@@ -1,0 +1,10 @@
+version = 2
+
+[analysis]
+enabled = ["codebase"]
+
+[rules]
+enable = ["reforge.codebase.dependency_cycle"]
+
+[codebase]
+churn = "off"
