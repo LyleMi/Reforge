@@ -13,9 +13,9 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 toml.workspace = true
-reforge-engine = { path = "../../crates/reforge-engine" }
-reforge-output = { path = "../../crates/reforge-output" }
-reforge-schema = { path = "../../crates/reforge-schema" }
+reforge-engine.workspace = true
+reforge-output.workspace = true
+reforge-schema.workspace = true
 
 [lints]
 workspace = true

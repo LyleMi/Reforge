@@ -53,7 +53,7 @@ jobs:
         run: npm run build
 
       - name: Check embedded report assets
-        run: git diff --exit-code -- assets/report-app.js assets/report-app.css
+        run: git diff --exit-code -- assets/report-app.js assets/report-app.css crates/reforge-output/assets/report-app.js crates/reforge-output/assets/report-app.css
 
       - name: Install mdBook
         run: cargo install mdbook --version "$MDBOOK_VERSION" --locked
@@ -61,7 +61,7 @@ jobs:
       - name: Generate Codebase example report
         run: |
           mkdir -p docs/sample
-          cargo run --locked --release -p reforge -- analyze . \
+          cargo run --locked --release -p reforge-cli -- analyze . \
             --config .github/pages/reforge.toml \
             --output html \
             --output-file docs/sample/index.html \

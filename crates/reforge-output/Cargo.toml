@@ -4,10 +4,16 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Human, HTML, JSON, YAML, and SARIF report renderers for Reforge"
 
 [dependencies]
 anyhow.workspace = true
-reforge-schema = { path = "../reforge-schema" }
+reforge-schema.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true

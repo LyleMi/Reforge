@@ -29,7 +29,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build release analyzers
-        run: cargo build --locked --release -p reforge -p reforge-calibrate
+        run: cargo build --locked --release -p reforge-cli -p reforge-calibrate
 
       - name: Validate frozen corpus
         run: target/release/reforge-calibrate corpus validate --manifest calibration/corpus.toml

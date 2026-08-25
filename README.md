@@ -43,6 +43,16 @@ Reforge runs the Codebase analysis by default. Generate a standalone HTML report
 reforge analyze . --output html --output-file reforge-report.html
 ```
 
+Rust users can alternatively build and install the command from crates.io:
+
+```sh
+cargo install reforge-cli --locked
+```
+
+The crates.io package installs the `reforge` binary only. Use the verified
+release installer above when you also want the bundled `reforge-analyze` Codex
+skill.
+
 <p align="center">
   <a href="https://lylemi.github.io/Reforge/sample/"><strong>Explore an example Codebase report →</strong></a>
 </p>

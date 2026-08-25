@@ -8,7 +8,7 @@ trap 'rm -rf "$preview_root"' EXIT HUP INT TERM
 
 git clone --quiet https://github.com/sindresorhus/p-limit.git "$preview_root/source"
 git -C "$preview_root/source" checkout --quiet --detach df476048d023ff868cd45b35ee47f5fb0ca2b25a
-cargo build --locked --release -p reforge --manifest-path "$repo_root/Cargo.toml"
+cargo build --locked --release -p reforge-cli --manifest-path "$repo_root/Cargo.toml"
 "$repo_root/target/release/reforge" analyze "$preview_root/source" \
     --config "$repo_root/calibration/reforge.toml" \
     --analysis codebase \

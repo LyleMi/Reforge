@@ -25,13 +25,13 @@ cargo test
 For a quick end-to-end smoke test:
 
 ```powershell
-cargo run -p reforge -- analyze . --reproducible
+cargo run -p reforge-cli -- analyze . --reproducible
 ```
 
 For reproducible machine-readable output:
 
 ```powershell
-cargo run -p reforge -- analyze . --analysis codebase --set codebase.churn=off --reproducible --output json
+cargo run -p reforge-cli -- analyze . --analysis codebase --set codebase.churn=off --reproducible --output json
 ```
 
 ## Development Workflow
@@ -72,8 +72,9 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The build refreshes `assets/report-app.js` and `assets/report-app.css`. Rust
-embeds those files in offline HTML reports, so commit both generated assets
+The build refreshes `assets/report-app.js` and `assets/report-app.css`, then
+synchronizes them into `crates/reforge-output/assets`. Rust
+embeds those files in offline HTML reports, so commit both generated asset sets
 with the frontend source change.
 
 The Playwright suite generates a report with deliberately strict thresholds
@@ -183,5 +184,6 @@ Pull requests should describe:
 
 Do not commit generated outputs, dependency directories, build artifacts, or
 local analysis artifacts. The checked-in `assets/report-app.js` and
-`assets/report-app.css` bundles are the sole generated-output exception because
+`assets/report-app.css` bundles and their `crates/reforge-output/assets` copies
+are the sole generated-output exception because
 the Rust HTML renderer embeds them.

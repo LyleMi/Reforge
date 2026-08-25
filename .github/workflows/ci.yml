@@ -45,7 +45,7 @@ jobs:
         run: npm run build
 
       - name: Check embedded assets
-        run: git diff --exit-code -- assets/report-app.js assets/report-app.css
+        run: git diff --exit-code -- assets/report-app.js assets/report-app.css crates/reforge-output/assets/report-app.js crates/reforge-output/assets/report-app.css
 
       - name: Install Playwright Chromium
         working-directory: web/report-app
@@ -116,6 +116,30 @@ jobs:
       - name: Run clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
+  package:
+    name: crates.io packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Package core crates
+        run: |
+          cargo package --locked -p reforge-schema
+          cargo package --locked --list -p reforge-output > target/reforge-output-package-files.txt
+          cargo package --locked --list -p reforge-engine > target/reforge-engine-package-files.txt
+          cargo package --locked --list -p reforge-cli > target/reforge-cli-package-files.txt
+          grep -Fx assets/report-app.css target/reforge-output-package-files.txt
+          grep -Fx assets/report-app.js target/reforge-output-package-files.txt
+          grep -Fx build.rs target/reforge-engine-package-files.txt
+          grep -Fx src/main.rs target/reforge-cli-package-files.txt
+
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -155,9 +179,9 @@ jobs:
       - name: Smoke test analyses
         shell: pwsh
         run: |
-          cargo run --locked -p reforge -- analyze . --output json --output-file target/codebase.json --metrics-output target/metrics.json --reproducible
-          cargo run --locked -p reforge -- analyze . --analysis dataflow --output json --output-file target/dataflow.json --flow-ir-output target/flow-ir.json --reproducible
-          cargo run --locked -p reforge -- analyze . --analysis codebase --analysis dataflow --output json --output-file target/combined.json --reproducible
+          cargo run --locked -p reforge-cli -- analyze . --output json --output-file target/codebase.json --metrics-output target/metrics.json --reproducible
+          cargo run --locked -p reforge-cli -- analyze . --analysis dataflow --output json --output-file target/dataflow.json --flow-ir-output target/flow-ir.json --reproducible
+          cargo run --locked -p reforge-cli -- analyze . --analysis codebase --analysis dataflow --output json --output-file target/combined.json --reproducible
           $codebase = Get-Content target/codebase.json -Raw | ConvertFrom-Json
           $report = Get-Content target/combined.json -Raw | ConvertFrom-Json
           if ($codebase.schema_version -ne 27) { throw "unexpected report schema" }
@@ -182,7 +206,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build release analyzer
-        run: cargo build --locked --release -p reforge
+        run: cargo build --locked --release -p reforge-cli
 
       - name: Run isolated and combined self analyses twice
         run: |

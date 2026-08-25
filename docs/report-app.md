@@ -16,5 +16,6 @@ npm run build
 ```
 
 Commit the source together with regenerated `assets/report-app.js` and
-`assets/report-app.css`; the HTML renderer embeds both assets and requires no
+`assets/report-app.css` plus their synchronized `crates/reforge-output/assets`
+copies; the HTML renderer embeds the package-local assets and requires no
 server or network.

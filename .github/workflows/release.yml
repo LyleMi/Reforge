@@ -52,7 +52,7 @@ jobs:
         run: cargo test --locked --workspace --all-targets --all-features
 
       - name: Build core binary
-        run: cargo build --locked --release -p reforge
+        run: cargo build --locked --release -p reforge-cli
 
       - name: Package artifact
         shell: pwsh
@@ -76,7 +76,9 @@ jobs:
         shell: pwsh
         run: |
           $version = (& "target/release/${{ matrix.binary }}" --version | Out-String).Trim()
-          if ($version -ne "reforge 0.2.0") {
+          $metadata = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
+          $packageVersion = ($metadata.packages | Where-Object name -eq "reforge-cli").version
+          if ($version -ne "reforge $packageVersion") {
             throw "unexpected packaged version: $version"
           }
           if (-not (Test-Path "dist/skills/reforge-analyze/SKILL.md")) {

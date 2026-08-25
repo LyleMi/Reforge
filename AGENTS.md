@@ -2,15 +2,15 @@
 
 ## Project Structure & Module Organization
 
-Reforge is a Rust 2024 workspace for Codebase and Dataflow refactoring analysis. `tools/reforge` owns the core `analyze`, `rules`, `init`, and `config` CLI. `crates/reforge-engine` owns workspace indexing, execution planning, detectors, evidence aggregation, and report projection over the shared schema and output crates. `tools/reforge-unity` is an experimental specialization, while `tools/reforge-workflow` is an optional consumer that governs agent changes from existing reports; neither is part of the core analyzer model. Unit tests are colocated with their owners. Frontend source lives in `web/report-app`; generated `assets/report-app.js` and `assets/report-app.css` are intentionally committed because the HTML renderer embeds them.
+Reforge is a Rust 2024 workspace for Codebase and Dataflow refactoring analysis. `tools/reforge` owns the `reforge-cli` package and its core `analyze`, `rules`, `init`, and `config` CLI. `crates/reforge-engine` owns workspace indexing, execution planning, detectors, evidence aggregation, and report projection over the shared schema and output crates. `tools/reforge-unity` is an experimental specialization, while `tools/reforge-workflow` is an optional consumer that governs agent changes from existing reports; neither is part of the core analyzer model. Unit tests are colocated with their owners. Frontend source lives in `web/report-app`; generated `assets/report-app.js` and `assets/report-app.css` plus their synchronized `crates/reforge-output/assets` copies are intentionally committed because the HTML renderer embeds them in the publishable output crate.
 
 ## Build, Test, and Development Commands
 
 - `cargo build` compiles the CLI and all dependencies.
-- `cargo run -p reforge -- analyze .` runs the default Codebase analysis.
-- `cargo run -p reforge -- analyze . --analysis codebase --reproducible` runs Codebase explicitly.
-- `cargo run -p reforge -- analyze . --analysis dataflow --output json --reproducible` produces stable Dataflow output.
-- `cargo run -p reforge -- analyze . --analysis codebase --analysis dataflow --reproducible` runs both core analyses over one workspace index.
+- `cargo run -p reforge-cli -- analyze .` runs the default Codebase analysis.
+- `cargo run -p reforge-cli -- analyze . --analysis codebase --reproducible` runs Codebase explicitly.
+- `cargo run -p reforge-cli -- analyze . --analysis dataflow --output json --reproducible` produces stable Dataflow output.
+- `cargo run -p reforge-cli -- analyze . --analysis codebase --analysis dataflow --reproducible` runs both core analyses over one workspace index.
 - `cargo test --workspace --all-targets --all-features` runs the complete suite.
 - `cargo fmt` formats Rust code using rustfmt defaults.
 - `cargo clippy --all-targets --all-features` checks common Rust issues before review.
@@ -29,4 +29,4 @@ Use Conventional Commits for all commit messages, formatted as `<type>(optional-
 
 ## Security & Configuration Tips
 
-Do not commit generated outputs, dependency directories, or local analysis artifacts, except for `assets/report-app.js` and `assets/report-app.css`. Regenerate and commit those two embedded report assets whenever their `web/report-app` source changes. Preserve the default behavior that skips common generated directories such as `target`, `node_modules`, `dist`, and `build` unless a change explicitly targets generated-file scanning.
+Do not commit generated outputs, dependency directories, or local analysis artifacts, except for `assets/report-app.js`, `assets/report-app.css`, and their synchronized copies under `crates/reforge-output/assets`. Regenerate and commit both copies of the embedded report assets whenever their `web/report-app` source changes. Preserve the default behavior that skips common generated directories such as `target`, `node_modules`, `dist`, and `build` unless a change explicitly targets generated-file scanning.

@@ -352,23 +352,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "reforge"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "clap",
- "reforge-engine",
- "reforge-output",
- "reforge-schema",
- "serde",
- "serde_json",
- "serde_yaml",
- "toml",
-]
-
-[[package]]
 name = "reforge-calibrate"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -382,8 +367,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "reforge-cli"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "reforge-engine",
+ "reforge-output",
+ "reforge-schema",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "toml",
+]
+
+[[package]]
 name = "reforge-engine"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "globset",
@@ -411,7 +411,7 @@ dependencies = [
 
 [[package]]
 name = "reforge-output"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "reforge-schema",
@@ -422,7 +422,7 @@ dependencies = [
 
 [[package]]
 name = "reforge-schema"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -433,7 +433,7 @@ dependencies = [
 
 [[package]]
 name = "reforge-unity"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -444,7 +444,7 @@ dependencies = [
 
 [[package]]
 name = "reforge-unity-engine"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "reforge-schema",
@@ -455,7 +455,7 @@ dependencies = [
 
 [[package]]
 name = "reforge-workflow"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",

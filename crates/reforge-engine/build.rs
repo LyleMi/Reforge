@@ -2,12 +2,12 @@ use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-env-changed=REFORGE_BUILD_REVISION");
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    if let Ok(head) = std::fs::read_to_string(".git/HEAD")
+    println!("cargo:rerun-if-changed=../../.git/HEAD");
+    if let Ok(head) = std::fs::read_to_string("../../.git/HEAD")
         && let Some(reference) = head.trim().strip_prefix("ref: ")
     {
-        println!("cargo:rerun-if-changed=.git/{reference}");
-        println!("cargo:rerun-if-changed=.git/packed-refs");
+        println!("cargo:rerun-if-changed=../../.git/{reference}");
+        println!("cargo:rerun-if-changed=../../.git/packed-refs");
     }
 
     let revision = std::env::var("REFORGE_BUILD_REVISION")

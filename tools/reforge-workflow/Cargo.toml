@@ -5,12 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Approval-gated workflow for schema 27 Reforge reports"
+publish = false
 
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-reforge-schema = { path = "../../crates/reforge-schema" }
-reforge-output = { path = "../../crates/reforge-output" }
+reforge-schema.workspace = true
+reforge-output.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

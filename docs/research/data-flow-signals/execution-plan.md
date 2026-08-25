@@ -383,7 +383,8 @@ Implementation batch C — output:
 - update human and JSON/YAML rendering;
 - emit one SARIF result per clustered issue with witness locations;
 - update the report-app TypeScript schema and path presentation;
-- regenerate and commit `assets/report-app.js` and `assets/report-app.css` with
+- regenerate and commit `assets/report-app.js` and `assets/report-app.css` plus
+  their synchronized `crates/reforge-output/assets` copies with
   their source changes.
 
 Implementation batch D — documentation:
@@ -474,7 +475,7 @@ coverage contract. Otherwise keep it opt-in. Do not lower gates merely to ship.
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features
-cargo run -p reforge -- analyze . --reproducible
+cargo run -p reforge-cli -- analyze . --reproducible
 python3 docs/research/data-flow-signals/generate_report.py
 python3 /home/ubuntu/sample/Deep-Research-skills/skills/research-codex-zh/research/validate_json.py \
   -f docs/research/data-flow-signals/fields.yaml \
