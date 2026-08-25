@@ -119,6 +119,14 @@ the Pages workflow can deploy for the first time. Keep the `github-pages`
 environment restricted to the `main` branch; the workflow also enforces that
 branch boundary for manual runs.
 
+The sample is a real, reproducible Codebase analysis of the Reforge repository.
+Its advisory findings are refactoring signals to review, not defects or a quality
+score. The Pages workflow validates a bounded issue count, evidence-rule variety,
+nonzero scan coverage, and the absence of generated report bundles before it can
+publish. These checks keep the sample useful as the codebase and detector output
+evolve; update the sample thresholds deliberately when legitimate repository
+changes move it outside those quality bounds.
+
 ## Tests
 
 Unit tests live next to the modules they exercise under `#[cfg(test)]` or in

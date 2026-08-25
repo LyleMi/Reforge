@@ -67,6 +67,9 @@ jobs:
             --output-file docs/sample/index.html \
             --reproducible
 
+      - name: Validate Codebase example report
+        run: node scripts/validate-pages-sample.mjs docs/sample/index.html
+
       - name: Build documentation
         run: mdbook build --dest-dir _site
 

@@ -7,6 +7,7 @@ enabled = ["codebase"]
 exclude-tests = true
 ignore-paths = [
   "assets/report-app.js",
+  "crates/reforge-output/assets/report-app.js",
   "web/report-app/src/vite-env.d.ts",
   "tools/reforge-workflow",
   "crates/reforge-unity-engine",
@@ -14,8 +15,20 @@ ignore-paths = [
 ]
 
 [rules]
-enable = ["reforge.codebase.large_file"]
+enable = [
+  "reforge.codebase.large_file",
+  "reforge.codebase.long_function",
+  "reforge.codebase.complex_function",
+  "reforge.codebase.similar_functions",
+  "reforge.codebase.large_public_surface",
+]
 
 [codebase]
 churn = "off"
-max-file-lines = 500
+max-file-lines = 475
+max-function-lines = 75
+max-function-complexity = 14
+max-public-items = 25
+function-similarity = 0.90
+min-similar-functions = 2
+min-function-tokens = 100
