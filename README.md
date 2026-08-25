@@ -161,3 +161,10 @@ cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 cargo test --locked --workspace --all-targets --all-features
 ```
+
+Run the complete Linux CI gate locally, or install it as a pre-push hook:
+
+```sh
+scripts/check-ci.sh
+scripts/install-git-hooks.sh
+```

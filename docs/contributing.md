@@ -54,6 +54,24 @@ Run Clippy before larger changes:
 cargo clippy --all-targets --all-features
 ```
 
+Before pushing, run the same Linux-side gate used by CI:
+
+```sh
+scripts/check-ci.sh
+```
+
+Install the repository-managed pre-push hook once per checkout to run that gate
+automatically:
+
+```sh
+scripts/install-git-hooks.sh
+```
+
+The gate includes the full-rule self audit and enforces zero Codebase issues,
+byte-identical repeated reports, and isolated/combined coverage parity. CI calls
+the same `scripts/check-self-audit.sh` implementation, so its policy cannot
+silently drift from local validation.
+
 When report formatting or schema behavior changes, include sample human, HTML,
 JSON, YAML, or SARIF output in the pull request description.
 

@@ -73,7 +73,7 @@ function updateUrl() {
   history.replaceState(null, "", url);
 }
 
-async function loadReport(id) {
+async function fetchScenarioEvidence(id) {
   if (!reportCache.has(id)) reportCache.set(id, fetch(`reports/${id}/index.html`).then(async response => {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const document = new DOMParser().parseFromString(await response.text(), "text/html");
@@ -176,7 +176,7 @@ async function renderDetail() {
   byId("result-error").hidden = true;
   byId("result-content").hidden = true;
   try {
-    const [sources, report] = await Promise.all([loadSources(scenarioId), loadReport(scenarioId)]);
+    const [sources, report] = await Promise.all([loadSources(scenarioId), fetchScenarioEvidence(scenarioId)]);
     if (version !== renderVersion) return;
     byId("scenario-config").textContent = sources["reforge.toml"];
     const issue = renderResult(report);

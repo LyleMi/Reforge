@@ -67,23 +67,35 @@ const hashIssue = () => {
   try { return decodeURIComponent(match[1]); } catch { return ""; }
 };
 
-function ReportView({ report, locale, onLocaleChange }: { report: Report; locale: Locale; onLocaleChange: (locale: Locale) => void }) {
-  const [query, setQuery] = useState("");
-  const [analysis, setAnalysis] = useState("");
-  const [kind, setKind] = useState("");
-  const [maturity, setMaturity] = useState("");
-  const [baseline, setBaseline] = useState("");
+type IssueFilters = { query: string; analysis: string; kind: string; maturity: string; baseline: string };
+const emptyFilters: IssueFilters = { query: "", analysis: "", kind: "", maturity: "", baseline: "" };
+const baselineRank: Record<string, number> = { new: 0, updated: 1, unknown: 2, unchanged: 3, absent: 4, "": 5 };
+
+const issueMaturity = (report: Report, issue: Issue) => issue.evidence.map(evidence => report.coverage[issue.analysis]?.rules?.[evidence.rule]?.maturity).find(Boolean) ?? "unknown";
+const issueBaseline = (report: Report, issue: Issue) => report.baseline_comparison?.issues[issue.id]?.state ?? "";
+
+function matchesIssue(report: Report, issue: Issue, filters: IssueFilters): boolean {
+  const textMatches = JSON.stringify(issue).toLowerCase().includes(filters.query.trim().toLowerCase());
+  const analysisMatches = !filters.analysis || issue.analysis === filters.analysis;
+  const kindMatches = !filters.kind || issue.kind === filters.kind;
+  const maturityMatches = !filters.maturity || issueMaturity(report, issue) === filters.maturity;
+  const baselineMatches = !filters.baseline || issueBaseline(report, issue) === filters.baseline;
+  return textMatches && analysisMatches && kindMatches && maturityMatches && baselineMatches;
+}
+
+function compareIssues(report: Report, locale: Locale, left: Issue, right: Issue): number {
+  return Number(left.kind !== "policy") - Number(right.kind !== "policy")
+    || baselineRank[issueBaseline(report, left)] - baselineRank[issueBaseline(report, right)]
+    || left.analysis.localeCompare(right.analysis)
+    || left.family.localeCompare(right.family)
+    || subjectLabel(left.subject, locale).localeCompare(subjectLabel(right.subject, locale))
+    || left.id.localeCompare(right.id);
+}
+
+function useIssueSelection(issues: Issue[]) {
   const [selectedId, setSelectedId] = useState(hashIssue);
   const detailHeading = useRef<HTMLHeadingElement>(null);
-  const analyses = Object.keys(report.coverage).sort();
-  const issueMaturity = (issue: Issue) => issue.evidence.map(evidence => report.coverage[issue.analysis]?.rules?.[evidence.rule]?.maturity).find(Boolean) ?? "unknown";
-  const issueBaseline = (issue: Issue) => report.baseline_comparison?.issues[issue.id]?.state ?? "";
-  const baselineRank: Record<string, number> = { new: 0, updated: 1, unknown: 2, unchanged: 3, absent: 4, "": 5 };
-  const issues = useMemo(() => report.issues.filter(issue => JSON.stringify(issue).toLowerCase().includes(query.trim().toLowerCase()) && (!analysis || issue.analysis === analysis) && (!kind || issue.kind === kind) && (!maturity || issueMaturity(issue) === maturity) && (!baseline || issueBaseline(issue) === baseline)).sort((left, right) => Number(left.kind !== "policy") - Number(right.kind !== "policy") || baselineRank[issueBaseline(left)] - baselineRank[issueBaseline(right)] || left.analysis.localeCompare(right.analysis) || left.family.localeCompare(right.family) || subjectLabel(left.subject, locale).localeCompare(subjectLabel(right.subject, locale)) || left.id.localeCompare(right.id)), [report, query, analysis, kind, maturity, baseline, locale]);
   const selected = issues.find(issue => issue.id === selectedId) ?? issues[0];
-  const partial = analyses.some(name => !["observed", "not_applicable"].includes(report.coverage[name].status));
-  const filtersActive = Boolean(query || analysis || kind || maturity || baseline);
-
   useEffect(() => {
     const next = selected?.id ?? "";
     if (next !== selectedId) setSelectedId(next);
@@ -96,12 +108,10 @@ function ReportView({ report, locale, onLocaleChange }: { report: Report; locale
     window.addEventListener("hashchange", syncHash);
     return () => window.removeEventListener("hashchange", syncHash);
   }, []);
-
   const choose = (id: string, moveToDetail = false) => {
     setSelectedId(id);
     if (moveToDetail && window.matchMedia("(max-width: 760px)").matches) requestAnimationFrame(() => { detailHeading.current?.focus(); detailHeading.current?.scrollIntoView({ behavior: "smooth", block: "start" }); });
   };
-  const clearFilters = () => { setQuery(""); setAnalysis(""); setKind(""); setMaturity(""); setBaseline(""); };
   const navigateList = (event: React.KeyboardEvent, index: number) => {
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
@@ -109,17 +119,47 @@ function ReportView({ report, locale, onLocaleChange }: { report: Report; locale
     choose(issues[nextIndex].id);
     document.getElementById(`issue-option-${nextIndex}`)?.focus();
   };
+  return { selected, detailHeading, choose, navigateList };
+}
+
+function ReportSummary({ report, locale }: { report: Report; locale: Locale }) {
+  return <section className="report-summary"><div><p>{report.producer.name} {report.producer.version}</p><h1>{t(locale, "title")}</h1></div><dl><div><dt>{t(locale, "issuesCard")}</dt><dd>{report.summary.issue_count}</dd></div><div><dt>{t(locale, "evidenceCard")}</dt><dd>{report.summary.evidence_count}</dd></div><div><dt>{t(locale, "files")}</dt><dd>{report.summary.scanned_files}</dd></div><div><dt>{t(locale, "suppressed")}</dt><dd>{report.suppression.evidence_count}</dd></div></dl></section>;
+}
+
+function CoverageAlert({ report, analyses, locale }: { report: Report; analyses: string[]; locale: Locale }) {
+  const partial = analyses.filter(name => !["observed", "not_applicable"].includes(report.coverage[name].status));
+  if (!partial.length) return null;
+  return <div className="coverage-alert" role="status"><span />{t(locale, "coveragePartial")}: {partial.map(name => translatedLabel(locale, name)).join(", ")}</div>;
+}
+
+type IssueBrowserProps = {
+  report: Report; issues: Issue[]; selected?: Issue; locale: Locale; analyses: string[]; filters: IssueFilters;
+  setFilters: React.Dispatch<React.SetStateAction<IssueFilters>>; choose: (id: string, moveToDetail?: boolean) => void;
+  navigateList: (event: React.KeyboardEvent, index: number) => void;
+};
+
+function IssueBrowser({ report, issues, selected, locale, analyses, filters, setFilters, choose, navigateList }: IssueBrowserProps) {
+  const update = (name: keyof IssueFilters) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setFilters(current => ({ ...current, [name]: event.target.value }));
+  const filtersActive = Object.values(filters).some(Boolean);
+  return <aside className="issue-browser" aria-label={t(locale, "issueList")}><div className="browser-heading"><div><h2>{t(locale, "list")}</h2><span aria-live="polite">{issues.length} {t(locale, "results")}</span></div><input aria-label={t(locale, "filter")} placeholder={t(locale, "search")} type="search" value={filters.query} onChange={update("query")} /><div className="filters"><select aria-label={t(locale, "analysis")} value={filters.analysis} onChange={update("analysis")}><option value="">{t(locale, "allAnalyses")}</option>{analyses.map(value => <option value={value} key={value}>{translatedLabel(locale, value)}</option>)}</select><select aria-label={t(locale, "kind")} value={filters.kind} onChange={update("kind")}><option value="">{t(locale, "allKinds")}</option><option value="policy">{t(locale, "policy")}</option><option value="advisory">{t(locale, "advisory")}</option></select><select aria-label={t(locale, "maturity")} value={filters.maturity} onChange={update("maturity")}><option value="">{t(locale, "allMaturities")}</option>{["stable", "preview", "experimental"].map(value => <option value={value} key={value}>{translatedLabel(locale, value)}</option>)}</select><select aria-label={t(locale, "baselineState")} value={filters.baseline} onChange={update("baseline")} disabled={!report.baseline_comparison}><option value="">{report.baseline_comparison ? t(locale, "allBaseline") : t(locale, "baselineUnavailable")}</option>{["new", "updated", "unknown", "unchanged", "absent"].map(value => <option value={value} key={value}>{translatedLabel(locale, value)}</option>)}</select></div></div>
+    <div className="issue-list" role="listbox" aria-label={t(locale, "issueList")}>{issues.map((issue, index) => <button id={`issue-option-${index}`} role="option" aria-selected={issue.id === selected?.id} className="issue-option" key={issue.id} onClick={() => choose(issue.id, true)} onKeyDown={event => navigateList(event, index)}><span className="option-meta"><b className={issue.kind}>{translatedLabel(locale, issue.kind)}</b>{issueBaseline(report, issue) && <i>{translatedLabel(locale, issueBaseline(report, issue))}</i>}<small>{translatedLabel(locale, issue.analysis)}</small></span><strong>{issue.title}</strong><span>{subjectLabel(issue.subject, locale)}</span><code>{issue.evidence[0]?.rule ?? issue.family}</code></button>)}</div>
+    {!issues.length ? <div className="empty"><strong>{report.issues.length ? t(locale, "noMatchingIssues") : t(locale, "noReportedIssues")}</strong>{filtersActive && <button onClick={() => setFilters(emptyFilters)}>{t(locale, "clearFilters")}</button>}</div> : null}
+  </aside>;
+}
+
+function ReportView({ report, locale, onLocaleChange }: { report: Report; locale: Locale; onLocaleChange: (locale: Locale) => void }) {
+  const [filters, setFilters] = useState<IssueFilters>(emptyFilters);
+  const analyses = Object.keys(report.coverage).sort();
+  const issues = useMemo(() => report.issues.filter(issue => matchesIssue(report, issue, filters)).sort((left, right) => compareIssues(report, locale, left, right)), [report, filters, locale]);
+  const { selected, detailHeading, choose, navigateList } = useIssueSelection(issues);
 
   return <main className="report-shell">
     <header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true" /><div><b>REFORGE</b><span>{t(locale, "reportEyebrow")}</span></div></div><div className="workspace"><span>{t(locale, "workspace")}</span><strong>{report.target.workspace_identity}</strong></div><LanguagePicker locale={locale} onChange={onLocaleChange} /></header>
-    <section className="report-summary"><div><p>{report.producer.name} {report.producer.version}</p><h1>{t(locale, "title")}</h1></div><dl><div><dt>{t(locale, "issuesCard")}</dt><dd>{report.summary.issue_count}</dd></div><div><dt>{t(locale, "evidenceCard")}</dt><dd>{report.summary.evidence_count}</dd></div><div><dt>{t(locale, "files")}</dt><dd>{report.summary.scanned_files}</dd></div><div><dt>{t(locale, "suppressed")}</dt><dd>{report.suppression.evidence_count}</dd></div></dl></section>
-    {partial ? <div className="coverage-alert" role="status"><span />{t(locale, "coveragePartial")}: {analyses.filter(name => !["observed", "not_applicable"].includes(report.coverage[name].status)).map(name => translatedLabel(locale, name)).join(", ")}</div> : null}
+    <ReportSummary report={report} locale={locale} />
+    <CoverageAlert report={report} analyses={analyses} locale={locale} />
     <section className="workbench">
-      <aside className="issue-browser" aria-label={t(locale, "issueList")}><div className="browser-heading"><div><h2>{t(locale, "list")}</h2><span aria-live="polite">{issues.length} {t(locale, "results")}</span></div><input aria-label={t(locale, "filter")} placeholder={t(locale, "search")} type="search" value={query} onChange={event => setQuery(event.target.value)} /><div className="filters"><select aria-label={t(locale, "analysis")} value={analysis} onChange={event => setAnalysis(event.target.value)}><option value="">{t(locale, "allAnalyses")}</option>{analyses.map(value => <option value={value} key={value}>{translatedLabel(locale, value)}</option>)}</select><select aria-label={t(locale, "kind")} value={kind} onChange={event => setKind(event.target.value)}><option value="">{t(locale, "allKinds")}</option><option value="policy">{t(locale, "policy")}</option><option value="advisory">{t(locale, "advisory")}</option></select><select aria-label={t(locale, "maturity")} value={maturity} onChange={event => setMaturity(event.target.value)}><option value="">{t(locale, "allMaturities")}</option>{["stable", "preview", "experimental"].map(value => <option value={value} key={value}>{translatedLabel(locale, value)}</option>)}</select><select aria-label={t(locale, "baselineState")} value={baseline} onChange={event => setBaseline(event.target.value)} disabled={!report.baseline_comparison}><option value="">{report.baseline_comparison ? t(locale, "allBaseline") : t(locale, "baselineUnavailable")}</option>{["new", "updated", "unknown", "unchanged", "absent"].map(value => <option value={value} key={value}>{translatedLabel(locale, value)}</option>)}</select></div></div>
-        <div className="issue-list" role="listbox" aria-label={t(locale, "issueList")}>{issues.map((issue, index) => <button id={`issue-option-${index}`} role="option" aria-selected={issue.id === selected?.id} className="issue-option" key={issue.id} onClick={() => choose(issue.id, true)} onKeyDown={event => navigateList(event, index)}><span className="option-meta"><b className={issue.kind}>{translatedLabel(locale, issue.kind)}</b>{issueBaseline(issue) && <i>{translatedLabel(locale, issueBaseline(issue))}</i>}<small>{translatedLabel(locale, issue.analysis)}</small></span><strong>{issue.title}</strong><span>{subjectLabel(issue.subject, locale)}</span><code>{issue.evidence[0]?.rule ?? issue.family}</code></button>)}</div>
-        {!issues.length ? <div className="empty"><strong>{report.issues.length ? t(locale, "noMatchingIssues") : t(locale, "noReportedIssues")}</strong>{filtersActive && <button onClick={clearFilters}>{t(locale, "clearFilters")}</button>}</div> : null}
-      </aside>
-      <section className="detail-pane">{selected ? <IssueDetail issue={selected} maturity={issueMaturity(selected)} baseline={issueBaseline(selected)} locale={locale} headingRef={detailHeading} /> : <div className="empty-detail"><p>{t(locale, "selectIssue")}</p></div>}</section>
+      <IssueBrowser report={report} issues={issues} selected={selected} locale={locale} analyses={analyses} filters={filters} setFilters={setFilters} choose={choose} navigateList={navigateList} />
+      <section className="detail-pane">{selected ? <IssueDetail issue={selected} maturity={issueMaturity(report, selected)} baseline={issueBaseline(report, selected)} locale={locale} headingRef={detailHeading} /> : <div className="empty-detail"><p>{t(locale, "selectIssue")}</p></div>}</section>
     </section>
     <Coverage report={report} analyses={analyses} locale={locale} />
     <footer>{report.target.workspace_identity} · {t(locale, "absence")}</footer>
