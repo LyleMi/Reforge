@@ -48,6 +48,8 @@ export default function generateReport() {
 
   const siteRoot = resolve(repositoryRoot, "target/playwright/site");
   cpSync(resolve(repositoryRoot, "playground"), resolve(siteRoot, "playground"), { recursive: true });
+  mkdirSync(resolve(siteRoot, "assets"), { recursive: true });
+  cpSync(resolve(repositoryRoot, "assets/reforge-logo.png"), resolve(siteRoot, "assets/reforge-logo.png"));
   for (const scenario of ["rust-similarity", "typescript-cycle", "python-long-function"]) {
     const fixture = resolve(repositoryRoot, "playground/fixtures", scenario);
     const output = resolve(siteRoot, "playground/reports", scenario, "index.html");

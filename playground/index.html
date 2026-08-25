@@ -3,34 +3,40 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Try Reforge in a browser with deliberately constructed, repository-owned examples.">
+    <meta name="description" content="Explore real Reforge evidence with repository-owned examples.">
     <title>Reforge Playground</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
     <header class="hero">
-      <nav><a href="../">Reforge docs</a><label><span data-i18n="language">Language</span><select id="locale" aria-label="Language"><option value="en">EN</option><option value="zh-CN">中文</option></select></label></nav>
-      <p class="eyebrow">Reforge Playground</p>
-      <h1 data-i18n="headline">Inspect the evidence before installing</h1>
-      <p data-i18n="intro">Three deliberately constructed, repository-owned examples show one Reforge rule at a time. Analysis runs during the Pages build; no code is uploaded.</p>
+      <nav><a class="wordmark" href="../"><img src="../assets/reforge-logo.png" alt=""><span>REFORGE</span></a><div><a href="../" data-i18n="docs">Documentation</a><label><span data-i18n="language">Language</span><select id="locale" aria-label="Language"><option value="en">EN</option><option value="zh-CN">中文</option></select></label></div></nav>
+      <div class="hero-copy"><p class="eyebrow">Reforge Playground</p><h1 data-i18n="headline">Read the evidence.<br>Shape the code.</h1><p data-i18n="intro">Explore three focused findings generated from real source. Nothing runs in your browser and no code leaves your machine.</p></div>
+      <div class="hero-glow" aria-hidden="true"></div>
     </header>
     <main>
-      <section aria-labelledby="scenarios-heading">
-        <h2 id="scenarios-heading" data-i18n="scenarios">Choose a scenario</h2>
-        <div id="scenario-cards" class="scenario-cards"></div>
-      </section>
-      <article id="scenario-detail" class="detail" aria-live="polite">
-        <div class="detail-heading"><div><p id="scenario-rule" class="eyebrow"></p><h2 id="scenario-title"></h2><p id="scenario-summary"></p></div><a id="report-link" class="primary" href="#" data-i18n="openReport">Open interactive report</a></div>
-        <div class="review-grid">
-          <section><h3 data-i18n="reviewQuestion">Review question</h3><p id="scenario-question"></p></section>
-          <section><h3 data-i18n="reasonableException">Reasonable exception</h3><p id="scenario-exception"></p></section>
-        </div>
-        <section><h3 data-i18n="source">Complete source</h3><div id="source-files"></div></section>
-        <section><h3 data-i18n="configuration">Configuration</h3><pre><code id="scenario-config"></code></pre></section>
-        <section><h3 data-i18n="reproduce">Reproduce locally</h3><pre><code id="scenario-command"></code></pre></section>
+      <section class="scenario-section" aria-labelledby="scenarios-heading"><div class="section-heading"><p class="eyebrow" data-i18n="stepOne">01 / Choose evidence</p><h2 id="scenarios-heading" data-i18n="scenarios">Choose a scenario</h2></div><div id="scenario-cards" class="scenario-cards"></div></section>
+      <article id="scenario-detail" class="workbench" aria-live="polite">
+        <section class="code-pane">
+          <div class="pane-heading"><div><p class="eyebrow" data-i18n="workspace">02 / Inspect source</p><h2 id="scenario-title"></h2></div><span id="scenario-language" class="language-chip"></span></div>
+          <div id="content-tabs" class="tabs" role="tablist" aria-label="Workbench content"><button role="tab" aria-selected="true" data-tab="source" data-i18n="source">Source</button><button role="tab" aria-selected="false" data-tab="config" data-i18n="configuration">Config</button><button role="tab" aria-selected="false" data-tab="command" data-i18n="reproduce">Command</button></div>
+          <section id="source-panel" class="tab-panel" role="tabpanel"><div id="file-tabs" class="file-tabs" role="tablist" aria-label="Source files"></div><div id="source-files" class="source-files"></div></section>
+          <section id="config-panel" class="tab-panel" role="tabpanel" hidden><pre><code id="scenario-config"></code></pre></section>
+          <section id="command-panel" class="tab-panel" role="tabpanel" hidden><pre><code id="scenario-command"></code></pre><p class="command-note" data-i18n="commandNote">Run from the Reforge repository after building the CLI.</p></section>
+        </section>
+        <aside class="result-pane">
+          <p class="eyebrow" data-i18n="stepThree">03 / Review finding</p>
+          <div id="result-loading" class="result-state" data-i18n="loadingReport">Loading generated evidence…</div>
+          <div id="result-error" class="result-state error-state" hidden></div>
+          <div id="result-content" hidden>
+            <div class="result-meta"><span id="issue-kind"></span><span id="issue-analysis"></span></div><p id="scenario-rule" class="rule"></p><h2 id="issue-title"></h2><p id="issue-guidance" class="guidance"></p>
+            <section><h3 data-i18n="evidence">Evidence</h3><p id="evidence-message"></p><div id="evidence-locations" class="evidence-locations"></div><dl id="measurements" class="measurements"></dl></section>
+            <section class="review-question"><h3 data-i18n="reviewQuestion">Review question</h3><p id="scenario-question"></p></section>
+          </div>
+          <a id="report-link" class="report-link" href="#"><span data-i18n="openReport">Open full report</span><span aria-hidden="true">↗</span></a>
+        </aside>
       </article>
     </main>
-    <footer data-i18n="footer">These examples are intentionally small and do not evaluate any third-party project.</footer>
+    <footer><span class="brand-mark" aria-hidden="true"></span><span data-i18n="footer">Small, deliberate examples. Real Reforge output.</span></footer>
     <script type="module" src="app.js"></script>
   </body>
 </html>

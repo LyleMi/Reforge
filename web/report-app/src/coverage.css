@@ -1,52 +1,17 @@
-.coverage-panel {
-  margin-top: 22px;
-}
-
-.report-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 10px;
-}
-
-.language-picker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #526d71;
-  font-size: 13px;
-}
-
-.language-picker select {
-  border: 1px solid #c2d3cf;
-  border-radius: 999px;
-  background: #fff;
-  color: #17333a;
-  padding: 7px 12px;
-}
-
-.coverage-panel > summary {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-}
-
-.coverage-panel > summary h2 {
-  margin: 0;
-}
-
-.coverage-panel > summary span {
-  color: #637b7f;
-}
-
-.coverage-panel[open] > summary {
-  margin-bottom: 16px;
-}
-
-.limitations-list {
-  margin: 8px 0;
-  padding: 10px;
-  border-radius: 10px;
-  background: #fff0e8;
-  color: #743c27;
-}
+.coverage-panel { margin-top: 18px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--paper); box-shadow: 0 8px 30px rgb(15 39 47 / 5%); }
+.coverage-panel > summary { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 20px 23px; cursor: pointer; }
+.coverage-panel > summary h2 { margin: 2px 0 0; font-size: 20px; }
+.coverage-panel > summary > span { color: var(--ink-soft); font-size: 11px; text-align: right; }
+.coverage-panel[open] > summary { border-bottom: 1px solid var(--line); }
+.coverage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; padding: 16px; }
+.coverage { min-width: 0; padding: 17px; border: 1px solid var(--line); border-radius: var(--radius); background: #fbfaf6; }
+.coverage-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.coverage h3 { margin: 0; font-size: 16px; }
+.coverage > p { margin: 5px 0 14px; color: var(--ink-soft); font-size: 11px; }
+.status { padding: 4px 8px; border-radius: 999px; background: var(--cyan-soft); color: #226367; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.status.partial, .status.partially_observed, .status.unsupported { background: var(--orange-soft); color: var(--warning); }
+.coverage-section { display: grid; gap: 5px; padding: 10px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.coverage-section b, .coverage-section code { font-size: 11px; }
+.coverage-section small, .coverage-section p { display: block; margin: 0; color: var(--ink-soft); font-size: 10px; }
+.limitations-list { margin: 8px 0; padding: 10px; border-radius: var(--radius-sm); background: var(--orange-soft); color: #743c27; font-size: 10px; }
+.limitations-list p { margin: 5px 0 0; }

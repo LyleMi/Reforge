@@ -2,7 +2,7 @@ export type Locale = "en" | "zh-CN";
 
 const messages = {
   en: {
-    reportEyebrow: "Reforge analysis report", title: "Refactoring evidence", issue: "issue", issues: "issues",
+    reportEyebrow: "Evidence workbench", title: "Reforge Evidence Workbench", issue: "issue", issues: "issues",
     evidence: "evidence", item: "item", items: "items", files: "files", issuesCard: "Issues",
     evidenceCard: "Evidence", suppressed: "Suppressed", baseline: "Baseline", list: "Issues and evidence",
     filter: "Filter issues", search: "Search issues and evidence", analysis: "Analysis", allAnalyses: "All analyses",
@@ -11,10 +11,16 @@ const messages = {
     noIssues: "No issues reported.", coverage: "Coverage", scannedFiles: "scanned files", threshold: "threshold",
     functionHops: "function hops", moduleHops: "module hops", reportUnavailable: "Report unavailable",
     absence: "absence is meaningful only for observed analyses.", language: "Report language", limitations: "Limitations",
-    errorLead: "The embedded report could not be loaded.", details: "Technical details",
+    errorLead: "The embedded report could not be loaded.", details: "Technical details", workspace: "Workspace",
+    results: "results", conclusion: "Finding", guidance: "Guidance", subject: "Subject", locations: "Locations",
+    measurements: "Measurements", witness: "Flow witness", selectIssue: "Select an issue to inspect its evidence.",
+    noMatchingIssues: "No issues match these filters.", noReportedIssues: "No issues were reported.",
+    clearFilters: "Clear filters", baselineUnavailable: "No baseline comparison", coveragePartial: "Coverage is partial",
+    previousIssue: "Previous issue", nextIssue: "Next issue", issueList: "Issue list", technical: "Technical details",
+    issueId: "Issue ID", evidenceId: "Evidence ID", fingerprint: "Fingerprint", summary: "Scan summary",
   },
   "zh-CN": {
-    reportEyebrow: "Reforge 分析报告", title: "重构证据", issue: "个问题", issues: "个问题",
+    reportEyebrow: "证据工作台", title: "Reforge Evidence Workbench", issue: "个问题", issues: "个问题",
     evidence: "条证据", item: "项", items: "项", files: "个文件", issuesCard: "问题",
     evidenceCard: "证据", suppressed: "已抑制", baseline: "基线", list: "问题与证据",
     filter: "筛选问题", search: "搜索问题与证据", analysis: "分析类型", allAnalyses: "全部分析",
@@ -23,7 +29,13 @@ const messages = {
     noIssues: "没有符合条件的问题。", coverage: "覆盖情况", scannedFiles: "个已扫描文件", threshold: "阈值",
     functionHops: "次函数跳转", moduleHops: "次模块跳转", reportUnavailable: "报告不可用",
     absence: "仅当分析状态为“已观测”时，没有发现问题才具有明确含义。", language: "报告语言", limitations: "分析限制",
-    errorLead: "无法载入嵌入的报告。", details: "技术详情",
+    errorLead: "无法载入嵌入的报告。", details: "技术详情", workspace: "工作区",
+    results: "条结果", conclusion: "问题结论", guidance: "改进建议", subject: "分析对象", locations: "位置",
+    measurements: "测量值", witness: "数据流见证", selectIssue: "选择一个问题以查看证据。",
+    noMatchingIssues: "没有问题符合当前筛选条件。", noReportedIssues: "本次分析未报告问题。",
+    clearFilters: "清除筛选", baselineUnavailable: "无基线对比", coveragePartial: "覆盖范围不完整",
+    previousIssue: "上一个问题", nextIssue: "下一个问题", issueList: "问题列表", technical: "技术详情",
+    issueId: "问题 ID", evidenceId: "证据 ID", fingerprint: "指纹", summary: "扫描摘要",
   },
 } as const;
 
