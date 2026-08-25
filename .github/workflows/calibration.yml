@@ -20,7 +20,7 @@ jobs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - name: Checkout Reforge
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -50,7 +50,7 @@ jobs:
           cp calibration/reforge.toml calibration-bundle/calibration/reforge.toml
 
       - name: Upload calibration tools
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: calibration-tools
           path: calibration-bundle
@@ -65,7 +65,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     steps:
       - name: Download calibration tools
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: calibration-tools
           path: calibration-run
@@ -118,7 +118,7 @@ jobs:
             --output reports/audit.json
 
       - name: Upload complete calibration evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: calibration-${{ matrix.commit }}
           path: reports
@@ -130,13 +130,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download calibration tools
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: calibration-tools
           path: calibration-run
 
       - name: Download calibration evidence
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: calibration-*
           path: evidence
@@ -154,7 +154,7 @@ jobs:
             "${audit_args[@]}" | tee promotion-verification.json
 
       - name: Upload promotion verification
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: calibration-promotion-verification
           path: promotion-verification.json
