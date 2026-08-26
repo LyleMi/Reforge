@@ -7,6 +7,16 @@ const rules = {
   "typescript-cycle": "reforge.codebase.dependency_cycle",
 };
 
+test("introduces the prepared example before presenting its patch", async ({ page }) => {
+  await page.goto(`${playgroundUrl}?scenario=typescript-boundary-bypass&lang=en`);
+  await expect(page.locator(".fixture-note")).toContainText("built-in fixtures");
+  await expect(page.locator(".selected-label")).toHaveText("Selected");
+  await expect(page.locator("#review-title")).toHaveText("Bypasses an existing boundary");
+  await expect(page.locator("#review-setup")).toContainText("needs refund support");
+  await expect(page.locator("#reading-path")).toHaveAttribute("aria-label", "How to read this example");
+  await expect(page.locator("#reading-path li")).toHaveCount(3);
+});
+
 test("loads each real report and its dedicated evidence view", async ({ page }) => {
   await page.goto(playgroundUrl);
   await expect(page.locator(".scenario-card")).toHaveCount(3);
@@ -55,12 +65,12 @@ test("evidence locations select the matching patch or source line", async ({ pag
 test("switches languages and persists scenario and locale in the URL", async ({ page }) => {
   await page.goto(`${playgroundUrl}?scenario=typescript-cycle`);
   await page.getByLabel("Language").selectOption("zh-CN");
-  await expect(page.getByRole("heading", { name: "选择失败模式" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "选择一个审查示例" })).toBeVisible();
   await expect(page.locator("#report-link")).toHaveAttribute("href", "reports/typescript-cycle/?lang=zh-CN");
   await page.reload();
-  await expect(page.getByRole("heading", { name: "选择失败模式" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "选择一个审查示例" })).toBeVisible();
   await page.goto(`${playgroundUrl}?scenario=typescript-boundary-bypass&lang=en`);
-  await expect(page.getByRole("heading", { name: "Choose a failure mode" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose a review to explore" })).toBeVisible();
 });
 
 test("keeps all repository review material usable when report loading fails", async ({ page }) => {
@@ -80,8 +90,8 @@ test("has no horizontal overflow and follows the mobile review order", async ({ 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${playgroundUrl}?scenario=typescript-cycle&lang=zh-CN`);
   await expect(page.locator("#scenario-rule")).toHaveText(rules["typescript-cycle"]);
-  const order = await page.evaluate(() => [".review-brief", ".result-pane", ".code-pane"].map(selector => getComputedStyle(document.querySelector(selector)!).order));
-  expect(order).toEqual(["1", "2", "3"]);
+  const order = await page.evaluate(() => [".review-intro", ".review-brief", ".code-pane", ".result-pane"].map(selector => getComputedStyle(document.querySelector(selector)!).order));
+  expect(order).toEqual(["0", "1", "2", "3"]);
   const widths = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
   expect(widths[0]).toBeLessThanOrEqual(widths[1]);
 });

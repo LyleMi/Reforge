@@ -145,7 +145,7 @@ async function renderDetail() {
   const text = scenario[locale];
   currentSources = undefined;
   currentIssue = undefined;
-  for (const [id, value] of [["scenario-title", text.title], ["change-title", text.change], ["scenario-language", `${scenario.language} · ${scenario.analysis}`], ["maintainer-task", text.task], ["agent-chose", text.chose], ["repository-expects", text.expects], ["reforge-observed", text.observed], ["plain-explanation", text.explanation], ["context-note", text.context]]) byId(id).textContent = value;
+  for (const [id, value] of [["review-title", text.title], ["review-setup", text.setup], ["scenario-title", text.title], ["change-title", text.change], ["scenario-language", `${scenario.language} · ${scenario.analysis}`], ["maintainer-task", text.task], ["agent-chose", text.chose], ["repository-expects", text.expects], ["reforge-observed", text.observed], ["plain-explanation", text.explanation], ["context-note", text.context]]) byId(id).textContent = value;
   byId("report-link").href = `reports/${scenarioId}/?lang=${encodeURIComponent(locale)}`;
   byId("scenario-command").textContent = `reforge analyze "$PWD/playground/fixtures/${scenarioId}/after" \\\n  --config playground/fixtures/${scenarioId}/reforge.toml \\\n  --output html --output-file reforge-report.html --reproducible`;
   byId("result-loading").hidden = false;
@@ -175,8 +175,9 @@ function render() {
   document.documentElement.lang = locale;
   document.title = locale === "zh-CN" ? "Reforge Agent 变更审查台" : "Reforge Agent Change Review";
   byId("locale").value = locale;
+  byId("reading-path").setAttribute("aria-label", copy[locale].howToRead);
   document.querySelectorAll("[data-i18n]").forEach(node => { node.textContent = copy[locale][node.dataset.i18n]; });
-  byId("scenario-cards").innerHTML = Object.entries(scenarios).map(([id, scenario], index) => `<button class="scenario-card" data-scenario="${id}" aria-pressed="${id === scenarioId}"><span class="scenario-number">0${index + 1}</span><strong>${escapeHtml(scenario[locale].title)}</strong><span>${escapeHtml(scenario[locale].card)}</span><small>${scenario.language} · ${scenario.analysis}<br>${escapeHtml(scenario.rule)}</small><i aria-hidden="true">→</i></button>`).join("");
+  byId("scenario-cards").innerHTML = Object.entries(scenarios).map(([id, scenario], index) => `<button class="scenario-card" data-scenario="${id}" aria-pressed="${id === scenarioId}"><span class="scenario-number">0${index + 1}</span>${id === scenarioId ? `<span class="selected-label">${copy[locale].selected}</span>` : ""}<strong>${escapeHtml(scenario[locale].title)}</strong><span class="card-summary">${escapeHtml(scenario[locale].card)}</span><small>${scenario.language} · ${scenario.analysis}<br>${escapeHtml(scenario.rule)}</small><i aria-hidden="true">→</i></button>`).join("");
   document.querySelectorAll("[data-scenario]").forEach(button => button.addEventListener("click", () => {
     scenarioId = button.dataset.scenario;
     activeTab = "patch";

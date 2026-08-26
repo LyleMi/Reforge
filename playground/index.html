@@ -13,26 +13,34 @@
         <a class="wordmark" href="../"><img src="../assets/reforge-logo.png" alt=""><span>REFORGE</span></a>
         <div><a href="../" data-i18n="docs">Documentation</a><label><span data-i18n="language">Language</span><select id="locale" aria-label="Language"><option value="en">EN</option><option value="zh-CN">中文</option></select></label></div>
       </nav>
-      <div class="hero-copy"><p class="eyebrow">Agent change review</p><h1 data-i18n="headline">The agent finished. Does the repository agree?</h1><p data-i18n="intro">Review a plausible patch against the architecture and abstractions already present in its repository. Every finding below comes from Reforge.</p></div>
+      <div class="hero-copy"><p class="eyebrow" data-i18n="heroLabel">Guided playground</p><h1 data-i18n="headline">See what a plausible patch misses.</h1><div class="hero-intro"><p data-i18n="intro">Walk through a prepared code-review example: the task an agent received, the patch it wrote, and the repository-level issue Reforge found.</p><p class="fixture-note"><span aria-hidden="true">●</span><span data-i18n="fixtureNote">You are viewing small, built-in fixtures—not your repository. Nothing is uploaded.</span></p></div></div>
       <div class="hero-glow" aria-hidden="true"></div>
     </header>
 
     <main>
       <section class="scenario-section" aria-labelledby="scenarios-heading">
-        <div class="section-heading"><p class="eyebrow" data-i18n="chooseLabel">Review queue</p><h2 id="scenarios-heading" data-i18n="scenarios">Choose a failure mode</h2></div>
+        <div class="section-heading"><div><p class="eyebrow" data-i18n="chooseLabel">Prepared examples</p><h2 id="scenarios-heading" data-i18n="scenarios">Choose a review to explore</h2></div><p data-i18n="scenarioHelp">Start with the selected example, or switch cases to see a different repository-level failure.</p></div>
         <div id="scenario-cards" class="scenario-cards"></div>
       </section>
 
       <article id="scenario-detail" class="review-desk" aria-live="polite">
+        <header class="review-intro">
+          <div><p class="eyebrow" data-i18n="nowReviewing">Now reviewing</p><h2 id="review-title"></h2><p id="review-setup"></p></div>
+          <ol id="reading-path" class="reading-path" aria-label="How to read this example">
+            <li><span>1</span><div><strong data-i18n="readTask">Understand the task</strong><small data-i18n="readTaskHint">What was requested and what the repository already does</small></div></li>
+            <li><span>2</span><div><strong data-i18n="readPatch">Inspect the patch</strong><small data-i18n="readPatchHint">What the agent added or changed</small></div></li>
+            <li><span>3</span><div><strong data-i18n="readEvidence">Follow the evidence</strong><small data-i18n="readEvidenceHint">Why the local change conflicts with the wider repository</small></div></li>
+          </ol>
+        </header>
         <header class="review-brief">
-          <div><span data-i18n="maintainerTask">Maintainer task</span><strong id="maintainer-task"></strong></div>
-          <div><span data-i18n="agentChose">Agent chose</span><strong id="agent-chose"></strong></div>
-          <div><span data-i18n="repositoryExpects">Repository already expects</span><strong id="repository-expects"></strong></div>
-          <div class="observed"><span data-i18n="reforgeObserved">Reforge observed</span><strong id="reforge-observed"></strong></div>
+          <div><span><b>01</b><i data-i18n="maintainerTask">The request</i></span><strong id="maintainer-task"></strong></div>
+          <div><span><b>02</b><i data-i18n="agentChose">The agent's decision</i></span><strong id="agent-chose"></strong></div>
+          <div><span><b>03</b><i data-i18n="repositoryExpects">The existing pattern</i></span><strong id="repository-expects"></strong></div>
+          <div class="observed"><span><b>04</b><i data-i18n="reforgeObserved">What Reforge found</i></span><strong id="reforge-observed"></strong></div>
         </header>
 
         <aside class="result-pane">
-          <div class="pane-heading"><div><p class="eyebrow" data-i18n="reviewResult">Review result</p><h2 id="scenario-title"></h2></div><span id="result-status" class="status-chip" data-i18n="generatedEvidence">Generated evidence</span></div>
+          <div class="pane-heading"><div><p class="eyebrow"><span class="step-mark">3</span><span data-i18n="reviewResult">Follow the evidence</span></p><h2 id="scenario-title"></h2></div><span id="result-status" class="status-chip" data-i18n="generatedEvidence">Real analyzer output</span></div>
           <div id="result-loading" class="result-state" data-i18n="loadingReport">Loading generated evidence…</div>
           <div id="result-error" class="result-state error-state" hidden></div>
           <div id="result-content" hidden>
@@ -50,7 +58,7 @@
         </aside>
 
         <section class="code-pane">
-          <div class="pane-heading"><div><p class="eyebrow" data-i18n="agentPatch">Agent patch</p><h2 id="change-title"></h2></div><span id="scenario-language" class="language-chip"></span></div>
+          <div class="pane-heading"><div><p class="eyebrow"><span class="step-mark">2</span><span data-i18n="agentPatch">Inspect the patch</span></p><h2 id="change-title"></h2></div><span id="scenario-language" class="language-chip"></span></div>
           <div id="content-tabs" class="tabs" role="tablist" aria-label="Review content">
             <button role="tab" aria-selected="true" data-tab="patch" data-i18n="patch">Patch</button>
             <button role="tab" aria-selected="false" data-tab="context" data-i18n="repositoryContext">Repository context</button>
