@@ -5,7 +5,7 @@
   <p>Reforge analyzes the structure of a codebase, explains every finding, and makes gaps in analysis visible.</p>
   <div class="docs-actions">
     <a class="primary" href="user-guide.html">Get started</a>
-    <a class="secondary" href="playground/">Try the Playground / 在线体验 <span aria-hidden="true">→</span></a>
+    <a class="secondary" href="playground/">See the agent-code Playground <span aria-hidden="true">→</span></a>
     <a class="secondary" href="sample/">Explore an example report <span aria-hidden="true">→</span></a>
   </div>
 </div>

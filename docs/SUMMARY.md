@@ -2,7 +2,7 @@
 
 [Overview](README.md)
 
-- [Try the Playground / 在线体验](playground.md)
+- [Agent-code Playground](playground.md)
 
 # Get started
 

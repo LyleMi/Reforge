@@ -7,20 +7,19 @@ const rules = {
   "typescript-helper-cycle": "reforge.codebase.dependency_cycle",
 };
 
-test("establishes the review context before asking users to choose a change", async ({ page }) => {
+test("leads with agent code habits and lets users inspect one", async ({ page }) => {
   await page.goto(`${playgroundUrl}?lang=en`);
-  await expect(page.getByRole("heading", { name: "Simulate one pull-request review" })).toBeVisible();
-  await expect(page.locator(".context-steps li")).toHaveCount(3);
-  await expect(page.getByRole("heading", { name: "Which change do you want to review?" })).toBeVisible();
-  await expect(page.locator(".fixture-note.light")).toContainText("built-in fixtures");
+  await expect(page.getByRole("heading", { name: "Fix the bad habits agents leave in your codebase." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose the habit you want to inspect." })).toBeVisible();
+  await expect(page.locator(".habit-label")).toHaveText(["Boundary shortcut", "Copy and tweak", "Reuse at any cost"]);
+  await expect(page.locator(".fixture-note.light")).toContainText("built-in");
   await expect(page.locator("#scenario-detail")).toBeHidden();
-  await expect(page.locator(".selected-label")).toHaveCount(0);
   await page.locator('[data-scenario="typescript-service-bypass"]').click();
-  await expect(page.locator(".selected-label")).toHaveText("Reviewing");
+  await expect(page.locator('[data-scenario="typescript-service-bypass"] .card-action')).toContainText("Selected");
   await expect(page.locator("#review-title")).toHaveText("Bypasses the service layer");
   await expect(page.locator("#review-setup")).toContainText("user requests through a service layer");
-  await expect(page.locator("#reading-path")).toHaveAttribute("aria-label", "How to read this example");
-  await expect(page.locator("#reading-path li")).toHaveCount(3);
+  await expect(page.locator("#agent-chose")).toContainText("queryUser directly");
+  await expect(page.locator("#repository-conflict")).toContainText("without crossing user_service");
 });
 
 test("loads each real report and its dedicated evidence view", async ({ page }) => {
@@ -71,12 +70,12 @@ test("evidence locations select the matching patch or source line", async ({ pag
 test("switches languages and persists scenario and locale in the URL", async ({ page }) => {
   await page.goto(`${playgroundUrl}?scenario=typescript-helper-cycle`);
   await page.getByLabel("Language").selectOption("zh-CN");
-  await expect(page.getByRole("heading", { name: "你想审查哪一份变更？" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "选择一种坏习惯，看看问题在哪。" })).toBeVisible();
   await expect(page.locator("#report-link")).toHaveAttribute("href", "reports/typescript-helper-cycle/?lang=zh-CN");
   await page.reload();
-  await expect(page.getByRole("heading", { name: "你想审查哪一份变更？" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "选择一种坏习惯，看看问题在哪。" })).toBeVisible();
   await page.goto(`${playgroundUrl}?scenario=typescript-service-bypass&lang=en`);
-  await expect(page.getByRole("heading", { name: "Which change do you want to review?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose the habit you want to inspect." })).toBeVisible();
 });
 
 test("keeps all repository review material usable when report loading fails", async ({ page }) => {

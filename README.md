@@ -26,7 +26,7 @@ that produced it. Every report also records what Reforge could and could not
 analyze.
 
 <p align="center">
-  <a href="https://lylemi.github.io/Reforge/playground/"><strong>Try the bilingual Playground / 在线体验 →</strong></a>
+  <a href="https://lylemi.github.io/Reforge/playground/"><strong>See the agent-code Playground →</strong></a>
   &nbsp;·&nbsp;
   <a href="https://lylemi.github.io/Reforge/sample/"><strong>Explore Reforge's self-analysis report →</strong></a>
 </p>

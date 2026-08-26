@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Review agent-written repository changes with real Reforge evidence.">
+    <meta name="description" content="See how Reforge finds the bad code habits agents leave across a repository.">
     <title>Reforge Playground</title>
     <link rel="stylesheet" href="styles.css">
   </head>
@@ -13,22 +13,20 @@
         <a class="wordmark" href="../"><img src="../assets/reforge-logo.png" alt=""><span>REFORGE</span></a>
         <div><a href="../" data-i18n="docs">Documentation</a><label><span data-i18n="language">Language</span><select id="locale" aria-label="Language"><option value="en">EN</option><option value="zh-CN">中文</option></select></label></div>
       </nav>
-      <div class="hero-copy"><p class="eyebrow" data-i18n="heroLabel">Interactive walkthrough</p><h1 data-i18n="headline">Review an Agent change.</h1><div class="hero-intro"><p data-i18n="intro">A coding Agent can finish the task in front of it while missing patterns elsewhere in the repository. Reforge turns those repository-level conflicts into evidence a reviewer can inspect.</p><a href="#examples" class="start-link" data-i18n="startReview">Choose a sample change <span aria-hidden="true">↓</span></a></div></div>
+      <div class="hero-copy">
+        <p class="eyebrow" data-i18n="heroLabel">Agent code, reviewed at repository scale</p>
+        <h1 data-i18n="headline">Fix the bad habits agents leave in your codebase.</h1>
+        <div class="hero-intro">
+          <p data-i18n="intro">The patch works. The tests pass. But the agent copied an old workaround, crossed a boundary, or bent dependencies around the task. Reforge finds the pattern behind the patch—and shows the evidence needed to fix it.</p>
+          <a href="#examples" class="start-link" data-i18n="startReview">See three agent habits <span aria-hidden="true">↓</span></a>
+        </div>
+      </div>
       <div class="hero-glow" aria-hidden="true"></div>
     </header>
 
     <main>
-      <section class="playground-context" aria-labelledby="context-heading">
-        <div class="context-story"><p class="eyebrow" data-i18n="contextLabel">What you are about to do</p><h2 id="context-heading" data-i18n="contextTitle">Simulate one pull-request review</h2><p data-i18n="contextBody">Imagine a maintainer gave a coding Agent a small feature request. The patch looks reasonable and may even work. Your job is to check whether it still fits the repository around it.</p></div>
-        <ol class="context-steps">
-          <li><span>1</span><div><strong data-i18n="contextInput">Read the request and patch</strong><small data-i18n="contextInputHint">See exactly what the Agent was asked to change.</small></div></li>
-          <li><span>2</span><div><strong data-i18n="contextAnalysis">Compare it with the repository</strong><small data-i18n="contextAnalysisHint">Reforge analyzes existing boundaries, abstractions, and dependencies.</small></div></li>
-          <li><span>3</span><div><strong data-i18n="contextOutput">Inspect the evidence</strong><small data-i18n="contextOutputHint">Decide whether the change should be revised before merge.</small></div></li>
-        </ol>
-      </section>
-
       <section id="examples" class="scenario-section" aria-labelledby="scenarios-heading">
-        <div class="section-heading"><div><p class="eyebrow" data-i18n="chooseLabel">Built-in sample repositories</p><h2 id="scenarios-heading" data-i18n="scenarios">Which change do you want to review?</h2></div><p data-i18n="scenarioHelp">Pick a task below. We will show the Agent's patch first, then reveal what Reforge found in the surrounding repository.</p></div>
+        <div class="section-heading"><div><p class="eyebrow" data-i18n="chooseLabel">Three plausible patches. Three repository-level mistakes.</p><h2 id="scenarios-heading" data-i18n="scenarios">Choose the habit you want to inspect.</h2></div><p data-i18n="scenarioHelp">Each example starts with a small agent task, then connects the patch to the wider pattern it damages.</p></div>
         <div id="scenario-cards" class="scenario-cards"></div>
         <p class="fixture-note light"><span aria-hidden="true">●</span><span data-i18n="fixtureNote">These are small, built-in fixtures—not your repository. Nothing is uploaded.</span></p>
       </section>
@@ -36,21 +34,15 @@
       <article id="scenario-detail" class="review-desk" aria-live="polite" hidden>
         <header class="review-intro">
           <div><p class="eyebrow" data-i18n="nowReviewing">Now reviewing</p><h2 id="review-title"></h2><p id="review-setup"></p></div>
-          <ol id="reading-path" class="reading-path" aria-label="How to read this example">
-            <li><span>1</span><div><strong data-i18n="readTask">Understand the task</strong><small data-i18n="readTaskHint">What was requested and what the repository already does</small></div></li>
-            <li><span>2</span><div><strong data-i18n="readPatch">Inspect the patch</strong><small data-i18n="readPatchHint">What the agent added or changed</small></div></li>
-            <li><span>3</span><div><strong data-i18n="readEvidence">Follow the evidence</strong><small data-i18n="readEvidenceHint">Why the local change conflicts with the wider repository</small></div></li>
-          </ol>
         </header>
         <header class="review-brief">
-          <div><span><b>01</b><i data-i18n="maintainerTask">The request</i></span><strong id="maintainer-task"></strong></div>
-          <div><span><b>02</b><i data-i18n="agentChose">The agent's decision</i></span><strong id="agent-chose"></strong></div>
-          <div><span><b>03</b><i data-i18n="repositoryExpects">The existing pattern</i></span><strong id="repository-expects"></strong></div>
-          <div class="observed"><span><b>04</b><i data-i18n="reforgeObserved">What Reforge found</i></span><strong id="reforge-observed"></strong></div>
+          <div><span data-i18n="maintainerTask">The task</span><strong id="maintainer-task"></strong></div>
+          <div class="agent-habit"><span data-i18n="agentChose">The agent habit</span><strong id="agent-chose"></strong></div>
+          <div><span data-i18n="repositoryConflict">Why it does not fit</span><strong id="repository-conflict"></strong></div>
         </header>
 
         <aside class="result-pane">
-          <div class="pane-heading"><div><p class="eyebrow"><span class="step-mark">3</span><span data-i18n="reviewResult">Follow the evidence</span></p><h2 id="scenario-title"></h2></div><span id="result-status" class="status-chip" data-i18n="generatedEvidence">Real analyzer output</span></div>
+          <div class="pane-heading"><div><p class="eyebrow" data-i18n="reviewResult">Repository evidence</p><h2 id="scenario-title"></h2></div><span id="result-status" class="status-chip" data-i18n="generatedEvidence">Real analyzer output</span></div>
           <div id="result-loading" class="result-state" data-i18n="loadingReport">Loading generated evidence…</div>
           <div id="result-error" class="result-state error-state" hidden></div>
           <div id="result-content" hidden>
@@ -68,7 +60,7 @@
         </aside>
 
         <section class="code-pane">
-          <div class="pane-heading"><div><p class="eyebrow"><span class="step-mark">2</span><span data-i18n="agentPatch">Inspect the patch</span></p><h2 id="change-title"></h2></div><span id="scenario-language" class="language-chip"></span></div>
+          <div class="pane-heading"><div><p class="eyebrow" data-i18n="agentPatch">Agent patch</p><h2 id="change-title"></h2></div><span id="scenario-language" class="language-chip"></span></div>
           <div id="content-tabs" class="tabs" role="tablist" aria-label="Review content">
             <button role="tab" aria-selected="true" data-tab="patch" data-i18n="patch">Patch</button>
             <button role="tab" aria-selected="false" data-tab="context" data-i18n="repositoryContext">Repository context</button>
