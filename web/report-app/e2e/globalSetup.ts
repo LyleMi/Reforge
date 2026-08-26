@@ -50,7 +50,7 @@ export default function generateReport() {
   cpSync(resolve(repositoryRoot, "playground"), resolve(siteRoot, "playground"), { recursive: true });
   mkdirSync(resolve(siteRoot, "assets"), { recursive: true });
   cpSync(resolve(repositoryRoot, "assets/reforge-logo.png"), resolve(siteRoot, "assets/reforge-logo.png"));
-  for (const scenario of ["typescript-boundary-bypass", "python-shadowed-abstraction", "typescript-cycle"]) {
+  for (const scenario of ["typescript-service-bypass", "python-duplicated-validation", "typescript-helper-cycle"]) {
     const fixture = resolve(repositoryRoot, "playground/fixtures", scenario);
     const output = resolve(siteRoot, "playground/reports", scenario, "index.html");
     mkdirSync(dirname(output), { recursive: true });

@@ -1,0 +1,17 @@
+version = 2
+
+[analysis]
+enabled = ["dataflow"]
+
+[rules]
+enable = ["reforge.dataflow.adapter_flow_bypass"]
+
+[[dataflow.policies]]
+name = "user-service"
+language = "typescript"
+protected-paths = ["src/*_route.ts"]
+adapter-paths = ["src/user_service.ts"]
+
+[[dataflow.policies.sinks]]
+path = "src/database.ts"
+symbol = "typescript:src/database.ts::queryUser"

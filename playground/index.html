@@ -13,17 +13,27 @@
         <a class="wordmark" href="../"><img src="../assets/reforge-logo.png" alt=""><span>REFORGE</span></a>
         <div><a href="../" data-i18n="docs">Documentation</a><label><span data-i18n="language">Language</span><select id="locale" aria-label="Language"><option value="en">EN</option><option value="zh-CN">中文</option></select></label></div>
       </nav>
-      <div class="hero-copy"><p class="eyebrow" data-i18n="heroLabel">Guided playground</p><h1 data-i18n="headline">See what a plausible patch misses.</h1><div class="hero-intro"><p data-i18n="intro">Walk through a prepared code-review example: the task an agent received, the patch it wrote, and the repository-level issue Reforge found.</p><p class="fixture-note"><span aria-hidden="true">●</span><span data-i18n="fixtureNote">You are viewing small, built-in fixtures—not your repository. Nothing is uploaded.</span></p></div></div>
+      <div class="hero-copy"><p class="eyebrow" data-i18n="heroLabel">Interactive walkthrough</p><h1 data-i18n="headline">Review an Agent change.</h1><div class="hero-intro"><p data-i18n="intro">A coding Agent can finish the task in front of it while missing patterns elsewhere in the repository. Reforge turns those repository-level conflicts into evidence a reviewer can inspect.</p><a href="#examples" class="start-link" data-i18n="startReview">Choose a sample change <span aria-hidden="true">↓</span></a></div></div>
       <div class="hero-glow" aria-hidden="true"></div>
     </header>
 
     <main>
-      <section class="scenario-section" aria-labelledby="scenarios-heading">
-        <div class="section-heading"><div><p class="eyebrow" data-i18n="chooseLabel">Prepared examples</p><h2 id="scenarios-heading" data-i18n="scenarios">Choose a review to explore</h2></div><p data-i18n="scenarioHelp">Start with the selected example, or switch cases to see a different repository-level failure.</p></div>
-        <div id="scenario-cards" class="scenario-cards"></div>
+      <section class="playground-context" aria-labelledby="context-heading">
+        <div class="context-story"><p class="eyebrow" data-i18n="contextLabel">What you are about to do</p><h2 id="context-heading" data-i18n="contextTitle">Simulate one pull-request review</h2><p data-i18n="contextBody">Imagine a maintainer gave a coding Agent a small feature request. The patch looks reasonable and may even work. Your job is to check whether it still fits the repository around it.</p></div>
+        <ol class="context-steps">
+          <li><span>1</span><div><strong data-i18n="contextInput">Read the request and patch</strong><small data-i18n="contextInputHint">See exactly what the Agent was asked to change.</small></div></li>
+          <li><span>2</span><div><strong data-i18n="contextAnalysis">Compare it with the repository</strong><small data-i18n="contextAnalysisHint">Reforge analyzes existing boundaries, abstractions, and dependencies.</small></div></li>
+          <li><span>3</span><div><strong data-i18n="contextOutput">Inspect the evidence</strong><small data-i18n="contextOutputHint">Decide whether the change should be revised before merge.</small></div></li>
+        </ol>
       </section>
 
-      <article id="scenario-detail" class="review-desk" aria-live="polite">
+      <section id="examples" class="scenario-section" aria-labelledby="scenarios-heading">
+        <div class="section-heading"><div><p class="eyebrow" data-i18n="chooseLabel">Built-in sample repositories</p><h2 id="scenarios-heading" data-i18n="scenarios">Which change do you want to review?</h2></div><p data-i18n="scenarioHelp">Pick a task below. We will show the Agent's patch first, then reveal what Reforge found in the surrounding repository.</p></div>
+        <div id="scenario-cards" class="scenario-cards"></div>
+        <p class="fixture-note light"><span aria-hidden="true">●</span><span data-i18n="fixtureNote">These are small, built-in fixtures—not your repository. Nothing is uploaded.</span></p>
+      </section>
+
+      <article id="scenario-detail" class="review-desk" aria-live="polite" hidden>
         <header class="review-intro">
           <div><p class="eyebrow" data-i18n="nowReviewing">Now reviewing</p><h2 id="review-title"></h2><p id="review-setup"></p></div>
           <ol id="reading-path" class="reading-path" aria-label="How to read this example">

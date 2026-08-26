@@ -24,16 +24,17 @@ function initialLocale() {
 
 let locale = initialLocale();
 let scenarioId = new URLSearchParams(location.search).get("scenario");
-if (!(scenarioId in scenarios)) scenarioId = "typescript-boundary-bypass";
+if (!(scenarioId in scenarios)) scenarioId = undefined;
 let activeTab = "patch";
-let activeFile = scenarios[scenarioId].entry;
+let activeFile = scenarioId ? scenarios[scenarioId].entry : undefined;
 let renderVersion = 0;
 let currentSources;
 let currentIssue;
 
 function updateUrl() {
   const url = new URL(location.href);
-  url.searchParams.set("scenario", scenarioId);
+  if (scenarioId) url.searchParams.set("scenario", scenarioId);
+  else url.searchParams.delete("scenario");
   url.searchParams.set("lang", locale);
   history.replaceState(null, "", url);
 }
@@ -98,7 +99,8 @@ function renderSpecialEvidence(issue, evidence) {
     return;
   }
   const paths = members.map(member => member.path);
-  byId("special-evidence").innerHTML = `<div class="cycle-view"><p>${copy[locale].dependencyLoop}</p><div class="cycle-ring" aria-hidden="true">${paths.map((path, index) => `<span style="--index:${index}">${escapeHtml(path.split("/").at(-1))}</span>`).join("")}<i>↻</i></div><ol><li class="before-edge">${copy[locale].beforeDirection}: checkout.ts → pricing.ts → promotions.ts</li><li>${copy[locale].afterDirection}: ${scenario.relationships.map(([from, to]) => `${from.split("/").at(-1)} → ${to.split("/").at(-1)}`).join("; ")}</li></ol></div>`;
+  const beforeRelationships = scenario.relationships.slice(0, -1).map(([from, to]) => `${from.split("/").at(-1)} → ${to.split("/").at(-1)}`).join("; ");
+  byId("special-evidence").innerHTML = `<div class="cycle-view"><p>${copy[locale].dependencyLoop}</p><div class="cycle-ring" aria-hidden="true">${paths.map((path, index) => `<span style="--index:${index}">${escapeHtml(path.split("/").at(-1))}</span>`).join("")}<i>↻</i></div><ol><li class="before-edge">${copy[locale].beforeDirection}: ${beforeRelationships}</li><li>${copy[locale].afterDirection}: ${scenario.relationships.map(([from, to]) => `${from.split("/").at(-1)} → ${to.split("/").at(-1)}`).join("; ")}</li></ol></div>`;
 }
 
 function renderReport(report) {
@@ -177,7 +179,7 @@ function render() {
   byId("locale").value = locale;
   byId("reading-path").setAttribute("aria-label", copy[locale].howToRead);
   document.querySelectorAll("[data-i18n]").forEach(node => { node.textContent = copy[locale][node.dataset.i18n]; });
-  byId("scenario-cards").innerHTML = Object.entries(scenarios).map(([id, scenario], index) => `<button class="scenario-card" data-scenario="${id}" aria-pressed="${id === scenarioId}"><span class="scenario-number">0${index + 1}</span>${id === scenarioId ? `<span class="selected-label">${copy[locale].selected}</span>` : ""}<strong>${escapeHtml(scenario[locale].title)}</strong><span class="card-summary">${escapeHtml(scenario[locale].card)}</span><small>${scenario.language} · ${scenario.analysis}<br>${escapeHtml(scenario.rule)}</small><i aria-hidden="true">→</i></button>`).join("");
+  byId("scenario-cards").innerHTML = Object.entries(scenarios).map(([id, scenario], index) => `<button class="scenario-card" data-scenario="${id}" aria-pressed="${id === scenarioId}"><span class="scenario-number">0${index + 1}</span>${id === scenarioId ? `<span class="selected-label">${copy[locale].selected}</span>` : ""}<strong>${escapeHtml(scenario[locale].change)}</strong><span class="card-summary">${escapeHtml(scenario[locale].setup)}</span><small>${scenario.language} · ${scenario.analysis}</small><span class="card-action">${copy[locale].openExample} <i aria-hidden="true">→</i></span></button>`).join("");
   document.querySelectorAll("[data-scenario]").forEach(button => button.addEventListener("click", () => {
     scenarioId = button.dataset.scenario;
     activeTab = "patch";
@@ -188,8 +190,11 @@ function render() {
     render();
     if (matchMedia("(max-width: 760px)").matches) byId("scenario-detail").scrollIntoView({ behavior: "smooth", block: "start" });
   }));
-  renderTabs();
-  void renderDetail();
+  byId("scenario-detail").hidden = !scenarioId;
+  if (scenarioId) {
+    renderTabs();
+    void renderDetail();
+  }
 }
 
 document.querySelectorAll("[data-tab]").forEach(button => button.addEventListener("click", () => { activeTab = button.dataset.tab; renderTabs(); }));
