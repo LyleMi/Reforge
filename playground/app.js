@@ -174,11 +174,13 @@ function splitLines(source) {
   return source.replace(/\n$/, "").split("\n");
 }
 
-function lineDiff(before, after) {
-  const left = splitLines(before);
-  const right = splitLines(after);
+function buildLineMatchTable(left, right) {
   const table = Array.from({ length: left.length + 1 }, () => Array(right.length + 1).fill(0));
   for (let i = left.length - 1; i >= 0; i--) for (let j = right.length - 1; j >= 0; j--) table[i][j] = left[i] === right[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+  return table;
+}
+
+function collectDiffRows(left, right, table) {
   const rows = [];
   let i = 0; let j = 0;
   while (i < left.length || j < right.length) {
@@ -187,6 +189,12 @@ function lineDiff(before, after) {
     else rows.push({ kind: "deletion", text: left[i++], oldLine: i, newLine: null });
   }
   return rows;
+}
+
+function lineDiff(before, after) {
+  const left = splitLines(before);
+  const right = splitLines(after);
+  return collectDiffRows(left, right, buildLineMatchTable(left, right));
 }
 
 function evidenceLines(issue, path) {
