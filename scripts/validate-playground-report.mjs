@@ -1,24 +1,13 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
+import { scenarios as playgroundScenarioDefinitions } from "../playground/scenarios.js";
 
-const scenarios = {
-  "typescript-boundary-bypass": {
-    analysis: "dataflow",
-    rule: "reforge.dataflow.adapter_flow_bypass",
-    files: ["src/application_checkout.ts", "src/application_refunds.ts", "src/payment_gateway.ts", "src/transport.ts"],
-  },
-  "python-shadowed-abstraction": {
-    analysis: "codebase",
-    rule: "reforge.codebase.shadowed_abstraction",
-    files: ["providers/legacy_webhook_helper.py", "providers/orbit_webhook_helper.py", "shared/event_normalizer.py"],
-  },
-  "typescript-cycle": {
-    analysis: "codebase",
-    rule: "reforge.codebase.dependency_cycle",
-    files: ["src/checkout.ts", "src/pricing.ts", "src/promotions.ts"],
-  },
-};
+const scenarios = Object.fromEntries(Object.entries(playgroundScenarioDefinitions).map(([id, definition]) => [id, {
+  analysis: definition.analysis.toLowerCase(),
+  rule: definition.rule,
+  files: definition.afterFiles,
+}]));
 
 const [beforePath, reportPath, scenarioId] = process.argv.slice(2);
 const scenario = scenarios[scenarioId];
@@ -63,19 +52,19 @@ try {
   const unexpectedPaths = reportPaths(report).filter(path => !scenario.files.includes(path));
   if (unexpectedPaths.length) errors.push(`unexpected fixture paths: ${[...new Set(unexpectedPaths)].join(", ")}`);
   const evidence = report.issues?.[0]?.evidence?.find(item => item.rule === scenario.rule);
-  if (scenarioId === "typescript-boundary-bypass") {
+  if (scenarioId === "typescript-service-bypass") {
     const witness = evidence?.witness;
     if (witness?.resolution !== "exact") errors.push(`expected exact witness, found ${witness?.resolution ?? "none"}`);
     if (!witness?.source || !witness?.sink || !witness?.ordered_steps?.length) errors.push("expected complete source, sink, and ordered witness steps");
     if (witness?.ordered_steps?.some(step => step.resolution !== "exact")) errors.push("expected every witness step to be exact");
-    if (witness?.source?.path !== "src/application_refunds.ts") errors.push(`unexpected witness source ${witness?.source?.path ?? "none"}`);
-    if (witness?.sink?.path !== "src/transport.ts") errors.push(`unexpected witness sink ${witness?.sink?.path ?? "none"}`);
+    if (witness?.source?.path !== "src/user_search_route.ts") errors.push(`unexpected witness source ${witness?.source?.path ?? "none"}`);
+    if (witness?.sink?.path !== "src/database.ts") errors.push(`unexpected witness sink ${witness?.sink?.path ?? "none"}`);
   }
-  if (scenarioId === "python-shadowed-abstraction") {
+  if (scenarioId === "python-duplicated-validation") {
     const members = new Set(report.issues?.[0]?.subject?.members?.map(member => member.path));
     for (const path of scenario.files) if (!members.has(path)) errors.push(`missing shadowed abstraction member ${path}`);
   }
-  if (scenarioId === "typescript-cycle") {
+  if (scenarioId === "typescript-helper-cycle") {
     const members = new Set(report.issues?.[0]?.subject?.members?.map(member => member.path));
     for (const path of scenario.files) if (!members.has(path)) errors.push(`missing dependency cycle member ${path}`);
     const edgeCount = evidence?.measurements?.find(item => item.name === "dependency.cycle_edges")?.value;

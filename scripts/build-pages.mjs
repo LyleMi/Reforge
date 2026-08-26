@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { delimiter, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { scenarios as playgroundScenarioDefinitions } from "../playground/scenarios.js";
 
 const root = resolve(import.meta.dirname, "..");
 const site = resolve(root, process.argv[2] ?? "_site");
@@ -24,11 +25,7 @@ await mkdir(resolve(site, "sample"), { recursive: true });
 run(binary, ["analyze", ".", "--config", ".github/pages/reforge.toml", "--output", "html", "--output-file", resolve(site, "sample/index.html"), "--reproducible"]);
 run("node", ["scripts/validate-pages-sample.mjs", resolve(site, "sample/index.html")]);
 
-const playgroundScenarios = [
-  "typescript-boundary-bypass",
-  "python-shadowed-abstraction",
-  "typescript-cycle",
-];
+const playgroundScenarios = Object.keys(playgroundScenarioDefinitions);
 const validationDirectory = await mkdtemp(resolve(tmpdir(), "reforge-playground-"));
 
 for (const scenario of playgroundScenarios) {
