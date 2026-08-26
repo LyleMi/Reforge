@@ -50,7 +50,7 @@ export default function generateReport() {
   cpSync(resolve(repositoryRoot, "playground"), resolve(siteRoot, "playground"), { recursive: true });
   mkdirSync(resolve(siteRoot, "assets"), { recursive: true });
   cpSync(resolve(repositoryRoot, "assets/reforge-logo.png"), resolve(siteRoot, "assets/reforge-logo.png"));
-  for (const scenario of ["rust-similarity", "typescript-cycle", "python-long-function"]) {
+  for (const scenario of ["typescript-boundary-bypass", "python-shadowed-abstraction", "typescript-cycle"]) {
     const fixture = resolve(repositoryRoot, "playground/fixtures", scenario);
     const output = resolve(siteRoot, "playground/reports", scenario, "index.html");
     mkdirSync(dirname(output), { recursive: true });
@@ -58,7 +58,7 @@ export default function generateReport() {
       "cargo",
       [
         "run", "--locked", "--quiet", "-p", "reforge-cli", "--manifest-path", resolve(repositoryRoot, "Cargo.toml"), "--",
-        "analyze", fixture, "--config", resolve(fixture, "reforge.toml"), "--output", "html", "--output-file", output, "--reproducible",
+        "analyze", resolve(fixture, "after"), "--config", resolve(fixture, "reforge.toml"), "--output", "html", "--output-file", output, "--reproducible",
       ],
       { cwd: repositoryRoot, stdio: "inherit" },
     );

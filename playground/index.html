@@ -3,40 +3,71 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Explore real Reforge evidence with repository-owned examples.">
+    <meta name="description" content="Review agent-written repository changes with real Reforge evidence.">
     <title>Reforge Playground</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
     <header class="hero">
-      <nav><a class="wordmark" href="../"><img src="../assets/reforge-logo.png" alt=""><span>REFORGE</span></a><div><a href="../" data-i18n="docs">Documentation</a><label><span data-i18n="language">Language</span><select id="locale" aria-label="Language"><option value="en">EN</option><option value="zh-CN">中文</option></select></label></div></nav>
-      <div class="hero-copy"><p class="eyebrow">Reforge Playground</p><h1 data-i18n="headline">Read the evidence.<br>Shape the code.</h1><p data-i18n="intro">Explore three focused findings generated from real source. Nothing runs in your browser and no code leaves your machine.</p></div>
+      <nav>
+        <a class="wordmark" href="../"><img src="../assets/reforge-logo.png" alt=""><span>REFORGE</span></a>
+        <div><a href="../" data-i18n="docs">Documentation</a><label><span data-i18n="language">Language</span><select id="locale" aria-label="Language"><option value="en">EN</option><option value="zh-CN">中文</option></select></label></div>
+      </nav>
+      <div class="hero-copy"><p class="eyebrow">Agent change review</p><h1 data-i18n="headline">The agent finished. Does the repository agree?</h1><p data-i18n="intro">Review a plausible patch against the architecture and abstractions already present in its repository. Every finding below comes from Reforge.</p></div>
       <div class="hero-glow" aria-hidden="true"></div>
     </header>
+
     <main>
-      <section class="scenario-section" aria-labelledby="scenarios-heading"><div class="section-heading"><p class="eyebrow" data-i18n="stepOne">01 / Choose evidence</p><h2 id="scenarios-heading" data-i18n="scenarios">Choose a scenario</h2></div><div id="scenario-cards" class="scenario-cards"></div></section>
-      <article id="scenario-detail" class="workbench" aria-live="polite">
-        <section class="code-pane">
-          <div class="pane-heading"><div><p class="eyebrow" data-i18n="workspace">02 / Inspect source</p><h2 id="scenario-title"></h2></div><span id="scenario-language" class="language-chip"></span></div>
-          <div id="content-tabs" class="tabs" role="tablist" aria-label="Workbench content"><button role="tab" aria-selected="true" data-tab="source" data-i18n="source">Source</button><button role="tab" aria-selected="false" data-tab="config" data-i18n="configuration">Config</button><button role="tab" aria-selected="false" data-tab="command" data-i18n="reproduce">Command</button></div>
-          <section id="source-panel" class="tab-panel" role="tabpanel"><div id="file-tabs" class="file-tabs" role="tablist" aria-label="Source files"></div><div id="source-files" class="source-files"></div></section>
-          <section id="config-panel" class="tab-panel" role="tabpanel" hidden><pre><code id="scenario-config"></code></pre></section>
-          <section id="command-panel" class="tab-panel" role="tabpanel" hidden><pre><code id="scenario-command"></code></pre><p class="command-note" data-i18n="commandNote">Run from the Reforge repository after building the CLI.</p></section>
-        </section>
+      <section class="scenario-section" aria-labelledby="scenarios-heading">
+        <div class="section-heading"><p class="eyebrow" data-i18n="chooseLabel">Review queue</p><h2 id="scenarios-heading" data-i18n="scenarios">Choose a failure mode</h2></div>
+        <div id="scenario-cards" class="scenario-cards"></div>
+      </section>
+
+      <article id="scenario-detail" class="review-desk" aria-live="polite">
+        <header class="review-brief">
+          <div><span data-i18n="maintainerTask">Maintainer task</span><strong id="maintainer-task"></strong></div>
+          <div><span data-i18n="agentChose">Agent chose</span><strong id="agent-chose"></strong></div>
+          <div><span data-i18n="repositoryExpects">Repository already expects</span><strong id="repository-expects"></strong></div>
+          <div class="observed"><span data-i18n="reforgeObserved">Reforge observed</span><strong id="reforge-observed"></strong></div>
+        </header>
+
         <aside class="result-pane">
-          <p class="eyebrow" data-i18n="stepThree">03 / Review finding</p>
+          <div class="pane-heading"><div><p class="eyebrow" data-i18n="reviewResult">Review result</p><h2 id="scenario-title"></h2></div><span id="result-status" class="status-chip" data-i18n="generatedEvidence">Generated evidence</span></div>
           <div id="result-loading" class="result-state" data-i18n="loadingReport">Loading generated evidence…</div>
           <div id="result-error" class="result-state error-state" hidden></div>
           <div id="result-content" hidden>
-            <div class="result-meta"><span id="issue-kind"></span><span id="issue-analysis"></span></div><p id="scenario-rule" class="rule"></p><h2 id="issue-title"></h2><p id="issue-guidance" class="guidance"></p>
-            <section><h3 data-i18n="evidence">Evidence</h3><p id="evidence-message"></p><div id="evidence-locations" class="evidence-locations"></div><dl id="measurements" class="measurements"></dl></section>
-            <section class="review-question"><h3 data-i18n="reviewQuestion">Review question</h3><p id="scenario-question"></p></section>
+            <p id="plain-explanation" class="plain-explanation"></p>
+            <section class="evidence-view" aria-labelledby="evidence-view-title"><div class="section-label" id="evidence-view-title" data-i18n="evidenceShape">Evidence shape</div><div id="special-evidence"></div></section>
+            <section class="report-facts">
+              <div class="section-label" data-i18n="reportFacts">Report facts</div>
+              <div class="fact-row"><code id="scenario-rule"></code><span id="issue-maturity"></span><span id="coverage-status"></span></div>
+              <dl id="measurements" class="measurements"></dl>
+              <div id="evidence-locations" class="evidence-locations"></div>
+            </section>
+            <details class="technical-details"><summary data-i18n="technicalDetails">Technical details</summary><h3 id="issue-title"></h3><p id="issue-guidance"></p><p id="evidence-message"></p></details>
           </div>
           <a id="report-link" class="report-link" href="#"><span data-i18n="openReport">Open full report</span><span aria-hidden="true">↗</span></a>
         </aside>
+
+        <section class="code-pane">
+          <div class="pane-heading"><div><p class="eyebrow" data-i18n="agentPatch">Agent patch</p><h2 id="change-title"></h2></div><span id="scenario-language" class="language-chip"></span></div>
+          <div id="content-tabs" class="tabs" role="tablist" aria-label="Review content">
+            <button role="tab" aria-selected="true" data-tab="patch" data-i18n="patch">Patch</button>
+            <button role="tab" aria-selected="false" data-tab="context" data-i18n="repositoryContext">Repository context</button>
+            <button role="tab" aria-selected="false" data-tab="source" data-i18n="fullSource">Full source</button>
+            <button role="tab" aria-selected="false" data-tab="config" data-i18n="configuration">Config</button>
+            <button role="tab" aria-selected="false" data-tab="command" data-i18n="reproduce">Command</button>
+          </div>
+          <div id="file-tabs" class="file-tabs" role="tablist" aria-label="Files"></div>
+          <section id="patch-panel" class="tab-panel" role="tabpanel"><div id="patch-files" class="source-files"></div></section>
+          <section id="context-panel" class="tab-panel" role="tabpanel" hidden><p id="context-note" class="context-note"></p><div id="context-files" class="source-files"></div></section>
+          <section id="source-panel" class="tab-panel" role="tabpanel" hidden><div id="source-files" class="source-files"></div></section>
+          <section id="config-panel" class="tab-panel" role="tabpanel" hidden><pre><code id="scenario-config"></code></pre></section>
+          <section id="command-panel" class="tab-panel" role="tabpanel" hidden><pre><code id="scenario-command"></code></pre><p class="command-note" data-i18n="commandNote">Run from the Reforge repository after building the CLI.</p></section>
+        </section>
       </article>
     </main>
-    <footer><span class="brand-mark" aria-hidden="true"></span><span data-i18n="footer">Small, deliberate examples. Real Reforge output.</span></footer>
+    <footer><span class="brand-mark" aria-hidden="true"></span><span data-i18n="footer">Repository-owned fixtures. Real schema 27 reports. No uploads.</span></footer>
     <script type="module" src="app.js"></script>
   </body>
 </html>

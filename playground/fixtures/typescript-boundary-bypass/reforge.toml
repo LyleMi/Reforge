@@ -1,0 +1,17 @@
+version = 2
+
+[analysis]
+enabled = ["dataflow"]
+
+[rules]
+enable = ["reforge.dataflow.adapter_flow_bypass"]
+
+[[dataflow.policies]]
+name = "payment-gateway"
+language = "typescript"
+protected-paths = ["src/application_*.ts"]
+adapter-paths = ["src/payment_gateway.ts"]
+
+[[dataflow.policies.sinks]]
+path = "src/transport.ts"
+symbol = "typescript:src/transport.ts::sendPayment"

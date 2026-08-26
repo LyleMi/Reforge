@@ -4,8 +4,7 @@ version = 2
 enabled = ["codebase"]
 
 [rules]
-enable = ["reforge.codebase.long_function"]
+enable = ["reforge.codebase.shadowed_abstraction"]
 
 [codebase]
 churn = "off"
-max-function-lines = 18

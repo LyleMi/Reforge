@@ -3,15 +3,27 @@
 import { readFile } from "node:fs/promises";
 
 const scenarios = {
-  "rust-similarity": { rule: "reforge.codebase.similar_functions", files: ["src/providers.rs"] },
-  "typescript-cycle": { rule: "reforge.codebase.dependency_cycle", files: ["src/checkout.ts", "src/pricing.ts", "src/promotions.ts"] },
-  "python-long-function": { rule: "reforge.codebase.long_function", files: ["orders.py"] },
+  "typescript-boundary-bypass": {
+    analysis: "dataflow",
+    rule: "reforge.dataflow.adapter_flow_bypass",
+    files: ["src/application_checkout.ts", "src/application_refunds.ts", "src/payment_gateway.ts", "src/transport.ts"],
+  },
+  "python-shadowed-abstraction": {
+    analysis: "codebase",
+    rule: "reforge.codebase.shadowed_abstraction",
+    files: ["providers/legacy_webhook_helper.py", "providers/orbit_webhook_helper.py", "shared/event_normalizer.py"],
+  },
+  "typescript-cycle": {
+    analysis: "codebase",
+    rule: "reforge.codebase.dependency_cycle",
+    files: ["src/checkout.ts", "src/pricing.ts", "src/promotions.ts"],
+  },
 };
 
-const [reportPath, scenarioId] = process.argv.slice(2);
+const [beforePath, reportPath, scenarioId] = process.argv.slice(2);
 const scenario = scenarios[scenarioId];
-if (!reportPath || !scenario) {
-  console.error("usage: node scripts/validate-playground-report.mjs <report.html> <scenario-id>");
+if (!beforePath || !reportPath || !scenario) {
+  console.error("usage: node scripts/validate-playground-report.mjs <before.json> <after.html> <scenario-id>");
   process.exit(2);
 }
 
@@ -36,21 +48,44 @@ function reportPaths(report) {
 }
 
 try {
-  const report = extractReport(await readFile(reportPath, "utf8"));
+  const before = JSON.parse(await readFile(beforePath, "utf8"));
+  const html = await readFile(reportPath, "utf8");
+  const report = extractReport(html);
   const errors = [];
+  if (before.schema_version !== 27) errors.push(`before: expected schema 27, found ${before.schema_version}`);
+  if (before.issues?.length !== 0) errors.push(`before: expected zero Issues, found ${before.issues?.length ?? 0}`);
   if (report.schema_version !== 27) errors.push(`expected schema 27, found ${report.schema_version}`);
-  if (report.coverage?.codebase?.status !== "observed") errors.push(`expected observed Codebase coverage, found ${report.coverage?.codebase?.status}`);
+  if (before.coverage?.[scenario.analysis]?.status !== "observed") errors.push(`before: expected observed ${scenario.analysis} coverage, found ${before.coverage?.[scenario.analysis]?.status}`);
+  if (report.coverage?.[scenario.analysis]?.status !== "observed") errors.push(`expected observed ${scenario.analysis} coverage, found ${report.coverage?.[scenario.analysis]?.status}`);
   if (report.issues?.length !== 1) errors.push(`expected exactly one Issue, found ${report.issues?.length ?? 0}`);
   const evidenceRules = new Set((report.issues ?? []).flatMap(issue => (issue.evidence ?? []).map(evidence => evidence.rule)));
   if (evidenceRules.size !== 1 || !evidenceRules.has(scenario.rule)) errors.push(`expected only ${scenario.rule}, found ${[...evidenceRules].join(", ")}`);
   const unexpectedPaths = reportPaths(report).filter(path => !scenario.files.includes(path));
   if (unexpectedPaths.length) errors.push(`unexpected fixture paths: ${[...new Set(unexpectedPaths)].join(", ")}`);
-  const html = await readFile(reportPath, "utf8");
+  const evidence = report.issues?.[0]?.evidence?.find(item => item.rule === scenario.rule);
+  if (scenarioId === "typescript-boundary-bypass") {
+    const witness = evidence?.witness;
+    if (witness?.resolution !== "exact") errors.push(`expected exact witness, found ${witness?.resolution ?? "none"}`);
+    if (!witness?.source || !witness?.sink || !witness?.ordered_steps?.length) errors.push("expected complete source, sink, and ordered witness steps");
+    if (witness?.ordered_steps?.some(step => step.resolution !== "exact")) errors.push("expected every witness step to be exact");
+    if (witness?.source?.path !== "src/application_refunds.ts") errors.push(`unexpected witness source ${witness?.source?.path ?? "none"}`);
+    if (witness?.sink?.path !== "src/transport.ts") errors.push(`unexpected witness sink ${witness?.sink?.path ?? "none"}`);
+  }
+  if (scenarioId === "python-shadowed-abstraction") {
+    const members = new Set(report.issues?.[0]?.subject?.members?.map(member => member.path));
+    for (const path of scenario.files) if (!members.has(path)) errors.push(`missing shadowed abstraction member ${path}`);
+  }
+  if (scenarioId === "typescript-cycle") {
+    const members = new Set(report.issues?.[0]?.subject?.members?.map(member => member.path));
+    for (const path of scenario.files) if (!members.has(path)) errors.push(`missing dependency cycle member ${path}`);
+    const edgeCount = evidence?.measurements?.find(item => item.name === "dependency.cycle_edges")?.value;
+    if (edgeCount !== 3) errors.push(`expected 3 internal cycle edges, found ${edgeCount ?? "none"}`);
+  }
   for (const otherId of Object.keys(scenarios).filter(id => id !== scenarioId)) {
     if (html.includes(`playground/fixtures/${otherId}`)) errors.push(`report references other fixture ${otherId}`);
   }
   if (errors.length) throw new Error(errors.join("; "));
-  console.log(`${scenarioId}: schema 27, observed coverage, one ${scenario.rule} Issue.`);
+  console.log(`${scenarioId}: before=0, after=1 ${scenario.rule}, observed coverage.`);
 } catch (error) {
   console.error(`Playground report validation failed: ${error.message}`);
   process.exit(1);
