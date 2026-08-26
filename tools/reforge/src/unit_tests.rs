@@ -127,6 +127,25 @@ fn nested_override_updates_effective_value() {
 }
 
 #[test]
+fn config_show_materializes_low_cohesion_preset_sources() {
+    let mut value: toml::Value = toml::from_str(default_config()).unwrap();
+    apply_override(&mut value, "codebase.preset='strict'").unwrap();
+    let mut sources = effective_sources(&value, None);
+    sources.insert("codebase.preset".into(), "cli --set".into());
+    materialize_low_module_cohesion_thresholds(&mut value, &mut sources).unwrap();
+    assert_eq!(
+        value_at(&value, "codebase.min-module-functions").and_then(toml::Value::as_integer),
+        Some(16)
+    );
+    assert_eq!(
+        sources
+            .get("codebase.min-module-functions")
+            .map(String::as_str),
+        Some("strict preset (cli --set)")
+    );
+}
+
+#[test]
 fn baseline_identity_includes_selected_analyses() {
     let status = reforge_schema::CoverageStatus::Observed;
     assert!(status.is_observable());

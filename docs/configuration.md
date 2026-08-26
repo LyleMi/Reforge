@@ -73,3 +73,17 @@ The versioned file is parsed as optional typed fields. Reforge then creates one
 complete effective configuration by applying built-in defaults, preset,
 configuration file, `--set`, and CLI scope overrides in that order. `reforge
 config show` prints every effective leaf together with its source.
+
+`low_module_cohesion` uses preset-specific minimums:
+
+| Preset | Module functions | Clustered functions |
+| --- | ---: | ---: |
+| `strict` | 16 | 40% |
+| `balanced` | 20 | 50% |
+| `relaxed` | 30 | 60% |
+
+Override them with the positive-integer
+`codebase.min-module-functions` and the 0–100
+`codebase.min-clustered-function-percent`. The same dotted keys work with
+`--set`; `config show` materializes preset-derived values and records their
+source.

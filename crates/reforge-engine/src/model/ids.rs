@@ -47,6 +47,12 @@ pub enum MetricId {
     FileFunctionsPerHundredLines,
     #[serde(rename = "file.small_function_ratio")]
     FileSmallFunctionRatio,
+    #[serde(rename = "file.module_function_count")]
+    FileModuleFunctionCount,
+    #[serde(rename = "file.responsibility_cluster_count")]
+    FileResponsibilityClusterCount,
+    #[serde(rename = "file.clustered_function_percent")]
+    FileClusteredFunctionPercent,
     #[serde(rename = "dependency.cycle_files")]
     DependencyCycleFiles,
     #[serde(rename = "dependency.cycle_edges")]
@@ -107,7 +113,7 @@ impl MetricId {
     }
 }
 
-const METRIC_IDS: [&str; 48] = [
+const METRIC_IDS: [&str; 51] = [
     "file.loc",
     "file.imports",
     "file.public_items",
@@ -130,6 +136,9 @@ const METRIC_IDS: [&str; 48] = [
     "file.function_count",
     "file.functions_per_100_lines",
     "file.small_function_ratio",
+    "file.module_function_count",
+    "file.responsibility_cluster_count",
+    "file.clustered_function_percent",
     "dependency.cycle_files",
     "dependency.cycle_edges",
     "dependency.cycle_density_percent",

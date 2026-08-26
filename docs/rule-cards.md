@@ -26,6 +26,7 @@ protocol in `calibration/README.md`; other languages remain preview.
 | `reforge.codebase.large_public_surface` | A file exports more items than configured. | export syntax | broad/narrow modules | deliberate prelude or facade |
 | `reforge.codebase.import_heavy_file` | A file imports more dependencies than configured. | import syntax | over/under import count | composition roots |
 | `reforge.codebase.function_proliferation` | A file combines high function count, density, and small-function ratio. | function inventory | dense/sparse files | parser combinators |
+| `reforge.codebase.low_module_cohesion` | Multiple exact call-connected function clusters suggest separable module responsibilities. | module function call graph | monolith/split modules | routers, registries, controllers |
 | `reforge.codebase.unused_function` | A private symbol has no supported project-local reference. | symbols and references | referenced/unreferenced symbols | reflection, callbacks, macros |
 | `reforge.codebase.repeated_literal` | A literal repeats enough to inspect ownership. | parsed literals | repeated/unique literals | protocol constants and test data |
 | `reforge.codebase.repeated_error_pattern` | Error-handling syntax repeats across sites. | parsed error syntax | repeated/distinct handlers | intentionally local recovery |

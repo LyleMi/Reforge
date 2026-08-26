@@ -73,7 +73,7 @@ fn repository_dogfood_enables_every_preview_rule_without_changing_defaults() {
     let dogfood = Config::parse_toml(&std::fs::read_to_string(path).unwrap()).unwrap();
     let registry = crate::detectors::manifest::rule_registry();
 
-    assert_eq!(registry.len(), 33);
+    assert_eq!(registry.len(), 34);
     assert_eq!(dogfood.rules.enabled.len(), registry.len());
     assert!(
         registry.iter().all(|rule| {
@@ -84,6 +84,108 @@ fn repository_dogfood_enables_every_preview_rule_without_changing_defaults() {
         "repository dogfood must opt into every preview/off rule"
     );
     assert!(Config::defaults().rules.enabled.is_empty());
+}
+
+#[test]
+fn low_module_cohesion_thresholds_follow_presets_and_overrides() {
+    for (preset, functions, percent) in [
+        ("strict", 16, 40),
+        ("balanced", 20, 50),
+        ("relaxed", 30, 60),
+    ] {
+        let config =
+            Config::parse_toml(&format!("version = 2\n[codebase]\npreset = \"{preset}\"\n"))
+                .unwrap();
+        let resolved = crate::scan::config::effective_scan_config_with(
+            &crate::execution::EffectiveConfig::default(),
+            Some(&config.engine),
+        )
+        .unwrap();
+        assert_eq!(resolved.args.min_module_functions, functions);
+        assert_eq!(resolved.args.min_clustered_function_percent, percent);
+    }
+
+    let config = Config::parse_toml(
+        "version = 2\n[codebase]\npreset = \"strict\"\nmin-module-functions = 18\nmin-clustered-function-percent = 75\n",
+    )
+    .unwrap();
+    let resolved = crate::scan::config::effective_scan_config_with(
+        &crate::execution::EffectiveConfig::default(),
+        Some(&config.engine),
+    )
+    .unwrap();
+    assert_eq!(resolved.args.min_module_functions, 18);
+    assert_eq!(resolved.args.min_clustered_function_percent, 75);
+}
+
+#[test]
+fn low_module_cohesion_config_rejects_invalid_boundaries() {
+    for (setting, expected) in [
+        ("min-module-functions = 0", "positive integer"),
+        ("min-clustered-function-percent = -1", "between 0 and 100"),
+        ("min-clustered-function-percent = 101", "between 0 and 100"),
+    ] {
+        let error = Config::parse_toml(&format!("version = 2\n[codebase]\n{setting}\n"))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(expected), "{error}");
+    }
+    Config::parse_toml(
+        "version = 2\n[codebase]\nmin-module-functions = 1\nmin-clustered-function-percent = 0\n",
+    )
+    .unwrap();
+}
+
+#[test]
+fn low_module_cohesion_report_is_schema_stable_and_python_is_not_applicable() {
+    let root = std::env::temp_dir().join(format!(
+        "reforge-low-module-cohesion-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("monolith.js"),
+        "function renderPage(){renderHeader();renderBody();}\nfunction renderHeader(){}\nfunction renderBody(){}\nfunction diffPage(){diffHeader();diffBody();}\nfunction diffHeader(){}\nfunction diffBody(){}\n",
+    )
+    .unwrap();
+    let config = Config::parse_toml(
+        "version = 2\n[rules]\nenable = [\"reforge.codebase.low_module_cohesion\"]\n[codebase]\nmin-module-functions = 6\nmin-clustered-function-percent = 100\nchurn = \"off\"\n",
+    )
+    .unwrap();
+    let analyze_once = || {
+        analyze(&AnalyzeOptions {
+            root: root.clone(),
+            config: config.clone(),
+            reproducible: true,
+            metrics_output: None,
+            flow_ir_output: None,
+        })
+        .unwrap()
+    };
+    let first = analyze_once();
+    let second = analyze_once();
+    first.validate().unwrap();
+    let serialized = serde_json::to_vec(&first).unwrap();
+    let round_trip: Report = serde_json::from_slice(&serialized).unwrap();
+    round_trip.validate().unwrap();
+    assert_eq!(serialized, serde_json::to_vec(&second).unwrap());
+    assert_eq!(first.issues.len(), 1);
+    assert_eq!(first.issues[0].id, round_trip.issues[0].id);
+    assert_eq!(
+        first.issues[0].evidence[0].id,
+        round_trip.issues[0].evidence[0].id
+    );
+
+    std::fs::remove_file(root.join("monolith.js")).unwrap();
+    std::fs::write(root.join("monolith.py"), "def render_page():\n    pass\n").unwrap();
+    let python = analyze_once();
+    assert!(python.issues.is_empty());
+    assert_eq!(
+        python.coverage["codebase"].rules["reforge.codebase.low_module_cohesion"].status,
+        CoverageStatus::NotApplicable
+    );
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 fn options(root: &Path, config: &Path, enabled: BTreeSet<Analysis>) -> AnalyzeOptions {

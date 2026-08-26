@@ -40,6 +40,11 @@ const GRAPH: &[&str] = &[
     "csharp",
 ];
 const FLOW: &[&str] = &["rust", "javascript", "typescript", "tsx", "python"];
+const JAVASCRIPT_MODULES: &[&str] = &[
+    crate::lang::JAVASCRIPT_LANGUAGE,
+    crate::lang::TYPESCRIPT_LANGUAGE,
+    "tsx",
+];
 const PATHS: &[&str] = &["language_neutral_paths"];
 
 const fn seed(
@@ -92,6 +97,7 @@ const fn rule_description(kind: Rule) -> &'static str {
         | K::LargePublicSurface
         | K::ImportHeavyFile
         | K::FunctionProliferation
+        | K::LowModuleCohesion
         | K::UnusedFunction => codebase_metric_description(kind),
         K::RepeatedLiteral
         | K::RepeatedErrorPattern
@@ -146,6 +152,9 @@ const fn codebase_metric_description(kind: Rule) -> &'static str {
         }
         K::FunctionProliferation => {
             "Reports files combining high function count, density, and small-function ratio."
+        }
+        K::LowModuleCohesion => {
+            "Reports JavaScript-family modules containing multiple call-connected responsibility clusters."
         }
         K::UnusedFunction => {
             "Reports private functions with no project-wide reference outside their own body."
@@ -241,6 +250,7 @@ const RULE_SPEC_SEEDS: &[RuleSpecSeed] = &[
     seed(K::LargePublicSurface, ANALYSIS_CODEBASE, (F::ModuleSurface, S::File), (ALL_PARSED, &[M::FilePublicItems])),
     seed(K::ImportHeavyFile, ANALYSIS_CODEBASE, (F::ModuleSurface, S::File), (ALL_PARSED, &[M::FileImports])),
     seed(K::FunctionProliferation, ANALYSIS_CODEBASE, (F::ResponsibilityDecomposition, S::File), (ALL_PARSED, &[M::FileFunctionCount, M::FileFunctionsPerHundredLines, M::FileSmallFunctionRatio])),
+    seed(K::LowModuleCohesion, ANALYSIS_CODEBASE, (F::ResponsibilityDecomposition, S::File), (JAVASCRIPT_MODULES, &[M::FileModuleFunctionCount, M::FileResponsibilityClusterCount, M::FileClusteredFunctionPercent])),
     seed(K::UnusedFunction, ANALYSIS_CODEBASE, (F::DeadCode, S::Symbol), (UNUSED, &[M::FunctionReferences])),
     seed(K::RepeatedLiteral, ANALYSIS_CODEBASE, (F::LiteralOwnership, S::Group), (ALL_PARSED, &[M::GroupSize])),
     seed(K::RepeatedErrorPattern, ANALYSIS_CODEBASE, (F::ErrorHandlingDuplication, S::Group), (ALL_PARSED, &[M::GroupSize])),

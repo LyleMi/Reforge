@@ -27,6 +27,7 @@ define_rules!(
     LargePublicSurface,
     ImportHeavyFile,
     FunctionProliferation,
+    LowModuleCohesion,
     UnusedFunction,
     RepeatedLiteral,
     RepeatedErrorPattern,

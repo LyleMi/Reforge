@@ -228,7 +228,11 @@ fn scan_function_proliferation(
     options: &StructureOptions,
     signals: &mut FileSignals,
 ) {
-    let function_count = functions.len();
+    let module_functions = functions
+        .iter()
+        .filter(|function| function.callable_depth == 0 && !function.is_anonymous)
+        .collect::<Vec<_>>();
+    let function_count = module_functions.len();
     if function_count <= options.max_functions_per_file {
         return;
     }
@@ -241,7 +245,7 @@ fn scan_function_proliferation(
         return;
     }
 
-    let small_function_count = functions
+    let small_function_count = module_functions
         .iter()
         .filter(|function| is_small_simple_function(function))
         .count();

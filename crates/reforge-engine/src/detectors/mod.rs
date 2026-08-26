@@ -1,3 +1,4 @@
+pub(crate) mod concepts;
 pub(crate) mod data_flow;
 pub(crate) mod dependency_graph;
 pub(crate) mod drift;

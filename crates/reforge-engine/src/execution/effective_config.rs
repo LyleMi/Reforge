@@ -71,6 +71,12 @@ pub struct CodebaseThresholds {
 
     pub function_proliferation: FunctionProliferationArgs,
 
+    /// Report modules with multiple call-connected responsibility clusters.
+    pub min_module_functions: usize,
+
+    /// Minimum percentage of module functions belonging to responsibility clusters.
+    pub min_clustered_function_percent: usize,
+
     /// Report repeated literals seen at least this many times.
     pub min_repeated_literal_occurrences: usize,
 

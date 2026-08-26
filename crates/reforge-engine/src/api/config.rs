@@ -1,5 +1,32 @@
 use super::*;
 
+const CODEBASE_CONFIG_KEYS: &[&str] = &[
+    "preset",
+    "max-file-lines",
+    "max-dir-files",
+    "min-similar-functions",
+    "min-function-tokens",
+    "function-similarity",
+    "max-function-lines",
+    "max-function-complexity",
+    "max-nesting-depth",
+    "max-function-parameters",
+    "max-type-lines",
+    "max-type-members",
+    "max-imports",
+    "max-public-items",
+    "max-functions-per-file",
+    "max-functions-per-100-lines",
+    "max-small-function-ratio",
+    "min-module-functions",
+    "min-clustered-function-percent",
+    "min-repeated-literal-occurrences",
+    "min-data-clump-occurrences",
+    "churn",
+    "churn-window-days",
+    "churn-max-commit-lines",
+];
+
 pub(super) fn validate_public_keys(value: &toml::Value) -> Result<()> {
     validate_table_keys(
         value,
@@ -27,34 +54,7 @@ pub(super) fn validate_public_keys(value: &toml::Value) -> Result<()> {
             "ignore-paths",
         ],
     )?;
-    validate_table_keys(
-        value,
-        ANALYSIS_CODEBASE,
-        &[
-            "preset",
-            "max-file-lines",
-            "max-dir-files",
-            "min-similar-functions",
-            "min-function-tokens",
-            "function-similarity",
-            "max-function-lines",
-            "max-function-complexity",
-            "max-nesting-depth",
-            "max-function-parameters",
-            "max-type-lines",
-            "max-type-members",
-            "max-imports",
-            "max-public-items",
-            "max-functions-per-file",
-            "max-functions-per-100-lines",
-            "max-small-function-ratio",
-            "min-repeated-literal-occurrences",
-            "min-data-clump-occurrences",
-            "churn",
-            "churn-window-days",
-            "churn-max-commit-lines",
-        ],
-    )?;
+    validate_table_keys(value, ANALYSIS_CODEBASE, CODEBASE_CONFIG_KEYS)?;
     validate_table_keys(
         value,
         ANALYSIS_DATAFLOW,

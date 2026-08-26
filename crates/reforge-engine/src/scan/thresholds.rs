@@ -35,6 +35,8 @@ pub(super) struct ConfigStructureThresholdDefaults {
     pub max_functions_per_file: Option<usize>,
     pub max_functions_per_100_lines: Option<usize>,
     pub max_small_function_ratio: Option<usize>,
+    pub min_module_functions: Option<usize>,
+    pub min_clustered_function_percent: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -74,6 +76,8 @@ fn apply_threshold_settings(config: &mut EffectiveConfig, settings: ThresholdSet
         settings.structure.max_functions_per_100_lines;
     config.function_proliferation.max_small_function_ratio =
         settings.structure.max_small_function_ratio;
+    config.min_module_functions = settings.structure.min_module_functions;
+    config.min_clustered_function_percent = settings.structure.min_clustered_function_percent;
     config.min_repeated_literal_occurrences = settings.repetition.min_repeated_literal_occurrences;
     config.min_data_clump_occurrences = settings.repetition.min_data_clump_occurrences;
 }
@@ -136,6 +140,14 @@ fn apply_structure_thresholds(
     apply_optional(
         &mut config.function_proliferation.max_small_function_ratio,
         configured.max_small_function_ratio,
+    );
+    apply_optional(
+        &mut config.min_module_functions,
+        configured.min_module_functions,
+    );
+    apply_optional(
+        &mut config.min_clustered_function_percent,
+        configured.min_clustered_function_percent,
     );
 }
 

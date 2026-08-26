@@ -255,6 +255,7 @@ fn validate_public_values(value: &toml::Value) -> Result<()> {
         "codebase.max-public-items",
         "codebase.max-functions-per-file",
         "codebase.max-functions-per-100-lines",
+        "codebase.min-module-functions",
         "codebase.min-repeated-literal-occurrences",
         "codebase.min-data-clump-occurrences",
         "codebase.churn-window-days",
@@ -277,6 +278,7 @@ fn validate_public_values(value: &toml::Value) -> Result<()> {
         }
     }
     validate_percentage(value, "codebase.max-small-function-ratio")?;
+    validate_percentage(value, "codebase.min-clustered-function-percent")?;
     validate_percentage(value, "dataflow.relay.min-relay-percent")?;
     if let Some(candidate) = value_at(value, "codebase.function-similarity")
         && candidate

@@ -38,6 +38,8 @@ pub(crate) struct ConfigFile {
     max_functions_per_file: Option<usize>,
     max_functions_per_100_lines: Option<usize>,
     max_small_function_ratio: Option<usize>,
+    min_module_functions: Option<usize>,
+    min_clustered_function_percent: Option<usize>,
     min_repeated_literal_occurrences: Option<usize>,
     min_data_clump_occurrences: Option<usize>,
     churn: Option<ChurnMode>,
@@ -59,10 +61,10 @@ pub(super) struct ConfigSuppression {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ResolvedConfig {
-    pub args: EffectiveConfig,
-    pub suppressions: Vec<ConfigSuppression>,
-    pub data_flow: DataFlowConfig,
+pub(crate) struct ResolvedConfig {
+    pub(crate) args: EffectiveConfig,
+    pub(super) suppressions: Vec<ConfigSuppression>,
+    pub(super) data_flow: DataFlowConfig,
 }
 
 impl From<&ConfigFile> for ConfigThresholdDefaults {
@@ -90,6 +92,8 @@ impl From<&ConfigFile> for ConfigThresholdDefaults {
                 max_functions_per_file: config.max_functions_per_file,
                 max_functions_per_100_lines: config.max_functions_per_100_lines,
                 max_small_function_ratio: config.max_small_function_ratio,
+                min_module_functions: config.min_module_functions,
+                min_clustered_function_percent: config.min_clustered_function_percent,
             },
             repetition: ConfigRepetitionThresholdDefaults {
                 min_repeated_literal_occurrences: config.min_repeated_literal_occurrences,
@@ -163,7 +167,7 @@ pub(crate) fn parse_config_value(config: &toml::Value) -> Result<ConfigFile> {
     Ok(config)
 }
 
-pub(super) fn effective_scan_config_with(
+pub(crate) fn effective_scan_config_with(
     args: &EffectiveConfig,
     config: Option<&ConfigFile>,
 ) -> Result<ResolvedConfig> {

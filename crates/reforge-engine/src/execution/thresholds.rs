@@ -14,6 +14,8 @@ pub const DEFAULT_MAX_PUBLIC_ITEMS: usize = 30;
 pub const DEFAULT_MAX_FUNCTIONS_PER_FILE: usize = 40;
 pub const DEFAULT_MAX_FUNCTIONS_PER_100_LINES: usize = 12;
 pub const DEFAULT_MAX_SMALL_FUNCTION_RATIO: usize = 70;
+pub const DEFAULT_MIN_MODULE_FUNCTIONS: usize = 20;
+pub const DEFAULT_MIN_CLUSTERED_FUNCTION_PERCENT: usize = 50;
 pub const DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES: usize = 12;
 pub const DEFAULT_MIN_DATA_CLUMP_OCCURRENCES: usize = 4;
 pub const DEFAULT_CHURN_WINDOW_DAYS: usize = 180;
@@ -53,6 +55,8 @@ pub struct StructureThresholdSettings {
     pub max_functions_per_file: usize,
     pub max_functions_per_100_lines: usize,
     pub max_small_function_ratio: usize,
+    pub min_module_functions: usize,
+    pub min_clustered_function_percent: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +88,8 @@ impl ThresholdSettings {
             max_functions_per_file: DEFAULT_MAX_FUNCTIONS_PER_FILE,
             max_functions_per_100_lines: DEFAULT_MAX_FUNCTIONS_PER_100_LINES,
             max_small_function_ratio: DEFAULT_MAX_SMALL_FUNCTION_RATIO,
+            min_module_functions: DEFAULT_MIN_MODULE_FUNCTIONS,
+            min_clustered_function_percent: DEFAULT_MIN_CLUSTERED_FUNCTION_PERCENT,
         },
         repetition: RepetitionThresholdSettings {
             min_repeated_literal_occurrences: DEFAULT_MIN_REPEATED_LITERAL_OCCURRENCES,
@@ -113,6 +119,8 @@ impl ThresholdSettings {
             max_functions_per_file: 35,
             max_functions_per_100_lines: 10,
             max_small_function_ratio: 65,
+            min_module_functions: 16,
+            min_clustered_function_percent: 40,
         },
         repetition: RepetitionThresholdSettings {
             min_repeated_literal_occurrences: 8,
@@ -142,6 +150,8 @@ impl ThresholdSettings {
             max_functions_per_file: 60,
             max_functions_per_100_lines: 18,
             max_small_function_ratio: 80,
+            min_module_functions: 30,
+            min_clustered_function_percent: 60,
         },
         repetition: RepetitionThresholdSettings {
             min_repeated_literal_occurrences: 20,

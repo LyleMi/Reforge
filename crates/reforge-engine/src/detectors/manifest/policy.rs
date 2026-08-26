@@ -82,4 +82,31 @@ mod tests {
             assert!(!entry.language_capabilities.contains_key("powershell"));
         }
     }
+
+    #[test]
+    fn low_module_cohesion_has_the_preview_file_contract() {
+        let entry = rule_spec(Rule::LowModuleCohesion);
+        assert_eq!(entry.analysis, "codebase");
+        assert_eq!(entry.family, IssueFamily::ResponsibilityDecomposition);
+        assert_eq!(entry.allowed_subjects, [SubjectKind::File]);
+        assert_eq!(entry.semantic_version, "1.0.0");
+        assert_eq!(entry.maturity, RuleMaturity::Preview);
+        assert!(!entry.default_enabled);
+        assert_eq!(
+            entry
+                .language_capabilities
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["javascript", "tsx", "typescript"]
+        );
+        assert_eq!(
+            entry.measurements,
+            [
+                MetricId::FileModuleFunctionCount,
+                MetricId::FileResponsibilityClusterCount,
+                MetricId::FileClusteredFunctionPercent,
+            ]
+        );
+    }
 }

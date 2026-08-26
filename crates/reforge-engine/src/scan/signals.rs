@@ -89,6 +89,8 @@ impl ScanSignalContext<'_> {
                 .function_proliferation
                 .max_functions_per_100_lines,
             max_small_function_ratio: self.args.function_proliferation.max_small_function_ratio,
+            min_module_functions: self.args.min_module_functions,
+            min_clustered_function_percent: self.args.min_clustered_function_percent,
             min_repeated_literal_occurrences: self.args.min_repeated_literal_occurrences,
             min_data_clump_occurrences: self.args.min_data_clump_occurrences,
             max_dir_files: self.args.max_dir_files,

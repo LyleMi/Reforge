@@ -79,7 +79,15 @@ Structural detectors use Tree-sitter for supported languages.
 - `function_proliferation`: a production file has many functions, high
   functions-per-100-lines density, and a high percentage of small simple
   functions. This is an over-splitting signal, not proof that any function is
-  unused.
+  unused. It counts only named, non-nested callables, so nested callbacks do not
+  inflate the file function inventory.
+- `low_module_cohesion` (JavaScript, TypeScript, TSX, and Vue): a module has at
+  least two responsibility clusters of three or more module-scope functions.
+  A cluster edge requires both an exact direct local call and a shared
+  normalized function-name concept. Member calls, dynamic calls, class methods,
+  nested functions, and anonymous callbacks are excluded. Controls:
+  `codebase.min-module-functions` and
+  `codebase.min-clustered-function-percent`.
 
 Tests are excluded from general structural Evidence. Use `--exclude-tests` only
 when test files should be removed from the source inventory entirely.

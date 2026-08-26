@@ -46,6 +46,8 @@ impl EffectiveConfig {
                 max_imports: thresholds.structure.max_imports,
                 max_public_items: thresholds.structure.max_public_items,
                 function_proliferation: FunctionProliferationArgs::default(),
+                min_module_functions: thresholds.structure.min_module_functions,
+                min_clustered_function_percent: thresholds.structure.min_clustered_function_percent,
                 min_repeated_literal_occurrences: thresholds
                     .repetition
                     .min_repeated_literal_occurrences,

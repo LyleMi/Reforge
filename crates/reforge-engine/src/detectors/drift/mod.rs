@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use crate::detectors::concepts::{is_useful_concept_word, split_identifier_words};
 use crate::detectors::similarity::SourceFile;
 use crate::evidence_analysis::DetectedEvidenceInput;
 use crate::model::{DetectedEvidence, DetectedMeasurement, RelatedLocation, Rule};

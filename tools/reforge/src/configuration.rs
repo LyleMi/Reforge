@@ -27,6 +27,7 @@ pub(super) fn config(command: ConfigCommand) -> Result<()> {
                 sources.insert(key.into(), "cli --set".into());
             }
             validate_config(&value)?;
+            materialize_low_module_cohesion_thresholds(&mut value, &mut sources)?;
             render_config_view(
                 &EffectiveConfigView {
                     config_file: path.map(|path| path.display().to_string()),
@@ -37,6 +38,41 @@ pub(super) fn config(command: ConfigCommand) -> Result<()> {
             )
         }
     }
+}
+
+pub(super) fn materialize_low_module_cohesion_thresholds(
+    value: &mut toml::Value,
+    sources: &mut BTreeMap<String, String>,
+) -> Result<()> {
+    let preset = value
+        .get("codebase")
+        .and_then(|value| value.get("preset"))
+        .and_then(toml::Value::as_str)
+        .unwrap_or("balanced");
+    let (functions, percent) = match preset {
+        "strict" => (16, 40),
+        "relaxed" => (30, 60),
+        _ => (20, 50),
+    };
+    let preset_source = sources
+        .get("codebase.preset")
+        .map(String::as_str)
+        .unwrap_or("built-in default");
+    let source = format!("{preset} preset ({preset_source})");
+    for (key, threshold) in [
+        ("codebase.min-module-functions", functions),
+        ("codebase.min-clustered-function-percent", percent),
+    ] {
+        if value_at_path(value, key).is_none() {
+            apply_override(value, &format!("{key}={threshold}"))?;
+            sources.insert(key.into(), source.clone());
+        }
+    }
+    Ok(())
+}
+
+fn value_at_path<'a>(root: &'a toml::Value, path: &str) -> Option<&'a toml::Value> {
+    path.split('.').try_fold(root, |value, key| value.get(key))
 }
 
 pub(super) fn default_config() -> &'static str {
@@ -134,7 +170,7 @@ pub(super) fn apply_override(root: &mut toml::Value, input: &str) -> Result<()> 
 
 #[cfg(test)]
 pub(super) fn value_at<'a>(root: &'a toml::Value, path: &str) -> Option<&'a toml::Value> {
-    path.split('.').try_fold(root, |value, key| value.get(key))
+    value_at_path(root, path)
 }
 
 pub(super) fn effective_sources(

@@ -1,5 +1,6 @@
 struct FunctionParts<'tree> {
     name: String,
+    is_anonymous: bool,
     parameters: Option<Node<'tree>>,
     body: Node<'tree>,
 }
@@ -17,6 +18,7 @@ fn function_parts<'tree>(
                 .utf8_text(source.as_bytes())
                 .ok()?
                 .to_string(),
+            is_anonymous: false,
             parameters: node.child_by_field_name(PARAMETERS_FIELD),
             body: node.child_by_field_name(BODY_FIELD)?,
         }),
@@ -27,10 +29,17 @@ fn function_parts<'tree>(
                     | GENERATOR_FUNCTION_DECLARATION
                     | METHOD_DEFINITION
                     | ARROW_FUNCTION
+                    | "function_expression"
             ) =>
         {
+            let explicit_name = function_name(node, source);
+            let binding_name = callable_binding_name(node, source);
+            let is_anonymous = explicit_name.is_none() && binding_name.is_none();
             Some(FunctionParts {
-                name: function_name(node, source).unwrap_or_else(|| "<anonymous>".to_string()),
+                name: explicit_name
+                    .or(binding_name)
+                    .unwrap_or_else(|| "<anonymous>".to_string()),
+                is_anonymous,
                 parameters: node.child_by_field_name(PARAMETERS_FIELD),
                 body: node.child_by_field_name(BODY_FIELD)?,
             })
@@ -41,6 +50,7 @@ fn function_parts<'tree>(
                 .utf8_text(source.as_bytes())
                 .ok()?
                 .to_string(),
+            is_anonymous: false,
             parameters: node.child_by_field_name(PARAMETERS_FIELD),
             body: node.child_by_field_name(BODY_FIELD)?,
         }),
@@ -51,6 +61,7 @@ fn function_parts<'tree>(
                     .utf8_text(source.as_bytes())
                     .ok()?
                     .to_string(),
+                is_anonymous: false,
                 parameters: node.child_by_field_name(PARAMETERS_FIELD),
                 body: node.child_by_field_name(BODY_FIELD)?,
             })
@@ -180,6 +191,7 @@ fn powershell_function_parts<'tree>(
             .utf8_text(traversal.source.as_bytes())
             .ok()?
             .to_string(),
+        is_anonymous: false,
         parameters: child_by_kind(node, "function_parameter_declaration")
             .or_else(|| powershell_script_block_param_block(node)),
         body: child_by_kind(node, "script_block")?,
@@ -203,9 +215,117 @@ fn named_function_parts<'tree>(
             .utf8_text(source.as_bytes())
             .ok()?
             .to_string(),
+        is_anonymous: false,
         parameters,
         body,
     })
+}
+
+fn callable_binding_name(node: Node<'_>, source: &str) -> Option<String> {
+    let declarator = node.parent().filter(|parent| parent.kind() == "variable_declarator")?;
+    if declarator.child_by_field_name("value")?.id() != node.id() {
+        return None;
+    }
+    let name = declarator.child_by_field_name(NAME_FIELD)?;
+    if name.kind() != IDENTIFIER_KIND {
+        return None;
+    }
+    name.utf8_text(source.as_bytes()).ok().map(str::to_string)
+}
+
+fn is_module_scope_callable(node: Node<'_>, family: LanguageFamily) -> bool {
+    if family != LanguageFamily::JavaScriptTypeScript || node.kind() == METHOD_DEFINITION {
+        return false;
+    }
+    let mut parent = node.parent();
+    if matches!(node.kind(), ARROW_FUNCTION | "function_expression") {
+        let Some(declarator) = parent.filter(|parent| parent.kind() == "variable_declarator") else {
+            return false;
+        };
+        parent = declarator.parent();
+    }
+    while parent.is_some_and(|node| {
+        matches!(
+            node.kind(),
+            "lexical_declaration" | "variable_declaration" | "export_statement"
+        )
+    }) {
+        parent = parent.and_then(|node| node.parent());
+    }
+    parent.is_some_and(|node| node.kind() == "program")
+}
+
+fn direct_identifier_calls(body: Node<'_>, traversal: StructureTraversal<'_>) -> BTreeSet<String> {
+    if traversal.family != LanguageFamily::JavaScriptTypeScript {
+        return BTreeSet::new();
+    }
+    let mut calls = BTreeSet::new();
+    collect_direct_identifier_calls(body, traversal.source, &mut calls, true);
+    calls
+}
+
+fn collect_direct_identifier_calls(
+    node: Node<'_>,
+    source: &str,
+    calls: &mut BTreeSet<String>,
+    is_root: bool,
+) {
+    if !is_root && is_javascript_callable(node.kind()) {
+        return;
+    }
+    if node.kind() == "call_expression"
+        && let Some(callee) = node.child_by_field_name("function")
+        && callee.kind() == IDENTIFIER_KIND
+        && let Ok(name) = callee.utf8_text(source.as_bytes())
+    {
+        calls.insert(name.to_string());
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_direct_identifier_calls(child, source, calls, false);
+    }
+}
+
+fn is_javascript_callable(kind: &str) -> bool {
+    matches!(
+        kind,
+        FUNCTION_DECLARATION
+            | GENERATOR_FUNCTION_DECLARATION
+            | METHOD_DEFINITION
+            | ARROW_FUNCTION
+            | "function_expression"
+    )
+}
+
+fn collect_local_call_bindings(
+    node: Node<'_>,
+    traversal: StructureTraversal<'_>,
+    bindings: &mut BTreeSet<String>,
+    is_root: bool,
+) {
+    if traversal.family != LanguageFamily::JavaScriptTypeScript {
+        return;
+    }
+    if !is_root && is_javascript_callable(node.kind()) {
+        if matches!(node.kind(), FUNCTION_DECLARATION | GENERATOR_FUNCTION_DECLARATION)
+            && let Some(name) = node.child_by_field_name(NAME_FIELD)
+            && let Ok(name) = name.utf8_text(traversal.source.as_bytes())
+        {
+            bindings.insert(name.to_string());
+        }
+        return;
+    }
+    if node.kind() == "variable_declarator"
+        && let Some(name) = node.child_by_field_name(NAME_FIELD)
+        && name.kind() == IDENTIFIER_KIND
+        && let Ok(name) = name.utf8_text(traversal.source.as_bytes())
+    {
+        bindings.insert(name.to_string());
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_local_call_bindings(child, traversal, bindings, false);
+    }
 }
 
 fn complexity(node: Node<'_>, traversal: StructureTraversal<'_>) -> usize {

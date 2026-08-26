@@ -30,6 +30,7 @@ enable = [
   "reforge.codebase.file_naming_drift",
   "reforge.codebase.fixture_factory_drift",
   "reforge.codebase.function_proliferation",
+  "reforge.codebase.low_module_cohesion",
   "reforge.codebase.generic_bucket_drift",
   "reforge.codebase.happy_path_only_tests",
   "reforge.codebase.import_heavy_file",
@@ -59,6 +60,7 @@ preset = "balanced"
 churn = "auto"
 churn-window-days = 90
 max-file-lines = 600
+min-clustered-function-percent = 45
 
 [dataflow.search]
 max-path-steps = 24

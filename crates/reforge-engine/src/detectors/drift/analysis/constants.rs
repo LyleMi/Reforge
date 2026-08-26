@@ -129,11 +129,6 @@ pub(super) const GENERIC_BUCKET_WORDS: &[&str] = &[
     "common", "helper", "helpers", "lib", "misc", "shared", "util", "utils",
 ];
 
-pub(super) const STOP_WORDS: &[&str] = &[
-    "api", "app", "cmd", "for", "from", "get", "has", "impl", "index", "main", "mod", "new", "old",
-    "src", "test", "tests", "the", "this", "type", "use", "with",
-];
-
 pub(super) const CONFIG_KEY_WORDS: &[&str] = &[
     "api",
     "auth",

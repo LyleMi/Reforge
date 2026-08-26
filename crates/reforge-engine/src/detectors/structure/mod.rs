@@ -8,8 +8,9 @@ use crate::detectors::similarity::{ParsedSourceFile, SourceFile, parse_source_fi
 use crate::evidence_analysis::DetectedEvidenceInput;
 use crate::lang::{
     ARROW_FUNCTION, BODY_FIELD, FUNCTION_DECLARATION, FUNCTION_DEFINITION, FUNCTION_ITEM,
-    GENERATOR_FUNCTION_DECLARATION, LanguageFamily, METHOD_DECLARATION, METHOD_DEFINITION,
-    NAME_FIELD, PARAMETERS_FIELD, adapter_for_path, child_by_kind, has_rust_cfg_test_attribute,
+    GENERATOR_FUNCTION_DECLARATION, IDENTIFIER_KIND, LanguageFamily, METHOD_DECLARATION,
+    METHOD_DEFINITION, NAME_FIELD, PARAMETERS_FIELD, adapter_for_path, child_by_kind,
+    has_rust_cfg_test_attribute,
 };
 use crate::model::{DetectedEvidence, DetectedMeasurement, MetricId, RelatedLocation, Rule};
 use crate::scan::is_test_source;
@@ -27,6 +28,8 @@ pub struct StructureOptions {
     pub max_functions_per_file: usize,
     pub max_functions_per_100_lines: usize,
     pub max_small_function_ratio: usize,
+    pub min_module_functions: usize,
+    pub min_clustered_function_percent: usize,
     pub min_repeated_literal_occurrences: usize,
     pub min_data_clump_occurrences: usize,
     pub max_dir_files: usize,
@@ -36,12 +39,17 @@ pub struct StructureOptions {
 #[derive(Debug, Clone)]
 struct FunctionMetric {
     name: String,
+    is_anonymous: bool,
+    callable_depth: usize,
+    is_module_scope: bool,
     line: usize,
     lines: usize,
     parameter_count: usize,
     parameter_names: Vec<String>,
     complexity: usize,
     nesting_depth: usize,
+    direct_calls: BTreeSet<String>,
+    shadowed_call_names: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -287,6 +295,7 @@ fn scan_production_file(
     scan_type_metrics(file, &ast_signals.types, options, signals);
     scan_file_metrics(file, root, traversal, options, signals);
     scan_function_proliferation(file, root, &ast_signals.functions, options, signals);
+    scan_low_module_cohesion(file, family, &ast_signals.functions, options, signals);
     collect_cross_file_patterns(file, root, traversal, signals);
 }
 
@@ -313,7 +322,7 @@ fn collect_production_ast_signals(
         traversal,
         signals,
     };
-    collect_production_ast_signals_from(root, traversal, &mut collector, &mut ast_signals);
+    collect_production_ast_signals_from(root, traversal, &mut collector, &mut ast_signals, 0);
     ast_signals
 }
 
@@ -322,21 +331,30 @@ fn collect_production_ast_signals_from(
     traversal: StructureTraversal<'_>,
     collector: &mut StructureSignalCollector<'_, '_>,
     ast_signals: &mut ProductionAstSignals,
+    callable_depth: usize,
 ) {
     if should_skip_rust_test_module(node, traversal) {
         return;
     }
 
-    if let Some(parts) = function_parts(node, traversal) {
+    let parts = function_parts(node, traversal);
+    if let Some(parts) = parts.as_ref() {
         let parameter_names = parameter_names(parts.parameters, traversal.source, traversal.family);
+        let mut shadowed_call_names = parameter_names.iter().cloned().collect();
+        collect_local_call_bindings(parts.body, traversal, &mut shadowed_call_names, true);
         ast_signals.functions.push(FunctionMetric {
-            name: parts.name,
+            name: parts.name.clone(),
+            is_anonymous: parts.is_anonymous,
+            callable_depth,
+            is_module_scope: is_module_scope_callable(node, traversal.family),
             line: node.start_position().row + 1,
             lines: node_line_span(node),
             parameter_count: parameter_names.len(),
             parameter_names,
             complexity: complexity(parts.body, traversal),
             nesting_depth: max_nesting_depth(parts.body, traversal.family, 0),
+            direct_calls: direct_identifier_calls(parts.body, traversal),
+            shadowed_call_names,
         });
     }
 
@@ -348,12 +366,20 @@ fn collect_production_ast_signals_from(
     collector.collect_error_occurrence(node);
 
     let mut cursor = node.walk();
+    let child_callable_depth = callable_depth + usize::from(parts.is_some());
     for child in node.children(&mut cursor) {
-        collect_production_ast_signals_from(child, traversal, collector, ast_signals);
+        collect_production_ast_signals_from(
+            child,
+            traversal,
+            collector,
+            ast_signals,
+            child_callable_depth,
+        );
     }
 }
 
 include!("syntax_metrics.rs");
+include!("low_module_cohesion.rs");
 
 mod analysis;
 mod parameters;
@@ -388,6 +414,8 @@ mod tests {
             max_functions_per_file: usize::MAX,
             max_functions_per_100_lines: usize::MAX,
             max_small_function_ratio: usize::MAX,
+            min_module_functions: usize::MAX,
+            min_clustered_function_percent: 100,
             min_repeated_literal_occurrences: 2,
             min_data_clump_occurrences: usize::MAX,
             max_dir_files: usize::MAX,
@@ -494,3 +522,7 @@ function Test-Release {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "../../structure_cohesion_tests.rs"]
+mod cohesion_tests;
