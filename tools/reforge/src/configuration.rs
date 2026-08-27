@@ -1,5 +1,7 @@
 use super::*;
 
+use std::sync::LazyLock;
+
 #[path = "validation.rs"]
 mod validation;
 pub(super) use validation::*;
@@ -75,8 +77,27 @@ fn value_at_path<'a>(root: &'a toml::Value, path: &str) -> Option<&'a toml::Valu
     path.split('.').try_fold(root, |value, key| value.get(key))
 }
 
+const STARTER_RULES: &[&str] = &[
+    "reforge.codebase.large_file",
+    "reforge.codebase.long_function",
+    "reforge.codebase.dependency_cycle",
+    "reforge.codebase.similar_functions",
+];
+
+static CLI_DEFAULT_CONFIG: LazyLock<String> = LazyLock::new(|| {
+    let mut value: toml::Value =
+        toml::from_str(Config::DEFAULT_TOML).expect("engine defaults must be valid TOML");
+    value["rules"]["enable"] = toml::Value::Array(
+        STARTER_RULES
+            .iter()
+            .map(|rule| toml::Value::String((*rule).into()))
+            .collect(),
+    );
+    toml::to_string_pretty(&value).expect("CLI defaults must serialize as TOML")
+});
+
 pub(super) fn default_config() -> &'static str {
-    Config::DEFAULT_TOML
+    &CLI_DEFAULT_CONFIG
 }
 
 pub(super) fn load_config(

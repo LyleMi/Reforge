@@ -5,7 +5,7 @@
 <h1 align="center">Reforge</h1>
 
 <p align="center">
-  Evidence-backed structural analysis for codebases changing faster than they can be reviewed.
+  Find structural drift before it becomes the next refactor.
 </p>
 
 <p align="center">
@@ -15,41 +15,22 @@
   <a href="https://lylemi.github.io/Reforge/"><img alt="Documentation" src="https://img.shields.io/badge/docs-read-1556ad"></a>
 </p>
 
-Reforge is a local CLI that shows maintainers where a codebase is becoming
-harder to change. It finds duplicated implementations, oversized
-responsibilities, dependency tangles, and architecture drift across the whole
-repository—including patterns introduced gradually by coding agents.
+Reforge is a local CLI for repository-level code review. It finds duplicated
+implementations, oversized responsibilities, dependency tangles, and
+architecture drift—including patterns introduced gradually by coding agents.
 
-It does not assign an opaque health score or ask you to trust a generated
-summary. Every finding includes the source locations, measurements, and rule
-that produced it. Every report also records what Reforge could and could not
-analyze.
+Every finding identifies its rule and relevant source locations, with
+measurements or a value-flow witness when the rule produces them. Coverage
+records what Reforge could and could not analyze. Reforge does not upload source
+code, assign a health score, or claim that a finding is a bug.
 
 <p align="center">
-  <a href="https://lylemi.github.io/Reforge/playground/"><strong>See the agent-code Playground →</strong></a>
+  <a href="https://lylemi.github.io/Reforge/playground/"><strong>Try the agent-code Playground →</strong></a>
   &nbsp;·&nbsp;
-  <a href="https://lylemi.github.io/Reforge/sample/"><strong>Explore Reforge's self-analysis report →</strong></a>
+  <a href="https://lylemi.github.io/Reforge/sample/"><strong>Open an example report →</strong></a>
 </p>
 
-## See the evidence behind a finding
-
-This finding came from Reforge analyzing its own report application:
-
-```text
-Function readability: ReportView in web/report-app/src/reportApp.tsx
-
-  Rule:        reforge.codebase.complex_function
-  Location:    web/report-app/src/reportApp.tsx:33
-  Measurement: estimated complexity 15 (threshold 14)
-  Guidance:    Reduce the function to a clear sequence of named responsibilities.
-```
-
-The location makes the finding inspectable. The measurement explains why it
-was reported. The threshold can be tuned, and a legitimate exception can be
-suppressed with its reason preserved. Reforge makes the case for review; it
-does not pretend that a measurement can decide the refactor for you.
-
-## Get started
+## Quick start
 
 Install the latest release on Linux or macOS:
 
@@ -57,114 +38,106 @@ Install the latest release on Linux or macOS:
 curl -fsSL https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.sh | sh
 ```
 
-On Windows PowerShell:
-
-```powershell
-$installer = Join-Path $env:TEMP "install-reforge.ps1"
-irm https://raw.githubusercontent.com/LyleMi/Reforge/main/scripts/install.ps1 -OutFile $installer
-& $installer
-```
-
-Rust users can alternatively build and install the command from crates.io:
+Or install only the CLI from crates.io:
 
 ```sh
 cargo install reforge-cli --locked
 ```
 
-The crates.io package installs the `reforge` binary only. Use the verified
-release installer above when you also want the bundled `reforge-analyze` Codex
-skill.
-
-Reforge runs Codebase analysis by default. Its rules begin as opt-in previews,
-so adopting Reforge does not immediately impose someone else's definition of
-maintainability. Initialize a configuration, then enable a small starter set:
-
-```sh
-reforge init
-```
-
-In the generated `reforge.toml`, start with:
-
-```toml
-[rules]
-enable = [
-  "reforge.codebase.large_file",
-  "reforge.codebase.long_function",
-  "reforge.codebase.dependency_cycle",
-  "reforge.codebase.similar_functions",
-]
-```
-
-Run the review in your repository or generate a standalone HTML report:
+Then analyze a repository:
 
 ```sh
 reforge analyze .
+```
+
+With no configuration, the CLI runs Codebase analysis with four preview
+advisories: large files, long functions, dependency cycles, and similar
+functions. They are review prompts, not CI failures. Create a versioned starter
+configuration to tune or disable them:
+
+```sh
+reforge init
 reforge analyze . --output html --output-file reforge-report.html
 ```
 
-## Built for repository-level review
+Windows PowerShell and pinned-version installation are covered in the
+[installation guide](https://lylemi.github.io/Reforge/user-guide.html#install).
 
-| Need | What Reforge provides |
-| --- | --- |
-| Find change pressure beyond style errors | Project-wide signals for responsibilities, duplication, dependencies, and drift |
-| Verify why something was flagged | Source locations, measurements, thresholds, and rule provenance |
-| Trust an empty report appropriately | Coverage receipts and explicit analysis limitations |
-| Keep an accepted refactor from regressing | Reproducible baselines and CI gates for new or changed findings |
-| Keep source code private | Local analysis with no uploads or telemetry |
-
-Reforge complements compilers, linters, and security scanners. Its job is not
-to prove correctness or find vulnerabilities; it identifies structural
-pressure that deserves a maintainer's judgment before the next refactor.
-
-## What Codebase finds
+## What it finds
 
 | Area | Examples |
 | --- | --- |
-| **Responsibilities** | Large files, long or complex functions, deep nesting, broad public surfaces |
-| **Duplication** | Similar functions, repeated literals, repeated test setup, overlapping type shapes |
-| **Architecture drift** | Dependency cycles, generic buckets, parallel implementations, boundary bypasses |
-| **Repository consistency** | Naming drift, stale compatibility paths, TODO/FIXME clusters |
+| Responsibilities | Large files, long or complex functions, deep nesting, broad public surfaces |
+| Duplication | Similar functions, repeated literals, repeated test setup, overlapping type shapes |
+| Architecture drift | Dependency cycles, generic buckets, parallel implementations, boundary bypasses |
+| Repository consistency | Naming drift, stale compatibility paths, TODO/FIXME clusters |
 
-Each finding points to a concrete subject and includes the rule, source locations, and measurements that produced it. Coverage shows which languages and capabilities were actually observed. Reforge does not turn these signals into a health score, severity, or defect prediction—the decision stays with the reviewer.
+Codebase analysis supports Rust, JavaScript, TypeScript/TSX, Vue, Python, Go,
+Java, C#, Kotlin, PHP, Ruby, Bash, and PowerShell. Dependency rules also
+recognize C and C++.
 
-Codebase supports Rust, JavaScript, TypeScript/TSX, Vue, Python, Go, Java, C#, Kotlin, PHP, Ruby, Bash, and PowerShell. Dependency rules also recognize C and C++.
+## What a finding contains
 
-Analysis runs locally. Reforge does not upload source code or collect telemetry.
+```text
+Implementation duplication: 3 related items
 
-## Use it in CI
-
-Keep configuration in `reforge.toml`, review a JSON report as a baseline, then gate new or changed policy findings:
-
-```sh
-reforge analyze . --output json --output-file current.json \
-  --baseline reforge-baseline.json --gate new --reproducible
+  Rule:        reforge.codebase.shadowed_abstraction
+  Locations:   forms/legacy_email_validator.py:1
+               forms/signup_email_validator.py:1
+               shared/email_validator.py:1
+  Measurement: group size 3 (threshold 3)
+  Guidance:    Consolidate shared behavior or make separate variants explicit.
 ```
 
-Rules begin as opt-in previews. This keeps adoption deliberate: enable the signals that fit your codebase, review their evidence, and enforce only the policies your team has accepted.
+The evidence makes a finding inspectable; it does not decide the refactor for
+you. An empty report is meaningful only for the languages, capabilities, and
+rules marked as observed in Coverage.
 
-## Learn more
+## Automate review
 
-- [Documentation](https://lylemi.github.io/Reforge/) — start here for installation, configuration, and report interpretation
-- [Codebase guide](docs/analyses.md) — understand what is analyzed and how to review findings
-- [Rule reference](docs/rule-cards.md) — see every available signal and its intended limits
-- [Configuration reference](docs/configuration.md) — tune scope, thresholds, policies, and suppressions
-- [Contributing](docs/contributing.md) — build and test Reforge locally
+Export JSON or SARIF for CI and code-scanning integrations:
 
-Reforge also includes an advanced, opt-in [Dataflow analysis](docs/dataflow.md) for exact value-path and boundary-policy inspection.
+```sh
+reforge analyze . --output sarif --output-file reforge.sarif --reproducible
+```
+
+All current core rules are preview and advisory-only. The `--gate` options apply
+only to rules that later satisfy Reforge's calibration contract, become stable,
+and are explicitly enforced; preview findings do not fail CI.
+
+## Advanced Dataflow analysis
+
+Dataflow is opt-in and intended for exact value-path and declared-boundary
+inspection:
+
+```sh
+reforge analyze . --analysis dataflow --output json --reproducible
+reforge analyze . --analysis codebase --analysis dataflow --reproducible
+```
+
+See the [Dataflow guide](docs/dataflow.md) for its configuration and coverage
+limits.
+
+## Documentation
+
+- [User guide](https://lylemi.github.io/Reforge/user-guide.html)
+- [Codebase analysis](docs/analyses.md)
+- [Rule reference](docs/rule-cards.md)
+- [Configuration reference](docs/configuration.md)
+- [Contributing](docs/contributing.md)
 
 ## Development
 
-Reforge is a Rust 2024 workspace. Run the full validation suite with:
+Reforge is a Rust 2024 workspace. Run the complete validation gate with:
+
+```sh
+scripts/check-ci.sh
+```
+
+Or run the core checks directly:
 
 ```sh
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 cargo test --locked --workspace --all-targets --all-features
-```
-
-Run the complete Linux CI gate locally, or install it as a pre-push hook:
-
-```sh
-scripts/check-ci.sh
-scripts/install-git-hooks.sh
 ```

@@ -151,3 +151,42 @@ fn human_output_includes_language_capability_receipts() {
     assert!(output.contains("capability direct_calls: Partial"));
     assert!(output.contains("unresolved_direct_call (1): one call could not be resolved"));
 }
+
+#[test]
+fn human_output_summarizes_disabled_rules_without_losing_machine_coverage() {
+    let mut report = report_with_issue();
+    report.coverage.get_mut("codebase").unwrap().rules = BTreeMap::from([
+        (
+            "reforge.codebase.large_file".into(),
+            reforge_schema::RuleExecution {
+                maturity: "preview".into(),
+                enabled_source: reforge_schema::RuleActivation::Enable,
+                status: CoverageStatus::Observed,
+                observations: Vec::new(),
+                limitations: Vec::new(),
+            },
+        ),
+        (
+            "reforge.codebase.long_function".into(),
+            reforge_schema::RuleExecution {
+                maturity: "preview".into(),
+                enabled_source: reforge_schema::RuleActivation::Disabled,
+                status: CoverageStatus::Observed,
+                observations: Vec::new(),
+                limitations: Vec::new(),
+            },
+        ),
+    ]);
+    report.provenance = default_provenance(&report.coverage, &report.issues);
+
+    let mut output = Vec::new();
+    write_report(&mut output, &report, OutputFormat::Human).unwrap();
+    let output = String::from_utf8(output).unwrap();
+
+    assert!(output.contains("rule reforge.codebase.large_file"));
+    assert!(!output.contains("rule reforge.codebase.long_function"));
+    assert!(output.contains("1 disabled rule(s) omitted"));
+
+    let json = serde_json::to_value(&report).unwrap();
+    assert!(json["coverage"]["codebase"]["rules"]["reforge.codebase.long_function"].is_object());
+}

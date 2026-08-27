@@ -170,6 +170,27 @@ fn config_uses_analysis_enabled_and_rejects_removed_lenses() {
 }
 
 #[test]
+fn cli_defaults_enable_a_small_preview_starter_set() {
+    let defaults: toml::Value = toml::from_str(default_config()).unwrap();
+    let enabled = value_at(&defaults, "rules.enable")
+        .and_then(toml::Value::as_array)
+        .unwrap()
+        .iter()
+        .filter_map(toml::Value::as_str)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        enabled,
+        vec![
+            "reforge.codebase.large_file",
+            "reforge.codebase.long_function",
+            "reforge.codebase.dependency_cycle",
+            "reforge.codebase.similar_functions",
+        ]
+    );
+}
+
+#[test]
 fn config_rejects_nested_unknown_keys() {
     let mut value: toml::Value = toml::from_str(default_config()).unwrap();
     apply_override(&mut value, "dataflow.search.max-path-stepz=2").unwrap();

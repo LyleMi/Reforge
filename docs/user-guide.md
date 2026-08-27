@@ -37,6 +37,12 @@ Run the default Codebase analysis:
 reforge analyze . --reproducible
 ```
 
+Without a configuration file, the CLI enables a small starter set of preview
+advisories for large files, long functions, dependency cycles, and similar
+functions. They produce review prompts but cannot fail a policy gate. Run
+`reforge init` to write the same starter selection to `reforge.toml`, then tune
+or disable it for the repository.
+
 Dataflow is explicit. Run it alone or combine both core analyses over one workspace index:
 
 ```sh
@@ -70,7 +76,9 @@ reforge analyze . --output json --output-file current.json \
   --baseline reforge-baseline.json --gate new --reproducible
 ```
 
-`--gate all` fails on every current policy Issue. Rules are preview/off by default; enable and enforce the selected rule IDs in versioned `reforge.toml`.
+`--gate all` fails on every current policy Issue. Most rules remain preview/off;
+enable selected preview rules as advisories in versioned `reforge.toml`. Only
+stable rules can be enforced as policy.
 
 ## Configuration and rules
 

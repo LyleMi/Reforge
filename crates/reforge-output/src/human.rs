@@ -102,8 +102,31 @@ fn write_human_coverage(
             }
         }
     }
+    write_human_rules(writer, coverage)?;
+    Ok(())
+}
+
+fn write_human_rules(
+    writer: &mut impl Write,
+    coverage: &reforge_schema::AnalysisCoverage,
+) -> Result<()> {
     for (rule, execution) in &coverage.rules {
-        write_human_rule(writer, rule, execution)?;
+        if execution.enabled_source != reforge_schema::RuleActivation::Disabled {
+            write_human_rule(writer, rule, execution)?;
+        }
+    }
+    let disabled = coverage
+        .rules
+        .values()
+        .filter(|execution| {
+            execution.enabled_source == reforge_schema::RuleActivation::Disabled
+        })
+        .count();
+    if disabled > 0 {
+        writeln!(
+            writer,
+            "    {disabled} disabled rule(s) omitted; JSON and YAML retain full coverage"
+        )?;
     }
     Ok(())
 }

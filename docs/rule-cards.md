@@ -11,6 +11,9 @@ All rules below are currently `preview`, `default_enabled = false`,
 `validation_basis = fixture`, semantic version `1.0.0`, and ineligible for
 enforcement. A language can become stable only through the audited calibration
 protocol in `calibration/README.md`; other languages remain preview.
+The CLI's starter configuration explicitly enables four of these rules as
+advisories; this does not change their manifest maturity or default-enabled
+state.
 
 | Rule | Claim / inspection question | Capability | Positive and negative fixtures | Legitimate exceptions |
 | --- | --- | --- | --- | --- |

@@ -16,7 +16,12 @@ exclude-tests = false
 ignore-paths = []
 
 [rules]
-enable = []
+enable = [
+  "reforge.codebase.large_file",
+  "reforge.codebase.long_function",
+  "reforge.codebase.dependency_cycle",
+  "reforge.codebase.similar_functions",
+]
 disable = []
 enforce = []
 
@@ -46,8 +51,9 @@ min-modules = 3
 Rule arrays require complete IDs. Duplicate, conflicting, and unknown IDs are
 errors. `enforce` implies enable and accepts only stable rules. Experimental
 rules remain internal observations; preview rules are off unless enabled and
-can only produce advisory Issues. Only explicitly enforced stable rules produce
-policy Issues or participate in a gate.
+can only produce advisory Issues. The CLI starter configuration enables four
+preview rules explicitly. Only enforced stable rules produce policy Issues or
+participate in a gate.
 
 Each Dataflow policy is single-language and names exact sink declarations:
 
