@@ -22,8 +22,33 @@ try {
     $listener.Start()
     $port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
     $listener.Stop()
-    $server = Start-Process python -ArgumentList "-m", "http.server", "$port", "--bind", "127.0.0.1", "--directory", $testRoot -PassThru -WindowStyle Hidden
-    Start-Sleep -Milliseconds 750
+
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $python) { throw "Python is required to serve release fixtures for the installer test" }
+    $serverOut = Join-Path $testRoot "http-server.out.log"
+    $serverErr = Join-Path $testRoot "http-server.err.log"
+    $server = Start-Process $python.Source -ArgumentList "-m", "http.server", "$port", "--bind", "127.0.0.1", "--directory", $testRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $serverOut -RedirectStandardError $serverErr
+
+    $deadline = (Get-Date).AddSeconds(30)
+    while ($true) {
+        if ($server.HasExited) {
+            throw "Release fixture server exited with code $($server.ExitCode). stderr: $(Get-Content $serverErr -Raw -ErrorAction SilentlyContinue)"
+        }
+        $ready = $false
+        $probe = [System.Net.Sockets.TcpClient]::new()
+        try {
+            $ready = $probe.ConnectAsync("127.0.0.1", $port).Wait(250) -and $probe.Connected
+        } catch {
+            $ready = $false
+        } finally {
+            $probe.Dispose()
+        }
+        if ($ready) { break }
+        if ((Get-Date) -ge $deadline) {
+            throw "Release fixture server did not accept connections on 127.0.0.1:$port within 30s. stderr: $(Get-Content $serverErr -Raw -ErrorAction SilentlyContinue)"
+        }
+        Start-Sleep -Milliseconds 100
+    }
 
     $env:REFORGE_RELEASE_BASE_URL = "http://127.0.0.1:$port/releases"
     $env:REFORGE_LATEST_VERSION = $releaseTag
