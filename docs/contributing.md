@@ -77,9 +77,9 @@ JSON, YAML, or SARIF output in the pull request description.
 
 ## Report App Development
 
-The React report app requires Node.js `^20.19.0` or `>=22.12.0` and npm; CI uses
-Node.js 22. Vite 8 is installed from the locked frontend dependencies, so use
-the package scripts instead of a global Vite installation:
+The React report app requires Node.js `^22.12.0`, `^24.0.0`, or `>=26.0.0` and
+npm; CI uses Node.js 22. Vite 8 is installed from the locked frontend
+dependencies, so use the package scripts instead of a global Vite installation:
 
 ```powershell
 cd web\report-app
