@@ -1,0 +1,58 @@
+name: Report app assets
+
+on:
+  pull_request:
+    paths:
+      - web/report-app/package.json
+      - web/report-app/package-lock.json
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: refresh embedded assets
+    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/report-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web/report-app
+        run: npm ci
+
+      - name: Build report app
+        working-directory: web/report-app
+        run: npm run build
+
+      - name: Commit refreshed assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/report-app.js assets/report-app.css crates/reforge-output/assets/report-app.js crates/reforge-output/assets/report-app.css
+          if git diff --cached --quiet; then
+            echo "Embedded assets are already current."
+          else
+            git commit -m "chore(report-app): refresh embedded assets for dependency bump"
+            git push
+          fi
+
+      - name: Re-run CI on the refreshed commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run ci.yml --ref "${{ github.event.pull_request.head.ref }}"
