@@ -5,7 +5,7 @@ description: Optional guard workflow that applies only an explicitly approved Re
 
 # Reforge Apply
 
-Generated contract: CLI `0.2.0`, report schema `27`, artifact schema `6`.
+Generated contract: CLI `0.3.1`, report schema `27`, artifact schema `6`.
 
 1. Check `reforge-workflow --version`, `status`, and `validate`; stop on mismatch.
 2. Continue only in `Approved`. Never approve from this skill.

@@ -5,7 +5,7 @@ description: Optional guard workflow that builds an artifact v6 plan from select
 
 # Reforge Plan
 
-Generated contract: CLI `0.2.0`, report schema `27`, artifact schema `6`.
+Generated contract: CLI `0.3.1`, report schema `27`, artifact schema `6`.
 
 1. Check `reforge-workflow --version`; stop on mismatch.
 2. Generate a combined `reforge analyze` report, then explicitly start the guard: `reforge-workflow start --report report.json --goal "..."`.

@@ -100,9 +100,21 @@ fn repository_guide_uses_current_cli_vocabulary() {
 
 #[test]
 fn distributed_agent_contracts_use_current_schema_versions() {
+    let version = env!("CARGO_PKG_VERSION");
     let bundle: serde_json::Value =
         serde_json::from_str(include_str!("../../../.codex-plugin/bundle.json")).unwrap();
+    let plugin: serde_json::Value =
+        serde_json::from_str(include_str!("../../../.codex-plugin/plugin.json")).unwrap();
+    assert_eq!(bundle["cli_version"], version);
+    assert_eq!(bundle["binaries"]["reforge"]["version"], version);
+    assert_eq!(plugin["version"], version);
     assert_eq!(bundle["report_schema"], 27);
+
+    let template = include_str!("../../../skills/SKILL.template.md");
+    assert!(template.contains(&format!("CLI_VERSION={version} ")));
+    assert!(template.contains(&format!("version `{version}`")));
+    let investigator = include_str!("../../reforge-workflow/agents/reforge-investigator.toml");
+    assert!(investigator.contains(&format!("Require CLI {version} and")));
 
     for contract in [
         include_str!("../../../skills/SKILL.template.md"),
@@ -113,6 +125,12 @@ fn distributed_agent_contracts_use_current_schema_versions() {
     ] {
         assert!(contract.contains("report schema `27`"));
         assert!(contract.contains("artifact schema `6`"));
+        if contract != template {
+            assert!(
+                contract.contains(&format!("CLI `{version}`,")),
+                "distributed skill must require CLI {version}"
+            );
+        }
     }
 }
 

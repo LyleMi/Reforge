@@ -78,11 +78,18 @@ jobs:
           $version = (& "target/release/${{ matrix.binary }}" --version | Out-String).Trim()
           $metadata = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
           $packageVersion = ($metadata.packages | Where-Object name -eq "reforge-cli").version
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne "v$packageVersion") {
+            throw "release tag does not match package version $packageVersion"
+          }
           if ($version -ne "reforge $packageVersion") {
             throw "unexpected packaged version: $version"
           }
           if (-not (Test-Path "dist/skills/reforge-analyze/SKILL.md")) {
             throw "core skill is missing from the release artifact"
+          }
+          $skill = Get-Content "dist/skills/reforge-analyze/SKILL.md" -Raw
+          if (-not $skill.Contains(('CLI `{0}`,' -f $packageVersion))) {
+            throw "packaged skill does not match CLI version $packageVersion"
           }
           if (-not (Test-Path "dist/README.md") -or -not (Test-Path "dist/LICENSE")) {
             throw "release documentation is missing"

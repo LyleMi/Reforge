@@ -5,7 +5,7 @@ description: Run the unified Reforge Codebase/Dataflow analyzer and explain sche
 
 # Reforge Analyze
 
-Generated contract: CLI `0.2.0`, report schema `27`, artifact schema `6`.
+Generated contract: CLI `0.3.1`, report schema `27`, artifact schema `6`.
 
 1. Check `reforge --version`; stop on a version mismatch.
 2. Omit `--analysis` for Codebase, choose `--analysis dataflow` for Dataflow alone, or pass both `--analysis codebase --analysis dataflow` for one combined report.

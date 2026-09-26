@@ -11,6 +11,11 @@ and `reforge-analyze` skill. The release also publishes `SHA256SUMS`; the remote
 installers require it and verify the extracted binary's version before an
 atomic install.
 
+Keep the CLI version in all distributed skills, the skill template, investigator,
+and `.codex-plugin` manifests synchronized with `workspace.package.version`.
+The workspace tests enforce this contract; the release smoke test also checks
+the packaged skill and release tag against the binary's package version.
+
 Before publishing, run:
 
 ```sh

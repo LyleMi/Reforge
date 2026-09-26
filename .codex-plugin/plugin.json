@@ -1,6 +1,6 @@
 {
   "name": "reforge",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "Codebase and Dataflow refactoring analysis for Codex",
   "author": {
     "name": "Reforge contributors",
