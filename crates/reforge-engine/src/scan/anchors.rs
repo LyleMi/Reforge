@@ -52,7 +52,7 @@ fn detection_anchor(
             witness.policy, witness.source.id, witness.sink.id
         );
     }
-    if detection.kind == Rule::DebtMarker {
+    if matches!(detection.kind, Rule::DebtMarker | Rule::CommentHygiene) {
         return text_anchor(&detection.path, detection.line, sources);
     }
     match &detection.subject {

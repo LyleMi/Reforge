@@ -13,6 +13,11 @@ impl ScanSignalContext<'_> {
     pub(super) fn run(&mut self) -> Result<()> {
         if self.plan.codebase {
             self.scan_structural_signals()?;
+            self.scan
+                .detections
+                .extend(crate::api::comments::review_detections(
+                    &self.scan.parsed_sources,
+                ));
             self.scan_unused_function_signals();
             self.scan_dependency_graph_signals();
             self.scan_concept_drift_signals();

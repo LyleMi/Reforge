@@ -19,6 +19,7 @@ state.
 | --- | --- | --- | --- | --- |
 | `reforge.codebase.large_file` | A file exceeds the configured line boundary; is responsibility ownership too broad? | file inventory | over/under threshold | generated facades, declarative tables |
 | `reforge.codebase.large_directory` | A directory owns more direct source files than configured. | directory inventory | wide/narrow directories | flat packages with explicit ownership |
+| `reforge.codebase.comment_hygiene` | An ordinary comment has an empty, repeated, template or possible-code review hint; is it still useful? | Rust/JS/TS parsed comments | hint/protected/string fixtures; preview/apply and stale-plan tests | intentional repetition, examples, explanations without recognized protection markers |
 | `reforge.codebase.debt_marker` | A source comment explicitly declares TODO/FIXME debt. | source text | comment/non-comment markers | generated or externally tracked markers |
 | `reforge.codebase.similar_functions` | Multiple normalized bodies are structurally similar enough to inspect together. | parsed syntax similarity | cloned/distinct bodies | protocol implementations, tests |
 | `reforge.codebase.long_function` | A declared function exceeds the configured line span. | syntax and symbols | long/short functions | generated parsers, linear tables |

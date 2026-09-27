@@ -121,6 +121,10 @@ fn observation_count(
     context: &CoverageContext<'_, '_>,
 ) -> usize {
     match entry.kind {
+        Rule::CommentHygiene => context.input.source_files.iter().filter(|source| {
+            crate::api::comments::supports_comments(&source.path)
+                && !context.input.parse_failures.iter().any(|failure| failure.path == source.display_path)
+        }).count(),
         Rule::AdapterFlowBypass => context.input.flow_analysis.protected_sources_evaluated,
         Rule::ExcessiveRelay | Rule::FlowFanOut => {
             context.input.flow_analysis.relay_sources_evaluated
@@ -166,17 +170,18 @@ fn rule_limitations(
     context: &CoverageContext<'_, '_>,
 ) -> Vec<CoverageLimitation> {
     let mut limitations = Vec::new();
-    if detector_requires_parse(entry) && !context.input.parse_failures.is_empty() {
+    let (parse_failures, source_failures) = relevant_failure_counts(entry, context);
+    if detector_requires_parse(entry) && parse_failures > 0 {
         limitations.push(CoverageLimitation {
             code: "parse_failure".into(),
-            count: context.input.parse_failures.len(),
+            count: parse_failures,
             message: "source files could not be parsed".into(),
         });
     }
-    if !context.input.source_failures.is_empty() {
+    if source_failures > 0 {
         limitations.push(CoverageLimitation {
             code: "source_read_failure".into(),
-            count: context.input.source_failures.len(),
+            count: source_failures,
             message: "source files could not be read".into(),
         });
     }
@@ -202,6 +207,19 @@ fn rule_limitations(
         });
     }
     limitations
+}
+
+fn relevant_failure_counts(
+    entry: &crate::model::RuleSpec,
+    context: &CoverageContext<'_, '_>,
+) -> (usize, usize) {
+    let parse_failures = context.input.parse_failures.iter().filter(|failure| {
+        entry.kind != Rule::CommentHygiene || crate::api::comments::supports_comments(Path::new(&failure.path))
+    }).count();
+    let source_failures = context.input.source_failures.iter().filter(|failure| {
+        entry.kind != Rule::CommentHygiene || crate::api::comments::supports_comments(Path::new(&failure.path))
+    }).count();
+    (parse_failures, source_failures)
 }
 
 fn detector_requires_parse(entry: &crate::model::RuleSpec) -> bool {
@@ -231,6 +249,10 @@ fn detector_runtime_applicable(
     entry: &crate::model::RuleSpec,
     context: &CoverageContext<'_, '_>,
 ) -> bool {
+    if entry.kind == Rule::CommentHygiene {
+        return context.input.source_files.iter().any(|source| crate::api::comments::supports_comments(&source.path))
+            || context.input.source_failures.iter().any(|failure| crate::api::comments::supports_comments(Path::new(&failure.path)));
+    }
     detector_is_applicable(entry, context.detected_languages)
 }
 

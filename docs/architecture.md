@@ -41,3 +41,11 @@ Issues; schema projection alone creates stable Evidence IDs.
 The engine returns the public `Report` directly. Debug metrics and Flow IR take
 separate explicit sidecar paths and never enter the report. Flow IR is only
 materialized when `--flow-ir-output` is requested.
+
+
+Comment inventory and cleanup live behind `reforge_engine::api::comments`.
+They reuse source-scope discovery and language parsers, with separate versioned
+inventory/patch structures rather than changing the analysis report schema.
+The optional Codebase `comment_hygiene` rule shares the extractor over indexed
+trees. Only the explicit comment-apply API writes source files; normal analysis
+and comment preview remain read-only.

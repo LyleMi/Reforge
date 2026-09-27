@@ -10,6 +10,7 @@ use reforge_output::{OutputFormat, load_report, write_report};
 use reforge_schema::Report;
 use serde::Serialize;
 
+mod comments;
 mod configuration;
 use configuration::*;
 
@@ -28,6 +29,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Pick comments or preview and apply explicitly selected comment cleanup.
+    Comments(comments::CommentsCommand),
     /// Analyze a source tree and emit one combined report.
     Analyze(AnalyzeCommand),
     /// List rules and their analysis ownership.
@@ -194,6 +197,7 @@ where
         Err(error) => return Err(error.into()),
     };
     match cli.command {
+        Command::Comments(command) => comments::run(command),
         Command::Analyze(command) => analyze(command),
         Command::Rules(command) => rules(command),
         Command::Init(command) => init(command),

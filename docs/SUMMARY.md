@@ -7,6 +7,7 @@
 # Get started
 
 - [User Guide](user-guide.md)
+- [Pick and clean comments](comments.md)
 - [Configuration](configuration.md)
 
 # Understand Reforge

@@ -38,7 +38,7 @@ mod tests {
             .iter()
             .map(|entry| entry.family.id())
             .collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(families.len(), 17);
+        assert_eq!(families.len(), 18);
     }
 
     #[test]

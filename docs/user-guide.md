@@ -57,6 +57,20 @@ reforge analyze . --analysis codebase --metrics-output metrics.json
 reforge analyze . --analysis dataflow --flow-ir-output flow-ir.json
 ```
 
+## Pick and clean comments
+
+```sh
+reforge comments pick . --candidates
+reforge comments clean . --text 'your code here'
+reforge comments clean . --text 'your code here' --apply
+```
+
+Pick extracts Rust/JS/TS comments with context. Clean previews selected removals
+unless `--apply` is supplied, and retains protected comments. Use
+`reforge comments clean . --all --apply` to remove every comment in scope,
+including protected comments. The
+[comment guide](comments.md) covers JSON plans, selectors and write guarantees.
+
 ## Read a report
 
 Treat `issues` as the only decision units. Each Issue owns one typed subject and one or more Evidence records. Evidence identifies the rule and may include measurements, locations, and an ordered Dataflow witness.

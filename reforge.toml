@@ -18,6 +18,7 @@ ignore-paths = [
 [rules]
 enable = [
   "reforge.codebase.adapter_boundary_bypass",
+  "reforge.codebase.comment_hygiene",
   "reforge.codebase.complex_function",
   "reforge.codebase.config_key_drift",
   "reforge.codebase.data_clump",

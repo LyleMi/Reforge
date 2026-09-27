@@ -63,6 +63,24 @@ reforge analyze . --output html --output-file reforge-report.html
 Windows PowerShell and pinned-version installation are covered in the
 [installation guide](https://lylemi.github.io/Reforge/user-guide.html#install).
 
+## Pick and clean comments
+
+Review Rust/JS/TS comments with context and protection reasons, then preview or
+apply explicitly selected removals:
+
+```sh
+reforge comments pick . --candidates
+reforge comments clean . --text 'your code here'
+reforge comments clean . --text 'your code here' --apply
+# Remove every comment in scope, including protected comments:
+reforge comments clean . --all --apply
+```
+
+Clean defaults to a diff. Documentation, recognized tool directives, licenses
+and safety/debt notes are protected unless `--all` is explicitly selected. Saved plans validate file hashes before
+application. See the [comment guide](docs/comments.md) for selectors, scope,
+encoding preservation and limitations.
+
 ## What it finds
 
 | Area | Examples |

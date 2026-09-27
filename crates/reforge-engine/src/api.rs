@@ -317,6 +317,7 @@ fn value_at<'a>(root: &'a toml::Value, path: &str) -> Option<&'a toml::Value> {
     path.split('.').try_fold(root, |value, key| value.get(key))
 }
 
+pub mod comments;
 mod config;
 use config::{parse_enabled, parse_scope, validate_public_keys, validate_suppressions};
 

@@ -18,6 +18,7 @@ define_rules!(
     LargeFile,
     LargeDirectory,
     DebtMarker,
+    CommentHygiene,
     SimilarFunctions,
     LongFunction,
     ComplexFunction,

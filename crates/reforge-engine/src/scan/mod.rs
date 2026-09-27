@@ -86,6 +86,28 @@ struct WorkspacePlan {
     directories_scanned: usize,
 }
 
+pub(crate) fn comment_source_paths(root: &Path, args: &EffectiveConfig) -> Result<Vec<PathBuf>> {
+    if root.is_file() {
+        let base = root.parent().unwrap_or(root);
+        return Ok(
+            if should_scan_source_file(root, args)
+                && !is_ignored_path(root, base, args)
+                && (args.filters.include_hidden
+                    || !root
+                        .file_name()
+                        .is_some_and(|name| name.to_string_lossy().starts_with('.')))
+            {
+                vec![root.to_path_buf()]
+            } else {
+                vec![]
+            },
+        );
+    }
+    let mut paths = collect_source_scan_plan(root, args)?.source_files;
+    paths.sort();
+    Ok(paths)
+}
+
 #[derive(Debug, Clone, Copy)]
 struct FileScanOptions {
     max_file_lines: usize,

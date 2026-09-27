@@ -73,7 +73,7 @@ fn repository_dogfood_enables_every_preview_rule_without_changing_defaults() {
     let dogfood = Config::parse_toml(&std::fs::read_to_string(path).unwrap()).unwrap();
     let registry = crate::detectors::manifest::rule_registry();
 
-    assert_eq!(registry.len(), 34);
+    assert_eq!(registry.len(), 35);
     assert_eq!(dogfood.rules.enabled.len(), registry.len());
     assert!(
         registry.iter().all(|rule| {
