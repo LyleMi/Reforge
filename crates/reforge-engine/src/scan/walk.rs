@@ -99,10 +99,18 @@ impl SimilarFunctionProgress for ScanSimilarityProgress<'_> {
 }
 
 fn collect_source_scan_plan(root: &Path, args: &EffectiveConfig) -> Result<WorkspacePlan> {
+    collect_source_scan_plan_with(root, args, is_supported_source)
+}
+
+fn collect_source_scan_plan_with(
+    root: &Path,
+    args: &EffectiveConfig,
+    accepts: impl Fn(&Path) -> bool,
+) -> Result<WorkspacePlan> {
     let mut plan = WorkspacePlan::default();
 
     if root.is_file() {
-        if is_supported_source(root) && should_scan_source_file(root, args) {
+        if accepts(root) && should_scan_source_file(root, args) {
             plan.source_files.push(root.to_path_buf());
         }
         return Ok(plan);
@@ -130,7 +138,7 @@ fn collect_source_scan_plan(root: &Path, args: &EffectiveConfig) -> Result<Works
         if file_type.is_dir() {
             plan.directories_scanned += 1;
         } else if file_type.is_file()
-            && is_supported_source(entry.path())
+            && accepts(entry.path())
             && should_scan_source_file(entry.path(), args)
         {
             let path = entry.path().to_path_buf();

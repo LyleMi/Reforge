@@ -15,7 +15,7 @@ pub(super) struct CommentsCommand {
 
 #[derive(Debug, Subcommand)]
 enum CommentCommand {
-    /// Extract Rust/JS/TS comments with context, protections and review hints.
+    /// Extract supported source comments with context, protections and review hints.
     Pick(PickCommand),
     /// Preview selected removals; write sources only with --apply.
     Clean(CleanCommand),

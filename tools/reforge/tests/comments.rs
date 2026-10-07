@@ -144,7 +144,7 @@ fn selectors_and_config_scope_are_honored() {
 fn unsupported_languages_and_parse_errors_have_receipts() {
     let f = TestWorkspace::new();
     fs::write(f.0.join("bad.ts"), "function {").unwrap();
-    fs::write(f.0.join("other.py"), "# ordinary\n").unwrap();
+    fs::write(f.0.join("other.vue"), "# ordinary\n").unwrap();
     let output: serde_json::Value =
         serde_json::from_str(&success(f.run(&["comments", "pick", "--output", "json"]))).unwrap();
     assert_eq!(output["skipped"].as_array().unwrap().len(), 2);
@@ -246,8 +246,8 @@ fn comment_rule_coverage_counts_only_supported_parsed_files() {
     .unwrap();
     let receipt = &output["coverage"]["codebase"]["rules"]["reforge.codebase.comment_hygiene"];
     assert_eq!(receipt["status"], "partial");
-    assert_eq!(receipt["observations"][0]["count"], 1);
-    assert_eq!(receipt["limitations"][0]["count"], 1);
+    assert_eq!(receipt["observations"][0]["count"], 2);
+    assert_eq!(receipt["limitations"][0]["count"], 2);
 }
 
 #[test]
@@ -340,4 +340,56 @@ fn all_applies_in_one_command_and_rejects_narrowing_selectors() {
     ))
     .unwrap();
     assert!(picked["comments"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn cleans_mixed_language_workspace_with_existing_scope_filters() {
+    let workspace = TestWorkspace::new();
+    for (name, source) in [
+        ("module.py", "# remove\nx = '# literal'\n"),
+        (
+            "header.hpp",
+            "/* remove */\nconst char *x = \"// literal\";\n",
+        ),
+        ("config.yaml", "# remove\nx: '# literal'\n"),
+        ("Gemfile", "# remove\nsource 'https://example.com'\n"),
+        ("target/generated.py", "# keep\n"),
+        ("ignored/config.yaml", "# keep\n"),
+        (".hidden.lua", "-- keep\n"),
+    ] {
+        let path = workspace.0.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, source).unwrap();
+    }
+    let args = [
+        "comments",
+        "clean",
+        "--text",
+        "remove",
+        "--ignore-path",
+        "ignored",
+        "--output",
+        "json",
+    ];
+    let first = success(workspace.run(&args));
+    assert_eq!(first, success(workspace.run(&args)));
+    let plan: serde_json::Value = serde_json::from_str(&first).unwrap();
+    assert_eq!(plan["files"].as_array().unwrap().len(), 4);
+    assert!(plan["skipped"].as_array().unwrap().is_empty());
+    fs::write(workspace.0.join("mixed.json"), first).unwrap();
+    success(workspace.run(&["comments", "clean", "--plan", "mixed.json", "--apply"]));
+    for name in ["module.py", "header.hpp", "config.yaml", "Gemfile"] {
+        assert!(
+            !fs::read_to_string(workspace.0.join(name))
+                .unwrap()
+                .contains("remove")
+        );
+    }
+    for name in ["target/generated.py", "ignored/config.yaml", ".hidden.lua"] {
+        assert!(
+            fs::read_to_string(workspace.0.join(name))
+                .unwrap()
+                .contains("keep")
+        );
+    }
 }

@@ -65,7 +65,7 @@ reforge comments clean . --text 'your code here'
 reforge comments clean . --text 'your code here' --apply
 ```
 
-Pick extracts Rust/JS/TS comments with context. Clean previews selected removals
+Pick extracts comments in common programming and configuration languages with context. Clean previews selected removals
 unless `--apply` is supplied, and retains protected comments. Use
 `reforge comments clean . --all --apply` to remove every comment in scope,
 including protected comments. The

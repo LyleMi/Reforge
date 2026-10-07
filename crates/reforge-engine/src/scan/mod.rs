@@ -103,7 +103,10 @@ pub(crate) fn comment_source_paths(root: &Path, args: &EffectiveConfig) -> Resul
             },
         );
     }
-    let mut paths = collect_source_scan_plan(root, args)?.source_files;
+    let mut paths = collect_source_scan_plan_with(root, args, |path| {
+        is_supported_source(path) || crate::api::comments::supports_comments(path)
+    })?
+    .source_files;
     paths.sort();
     Ok(paths)
 }

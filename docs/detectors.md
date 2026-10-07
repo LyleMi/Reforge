@@ -34,7 +34,7 @@ and suppression validation consume the same metadata. See the
 
 - `large_file`: source file line count exceeds `codebase.max-file-lines`.
 - `large_directory`: direct source-file count exceeds `codebase.max-dir-files`.
-- `comment_hygiene`: review hints for ordinary Rust/JS/TS comments, excluding protected notes; see [comment inventory and cleanup](comments.md).
+- `comment_hygiene`: review hints for ordinary comments in supported analyzer languages, excluding protected notes; see [comment inventory and cleanup](comments.md).
 - `debt_marker`: a comment line contains `TODO` or `FIXME`.
 
 Hidden paths are skipped unless `--include-hidden` is set. Generated and

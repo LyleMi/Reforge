@@ -2,9 +2,45 @@
 
 Use `reforge comments pick` to review comments, and `reforge comments clean` to
 preview or apply explicitly selected removals. Both commands run locally.
-They support Rust, JavaScript/JSX and TypeScript/TSX, including `.mjs`, `.cjs`,
-`.mts` and `.cts`. Vue, other languages and files with syntax/encoding errors
-are not editable and appear in the skipped-file receipts when discovered.
+Supported cleanup grammars and file extensions:
+
+| Language | Extensions / filenames |
+| --- | --- |
+| Rust | `.rs` |
+| JavaScript / JSX | `.js`, `.jsx`, `.mjs`, `.cjs` |
+| TypeScript / TSX | `.ts`, `.tsx`, `.mts`, `.cts` |
+| Python | `.py`, `.pyi`, `.pyw` |
+| Go | `.go` |
+| Java | `.java` |
+| C# | `.cs`, `.csx` |
+| Kotlin | `.kt`, `.kts` |
+| PHP | `.php`, `.phtml` |
+| Ruby | `.rb`, `.rake`, `.gemspec`, `Gemfile`, `Rakefile`, `Vagrantfile` |
+| Bash | `.sh`, `.bash` |
+| PowerShell | `.ps1`, `.psm1`, `.psd1` |
+| C | `.c`, `.h` |
+| C++ | `.cc`, `.cpp`, `.cxx`, `.hh`, `.hpp`, `.hxx`, `.C`, `.H` |
+| Swift | `.swift` |
+| Dart | `.dart` |
+| Lua | `.lua` |
+| Scala | `.scala`, `.sc` |
+| R | `.r`, `.R` |
+| SQL | `.sql` |
+| HTML | `.html`, `.htm` |
+| CSS | `.css` |
+| JSON / JSON with comments | `.json`, `.jsonc` |
+| YAML | `.yaml`, `.yml` |
+| TOML | `.toml` |
+
+Comments are identified by syntax nodes, not regular-expression replacement.
+Python docstrings and other string expressions are retained, including in `--all`
+mode. SQL `COMMENT ON` statements are code and are retained. HTML cleanup handles
+markup comments; embedded script/style text is retained. Vue/Svelte components,
+other unsupported languages, unsupported dialect syntax, and files with
+syntax/encoding errors are not editable and appear in skipped-file receipts
+when discovered. SQL support follows the bundled SQL grammar and does not imply
+support for every database dialect. JSONC trailing commas are not accepted by
+the bundled JSON grammar. C++ headers should use a C++ extension; `.h` uses C.
 
 ## Pick a review set
 
@@ -70,7 +106,8 @@ reforge comments clean . --id comment-<full-id>
 Clean requires `--all`, `--id`, `--text` or `--contains`. `--candidates` alone does not
 authorize deletion. Documentation comments, license notices, recognized tool
 instructions (including `reforge:`, `@ts-ignore`, ESLint and source-map markers),
-TODO/FIXME debt, generated notices and recognized safety/rationale statements
+Python lint/type/encoding markers, Go build/compiler directives, shell shebangs,
+PowerShell requirements, formatter instructions, TODO/FIXME debt, generated notices and recognized safety/rationale statements
 are protected in text/ID selection mode, even if the selector matches them.
 Protection is conservative and marker-based; a plain comment with important
 meaning but no recognized marker still requires human judgment.
@@ -159,7 +196,9 @@ reforge analyze . --analysis codebase \
 ```
 
 Or add `reforge.codebase.comment_hygiene` to `[rules].enable` in `reforge.toml`.
-It is a preview, default-off rule for Rust, JavaScript and TypeScript/TSX. Evidence
+It is a preview, default-off rule for the shared analyzer parsers: Rust,
+JavaScript/TypeScript/TSX, Python, Go, Java, C#, Kotlin, PHP, Ruby, Bash and
+PowerShell. Cleanup-only grammars do not expand Codebase or Dataflow coverage. Evidence
 includes the comment location and hint; protected comments do not produce hints.
 It belongs to the documentation-integrity family and uses the shared parsed
 workspace sources. Dataflow-only execution does not run it. The rule cannot be

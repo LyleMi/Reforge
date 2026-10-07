@@ -18,7 +18,7 @@ impl TestWorkspace {
         fs::create_dir_all(self.0.join(path).parent().unwrap()).unwrap();
         fs::write(self.0.join(path), bytes).unwrap();
     }
-    fn pick(&self) -> Inventory {
+    pub(super) fn pick(&self) -> Inventory {
         pick(&self.0, &Config::defaults(), &Selection::default()).unwrap()
     }
     pub(super) fn plan(&self, text: &str) -> CleanPlan {
@@ -128,7 +128,7 @@ fn respects_scope_and_reports_unsupported_and_invalid_sources() {
     f.write(".gitignore", "skip.rs\n");
     f.write("bad.ts", "function { ???");
     f.write("invalid.rs", [0x80]);
-    f.write("unsupported.py", "# comment\n");
+    f.write("unsupported.vue", "# comment\n");
     let mut config = Config::defaults();
     config.apply_scope_overrides(false, false, false, true, &["ignored".into()]);
     let inventory = pick(&f.0, &config, &Selection::default()).unwrap();
@@ -307,7 +307,7 @@ fn rejects_asi_tree_changes_without_writing() {
 fn single_file_scope_exclusions_and_unsupported_receipts_are_respected() {
     let workspace = TestWorkspace::new();
     workspace.write("a.rs", "// removable\n");
-    workspace.write("a.py", "# comment\n");
+    workspace.write("a.vue", "# comment\n");
     let mut config = Config::defaults();
     config.apply_scope_overrides(false, false, false, false, &["a.rs".into()]);
     assert!(
@@ -316,7 +316,7 @@ fn single_file_scope_exclusions_and_unsupported_receipts_are_respected() {
             .comments
             .is_empty()
     );
-    let unsupported = pick(&workspace.0.join("a.py"), &config, &Selection::default()).unwrap();
+    let unsupported = pick(&workspace.0.join("a.vue"), &config, &Selection::default()).unwrap();
     assert_eq!(unsupported.skipped.len(), 1);
 }
 
@@ -388,7 +388,7 @@ fn all_mode_respects_scope_and_reports_skipped_sources() {
     workspace.write("a.rs", "// ordinary\nfn main() {}\n");
     workspace.write("ignored.rs", "// keep\n");
     workspace.write("target/generated.rs", "// keep\n");
-    workspace.write("a.py", "# unsupported\n");
+    workspace.write("a.vue", "# unsupported\n");
     let mut config = Config::defaults();
     config.apply_scope_overrides(false, false, false, false, &["ignored.rs".into()]);
     let plan = prepare_all(&workspace.0, &config).unwrap();

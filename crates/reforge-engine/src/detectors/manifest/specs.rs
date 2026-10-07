@@ -242,7 +242,7 @@ const fn codebase_repository_description(kind: Rule) -> &'static str {
 const RULE_SPEC_SEEDS: &[RuleSpecSeed] = &[
     seed(K::LargeFile, ANALYSIS_CODEBASE, (F::ResponsibilityDecomposition, S::File), (PATHS, &[M::FileLoc])),
     seed(K::LargeDirectory, ANALYSIS_CODEBASE, (F::DirectoryOrganization, S::Directory), (PATHS, &[M::DirectorySourceFiles])),
-    seed(K::CommentHygiene, ANALYSIS_CODEBASE, (F::DocumentationIntegrity, S::File), (&["rust", crate::lang::JAVASCRIPT_LANGUAGE, crate::lang::TYPESCRIPT_LANGUAGE, "tsx"], &[])),
+    seed(K::CommentHygiene, ANALYSIS_CODEBASE, (F::DocumentationIntegrity, S::File), (ALL_PARSED, &[])),
     seed(K::DebtMarker, ANALYSIS_CODEBASE, (F::DeclaredDebt, S::File), (PATHS, &[])),
     seed(K::SimilarFunctions, ANALYSIS_CODEBASE, (F::ImplementationDuplication, S::Group), (ALL_PARSED, &[M::GroupSize])),
     seed(K::LongFunction, ANALYSIS_CODEBASE, (F::FunctionReadability, S::Symbol), (ALL_PARSED, &[M::FunctionLoc])),

@@ -65,7 +65,7 @@ Windows PowerShell and pinned-version installation are covered in the
 
 ## Pick and clean comments
 
-Review Rust/JS/TS comments with context and protection reasons, then preview or
+Review comments in common programming and configuration languages with context and protection reasons, then preview or
 apply explicitly selected removals:
 
 ```sh

@@ -7,19 +7,16 @@ use tree_sitter::{Node, Parser, Tree};
 use super::{Comment, CommentKind, hash};
 
 pub(crate) fn supported(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|part| part.to_str()),
-        Some("rs" | "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "mts" | "cts")
-    )
+    super::languages::language(path).is_some()
 }
 
 pub(super) fn parse(path: &Path, source: &str) -> Result<Tree> {
     if !supported(path) {
         bail!("unsupported comment language");
     }
-    let adapter = crate::lang::adapter_for_path(path).context("unsupported comment language")?;
+    let language = super::languages::language(path).context("unsupported comment language")?;
     let mut parser = Parser::new();
-    parser.set_language(&adapter.language())?;
+    parser.set_language(&language)?;
     let tree = parser
         .parse(source, None)
         .context("parser returned no tree")?;
@@ -68,7 +65,7 @@ fn raw_comment(node: Node<'_>, path: &str, source: &str, source_hash: &str) -> C
         .any(|prefix| text.starts_with(prefix))
     {
         CommentKind::Documentation
-    } else if text.starts_with("//") {
+    } else if !is_block(text) {
         CommentKind::Line
     } else {
         CommentKind::Block
@@ -149,8 +146,36 @@ fn standalone(source: &str, start: usize) -> bool {
     source[line_start..start].trim().is_empty()
 }
 
+fn is_comment(node: Node<'_>) -> bool {
+    if !matches!(
+        node.kind(),
+        "comment"
+            | "line_comment"
+            | "block_comment"
+            | "multiline_comment"
+            | "documentation_block_comment"
+            | "html_comment"
+            | "js_comment"
+            | "marginalia"
+    ) {
+        return false;
+    }
+    // HTML's external scanner can emit comment extras inside quoted attributes.
+    let mut parent = node.parent();
+    while let Some(ancestor) = parent {
+        if matches!(
+            ancestor.kind(),
+            "quoted_attribute_value" | "attribute_value"
+        ) {
+            return false;
+        }
+        parent = ancestor.parent();
+    }
+    true
+}
+
 fn collect<'a>(node: Node<'a>, result: &mut Vec<Node<'a>>) {
-    if node.kind().contains("comment") {
+    if is_comment(node) {
         result.push(node);
         return;
     }
@@ -175,7 +200,7 @@ fn symbol(node: Node<'_>, source: &str) -> Option<String> {
     }
     let mut sibling = node.next_named_sibling();
     while let Some(next) = sibling {
-        if !next.kind().contains("comment") {
+        if !is_comment(next) {
             return next
                 .child_by_field_name("name")
                 .map(|name| source[name.byte_range()].into());
@@ -185,9 +210,34 @@ fn symbol(node: Node<'_>, source: &str) -> Option<String> {
     None
 }
 
+fn block_body(text: &str) -> Option<&str> {
+    for (open, close) in [
+        ("/*", "*/"),
+        ("<#", "#>"),
+        ("<!--", "-->"),
+        ("=begin", "=end"),
+    ] {
+        if let Some(body) = text.strip_prefix(open).and_then(|s| s.strip_suffix(close)) {
+            return Some(body);
+        }
+    }
+    // Lua long comments may use any number of '=' characters.
+    if let Some(rest) = text.strip_prefix("--[") {
+        let count = rest.bytes().take_while(|byte| *byte == b'=').count();
+        if let Some(rest) = rest[count..].strip_prefix('[') {
+            return rest.strip_suffix(&format!("]{}]", "=".repeat(count)));
+        }
+    }
+    None
+}
+
+fn is_block(text: &str) -> bool {
+    block_body(text.trim()).is_some()
+}
+
 pub(super) fn body(text: &str) -> String {
     let text = text.trim();
-    if let Some(block) = text.strip_prefix("/*").and_then(|t| t.strip_suffix("*/")) {
+    if let Some(block) = block_body(text) {
         return block
             .lines()
             .map(|line| line.trim().trim_start_matches('*').trim())
@@ -197,7 +247,14 @@ pub(super) fn body(text: &str) -> String {
             .into();
     }
     text.lines()
-        .map(|line| line.trim().strip_prefix("//").unwrap_or(line.trim()).trim())
+        .map(|line| {
+            let line = line.trim();
+            ["//", "#", "--"]
+                .iter()
+                .find_map(|prefix| line.strip_prefix(prefix))
+                .unwrap_or(line)
+                .trim()
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -206,7 +263,7 @@ pub(super) fn body(text: &str) -> String {
 /// changes and token concatenation while excluding comment trivia and positions.
 pub(super) fn syntax_signature(tree: &Tree, source: &str) -> Vec<String> {
     fn visit(node: Node<'_>, source: &str, output: &mut Vec<String>) {
-        if node.kind().contains("comment") {
+        if is_comment(node) {
             return;
         }
         output.push(format!("({}", node.kind()));

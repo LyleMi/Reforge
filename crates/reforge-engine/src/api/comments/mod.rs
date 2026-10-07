@@ -11,6 +11,7 @@ use super::{Config, EffectiveConfig};
 
 mod classify;
 mod extract;
+mod languages;
 pub(crate) use extract::supported as supports_comments;
 mod plan;
 mod source;
@@ -165,7 +166,9 @@ fn collect_inventory(base: PathBuf, paths: Vec<PathBuf>) -> Result<Inventory> {
         let relative = parts.join("/");
         let read = (|| {
             if !extract::supported(&path) {
-                bail!("unsupported language; comments support Rust, JavaScript and TypeScript/TSX");
+                bail!(
+                    "unsupported comment language; see docs/comments.md for supported extensions"
+                );
             }
             let bytes = std::fs::read(source::safe_path(&base, &relative)?)?;
             let source = source::Source::decode(&bytes)?;
@@ -228,3 +231,6 @@ pub(crate) fn review_detections(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod language_tests;
