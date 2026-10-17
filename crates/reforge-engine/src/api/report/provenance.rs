@@ -20,7 +20,14 @@ fn scope_values(run: &RunResult, config: &Config) -> Vec<String> {
         config.scope.exclude_tests.to_string(),
     ];
     values.extend(config.scope.ignore_paths.iter().cloned());
-    values.extend(run.raw_metrics.files.iter().map(|file| file.path.clone()));
+    values.push(run.ignore_policy_digest.clone());
+    values.push(
+        config
+            .source
+            .get("suppressions")
+            .map(ToString::to_string)
+            .unwrap_or_default(),
+    );
     values.sort();
     values
 }

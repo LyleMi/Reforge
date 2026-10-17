@@ -5,7 +5,14 @@ use crate::model::SourceFailureReason;
 
 pub(super) fn read_source(path: &Path) -> Result<String, SourceFailureReason> {
     let bytes = fs::read(path).map_err(|_| SourceFailureReason::IoError)?;
-    decode_source(&bytes)
+    if bytes.starts_with(&[0xef, 0xbb, 0xbf])
+        || bytes.starts_with(&[0xff, 0xfe])
+        || bytes.starts_with(&[0xfe, 0xff])
+    {
+        decode_source(&bytes)
+    } else {
+        String::from_utf8(bytes).map_err(|_| SourceFailureReason::UnsupportedEncoding)
+    }
 }
 
 fn decode_source(bytes: &[u8]) -> Result<String, SourceFailureReason> {

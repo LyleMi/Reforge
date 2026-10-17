@@ -30,6 +30,8 @@ state.
 | `reforge.codebase.large_public_surface` | A file exports more items than configured. | export syntax | broad/narrow modules | deliberate prelude or facade |
 | `reforge.codebase.import_heavy_file` | A file imports more dependencies than configured. | import syntax | over/under import count | composition roots |
 | `reforge.codebase.function_proliferation` | A file combines high function count, density, and small-function ratio. | function inventory | dense/sparse files | parser combinators |
+| `reforge.codebase.duplicate_file` | Multiple files contain identical decoded source above the configured line threshold. | decoded source inventory | identical/different files, thresholds, stable copy locations | intentional templates, snapshots, independent delivery assets |
+| `reforge.codebase.redefined_name` | A Python name has multiple undecorated definitions among direct children of one module, class, or function scope. | Python definition syntax | repeated definitions/distinct scopes, decorators, conditionals | intentional rebinding; captured earlier definitions |
 | `reforge.codebase.low_module_cohesion` | Multiple exact call-connected function clusters suggest separable module responsibilities. | module function call graph | monolith/split modules | routers, registries, controllers |
 | `reforge.codebase.unused_function` | A private symbol has no supported project-local reference. | symbols and references | referenced/unreferenced symbols | reflection, callbacks, macros |
 | `reforge.codebase.repeated_literal` | A literal repeats enough to inspect ownership. | parsed literals | repeated/unique literals | protocol constants and test data |
@@ -57,3 +59,39 @@ Similarity, literal, generic-bucket, unused-function, adapter, relay, and
 fan-out heuristics remain preview/off until each language independently meets
 the calibration gates. Self-scan is regression data only and cannot promote a
 rule or select a threshold.
+
+### Python redefined names
+
+Enable `reforge.codebase.redefined_name` explicitly under `[rules].enable`.
+It is a preview advisory and does not fail policy gates. Each finding includes
+all definition locations and a definition count. Tests are included unless
+`scope.exclude-tests` is enabled.
+
+The rule compares direct definitions within a lexical scope, including async
+functions and classes. It skips names with decorated definitions (including
+property accessors and overload declarations), and does not traverse conditional,
+loop, or exception blocks. Dynamic assignments and import rebinding are outside
+its scope. A finding requests review of replacement bindings; it does not prove
+the earlier implementation is unused or authorize deleting it.
+
+For example, two direct `def check()` declarations at lines 1 and 4 produce
+`reforge.codebase.redefined_name` with both locations and a group-size measurement of 2.
+
+### Python module cohesion and source copies
+
+`reforge.codebase.low_module_cohesion` now also supports direct, undecorated
+Python module functions. It connects bare-name calls only when the callee is
+unambiguous, the names share a responsibility concept, and parameters, local
+bindings, imports, or module reassignments do not shadow that callee. Methods,
+decorated functions, nested scopes, comprehensions, and dynamic dispatch are
+outside this conservative model. Findings list the members of each inferred
+cluster; they are review evidence rather than an automatic module split.
+
+`reforge.codebase.duplicate_file` groups whole files with identical decoded
+contents. The default minimum is 20 total lines; set
+`codebase.min-duplicate-file-lines` to a positive integer to adjust it. Empty
+files are ignored. Encoding markers are decoded before comparison, but comments,
+whitespace, and line endings are otherwise significant. Tests and generated
+sources follow the normal scan filters. This rule does not require successful
+syntax parsing. Template and case snapshots may be deliberate; review ownership
+and establish a baseline or an explicit, reasoned suppression before gating.

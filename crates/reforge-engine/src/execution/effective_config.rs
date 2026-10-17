@@ -11,6 +11,9 @@ pub struct EffectiveConfig {
     /// Report files whose total line count is above this threshold.
     pub max_file_lines: usize,
 
+    /// Minimum line count for whole-source copy findings.
+    pub min_duplicate_file_lines: usize,
+
     /// Report directories whose direct source file count is above this threshold.
     pub max_dir_files: usize,
 

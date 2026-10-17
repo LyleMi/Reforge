@@ -14,7 +14,21 @@ pub(super) fn assign_stable_anchors(
         .map(|source| (source.display_path.as_str(), source.source.as_ref()))
         .collect::<BTreeMap<_, _>>();
     let qualified_symbols = qualified_symbol_index(parsed_sources);
+    let functions = index_symbols(raw_metrics.functions.iter().map(|metric| SymbolMetric {
+        path: &metric.path,
+        name: &metric.name,
+        line: metric.line,
+        loc: metric.loc,
+    }));
+    let types = index_symbols(raw_metrics.types.iter().map(|metric| SymbolMetric {
+        path: &metric.path,
+        name: &metric.name,
+        line: metric.line,
+        loc: metric.loc,
+    }));
     let lookups = AnchorLookups {
+        functions: &functions,
+        types: &types,
         sources: &source_by_path,
         qualified_symbols: &qualified_symbols,
     };
@@ -24,28 +38,16 @@ pub(super) fn assign_stable_anchors(
                 location.entity_key = Some(location_anchor(
                     &location.path,
                     Some(location.line),
-                    raw_metrics,
-                    lookups.sources,
-                    lookups.qualified_symbols,
+                    lookups,
                 ));
             }
         }
-        detection.semantic_anchor = detection_anchor(
-            detection,
-            raw_metrics,
-            lookups.sources,
-            lookups.qualified_symbols,
-        );
+        detection.semantic_anchor = detection_anchor(detection, lookups);
         detection.normalize_flow_anchor();
     }
 }
 
-fn detection_anchor(
-    detection: &DetectedEvidence,
-    raw_metrics: &RawMetrics,
-    sources: &BTreeMap<&str, &str>,
-    qualified_symbols: &BTreeMap<String, String>,
-) -> String {
+fn detection_anchor(detection: &DetectedEvidence, lookups: AnchorLookups<'_>) -> String {
     if let Some(witness) = &detection.flow_witness {
         return format!(
             "flow:{}:{}:{}",
@@ -53,7 +55,7 @@ fn detection_anchor(
         );
     }
     if matches!(detection.kind, Rule::DebtMarker | Rule::CommentHygiene) {
-        return text_anchor(&detection.path, detection.line, sources);
+        return text_anchor(&detection.path, detection.line, lookups.sources);
     }
     match &detection.subject {
         DetectedSubject::Repository => {
@@ -72,9 +74,9 @@ fn detection_anchor(
             name,
             signature.as_deref(),
             detection,
-            qualified_symbols,
+            lookups.qualified_symbols,
         ),
-        DetectedSubject::Group => group_anchor(detection, raw_metrics, sources, qualified_symbols),
+        DetectedSubject::Group => group_anchor(detection, lookups),
     }
 }
 
@@ -112,20 +114,29 @@ struct SymbolMetric<'a> {
 
 #[derive(Clone, Copy)]
 struct AnchorLookups<'a> {
+    functions: &'a SymbolIndex<'a>,
+    types: &'a SymbolIndex<'a>,
     sources: &'a BTreeMap<&'a str, &'a str>,
     qualified_symbols: &'a BTreeMap<String, String>,
+}
+
+type SymbolIndex<'a> = BTreeMap<&'a str, Vec<SymbolMetric<'a>>>;
+
+fn index_symbols<'a>(metrics: impl Iterator<Item = SymbolMetric<'a>>) -> SymbolIndex<'a> {
+    let mut files = BTreeMap::<_, Vec<_>>::new();
+    for metric in metrics {
+        files.entry(metric.path).or_default().push(metric);
+    }
+    files
 }
 
 fn symbol_anchor<'a>(
     scope: &str,
     path: &str,
     line: Option<usize>,
-    metrics: impl Iterator<Item = SymbolMetric<'a>>,
+    metrics: &[SymbolMetric<'a>],
     lookups: AnchorLookups<'_>,
 ) -> String {
-    let metrics = metrics
-        .filter(|metric| metric.path == path)
-        .collect::<Vec<_>>();
     let selected = line.and_then(|line| {
         metrics
             .iter()
@@ -168,12 +179,7 @@ fn symbol_anchor<'a>(
     )
 }
 
-fn group_anchor(
-    detection: &DetectedEvidence,
-    raw_metrics: &RawMetrics,
-    sources: &BTreeMap<&str, &str>,
-    qualified_symbols: &BTreeMap<String, String>,
-) -> String {
+fn group_anchor(detection: &DetectedEvidence, lookups: AnchorLookups<'_>) -> String {
     let mut members = std::iter::once((detection.path.as_str(), detection.line))
         .chain(
             detection
@@ -181,7 +187,7 @@ fn group_anchor(
                 .iter()
                 .map(|location| (location.path.as_str(), Some(location.line))),
         )
-        .map(|(path, line)| location_anchor(path, line, raw_metrics, sources, qualified_symbols))
+        .map(|(path, line)| location_anchor(path, line, lookups))
         .collect::<Vec<_>>();
     members.sort();
     members.dedup();
@@ -192,66 +198,32 @@ fn group_anchor(
     )
 }
 
-fn location_anchor(
-    path: &str,
-    line: Option<usize>,
-    raw_metrics: &RawMetrics,
-    sources: &BTreeMap<&str, &str>,
-    qualified_symbols: &BTreeMap<String, String>,
-) -> String {
-    let functions = raw_metrics
+fn location_anchor(path: &str, line: Option<usize>, lookups: AnchorLookups<'_>) -> String {
+    let functions = lookups
         .functions
-        .iter()
-        .map(|metric| SymbolMetric {
-            path: &metric.path,
-            name: &metric.name,
-            line: metric.line,
-            loc: metric.loc,
-        })
-        .collect::<Vec<_>>();
+        .get(path)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
     if line.is_some_and(|line| {
-        functions.iter().any(|metric| {
-            metric.path == path && metric.line <= line && line < metric.line + metric.loc.max(1)
-        })
+        functions
+            .iter()
+            .any(|metric| metric.line <= line && line < metric.line + metric.loc.max(1))
     }) {
-        return symbol_anchor(
-            "function",
-            path,
-            line,
-            functions.into_iter(),
-            AnchorLookups {
-                sources,
-                qualified_symbols,
-            },
-        );
+        return symbol_anchor("function", path, line, functions, lookups);
     }
-    let types = raw_metrics
+    let types = lookups
         .types
-        .iter()
-        .map(|metric| SymbolMetric {
-            path: &metric.path,
-            name: &metric.name,
-            line: metric.line,
-            loc: metric.loc,
-        })
-        .collect::<Vec<_>>();
+        .get(path)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
     if line.is_some_and(|line| {
-        types.iter().any(|metric| {
-            metric.path == path && metric.line <= line && line < metric.line + metric.loc.max(1)
-        })
+        types
+            .iter()
+            .any(|metric| metric.line <= line && line < metric.line + metric.loc.max(1))
     }) {
-        return symbol_anchor(
-            "type",
-            path,
-            line,
-            types.into_iter(),
-            AnchorLookups {
-                sources,
-                qualified_symbols,
-            },
-        );
+        return symbol_anchor("type", path, line, types, lookups);
     }
-    text_anchor(path, line, sources)
+    text_anchor(path, line, lookups.sources)
 }
 
 fn text_anchor(path: &str, line: Option<usize>, sources: &BTreeMap<&str, &str>) -> String {
@@ -259,7 +231,11 @@ fn text_anchor(path: &str, line: Option<usize>, sources: &BTreeMap<&str, &str>) 
         return format!("text:{}:unavailable", normalize_anchor_path(path));
     };
     let line_index = line.unwrap_or(1).saturating_sub(1);
-    let normalized_lines = source.lines().map(normalize_text).collect::<Vec<_>>();
+    let normalized_lines = source
+        .lines()
+        .take(line_index + 1)
+        .map(normalize_text)
+        .collect::<Vec<_>>();
     let content = normalized_lines
         .get(line_index)
         .filter(|value| !value.is_empty())

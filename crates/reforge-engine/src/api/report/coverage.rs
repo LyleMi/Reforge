@@ -123,6 +123,11 @@ fn language_coverage(run: &RunResult, analysis: Analysis) -> BTreeMap<String, La
             languages.entry(language.into()).or_default().files += 1;
         }
     }
+    for failure in &run.source_failures {
+        if let Some(language) = language_for_path(&failure.path) {
+            languages.entry(language.into()).or_default();
+        }
+    }
     for function in &run.raw_metrics.functions {
         if let Some(language) = language_for_path(&function.path) {
             languages.entry(language.into()).or_default().functions += 1;
@@ -158,8 +163,35 @@ fn apply_language_status(
         coverage.status = CoverageStatus::Partial;
         coverage.limitations.push(parse_failure(parse_failures));
     }
+    let source_limitations = crate::model::source_failure_limitations(
+        run.source_failures
+            .iter()
+            .filter(|failure| language_for_path(&failure.path) == Some(language)),
+    );
+    if !source_limitations.is_empty() {
+        coverage.status = CoverageStatus::Partial;
+        coverage
+            .limitations
+            .extend(source_limitations.iter().cloned());
+    }
     if analysis == Analysis::Dataflow {
         coverage.capabilities = dataflow_capability_receipts(run, language, parse_failures);
+        apply_source_capability_limitations(coverage, &source_limitations);
+    }
+}
+
+fn apply_source_capability_limitations(
+    coverage: &mut LanguageCoverage,
+    limitations: &[CoverageLimitation],
+) {
+    if limitations.is_empty() {
+        return;
+    }
+    for receipt in coverage.capabilities.values_mut() {
+        if receipt.status != CoverageStatus::Unsupported {
+            receipt.status = CoverageStatus::Partial;
+            receipt.limitations.extend_from_slice(limitations);
+        }
     }
 }
 
@@ -321,13 +353,9 @@ pub(super) fn language_for_path(path: &str) -> Option<&'static str> {
 
 fn structure_limitations(run: &RunResult) -> Vec<CoverageLimitation> {
     let mut limitations = Vec::new();
-    if !run.source_failures.is_empty() {
-        limitations.push(CoverageLimitation {
-            code: "source_read_failure".into(),
-            count: run.source_failures.len(),
-            message: "source files could not be read".into(),
-        });
-    }
+    limitations.extend(crate::model::source_failure_limitations(
+        run.source_failures.iter(),
+    ));
     if !run.parse_failures.is_empty() {
         limitations.push(parse_failure(run.parse_failures.len()));
     }

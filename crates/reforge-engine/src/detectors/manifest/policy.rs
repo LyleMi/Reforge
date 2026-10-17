@@ -89,7 +89,7 @@ mod tests {
         assert_eq!(entry.analysis, "codebase");
         assert_eq!(entry.family, IssueFamily::ResponsibilityDecomposition);
         assert_eq!(entry.allowed_subjects, [SubjectKind::File]);
-        assert_eq!(entry.semantic_version, "1.0.0");
+        assert_eq!(entry.semantic_version, "1.1.0");
         assert_eq!(entry.maturity, RuleMaturity::Preview);
         assert!(!entry.default_enabled);
         assert_eq!(
@@ -98,7 +98,7 @@ mod tests {
                 .keys()
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
-            ["javascript", "tsx", "typescript"]
+            ["javascript", "python", "tsx", "typescript"]
         );
         assert_eq!(
             entry.measurements,

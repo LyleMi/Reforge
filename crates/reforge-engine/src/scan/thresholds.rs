@@ -12,6 +12,7 @@ pub(super) struct ConfigThresholdDefaults {
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct ConfigFileThresholdDefaults {
     pub max_file_lines: Option<usize>,
+    pub min_duplicate_file_lines: Option<usize>,
     pub max_dir_files: Option<usize>,
 }
 
@@ -84,6 +85,10 @@ fn apply_threshold_settings(config: &mut EffectiveConfig, settings: ThresholdSet
 
 fn apply_configured_thresholds(config: &mut EffectiveConfig, configured: ConfigThresholdDefaults) {
     apply_optional(&mut config.max_file_lines, configured.file.max_file_lines);
+    apply_optional(
+        &mut config.min_duplicate_file_lines,
+        configured.file.min_duplicate_file_lines,
+    );
     apply_optional(&mut config.max_dir_files, configured.file.max_dir_files);
     apply_optional(
         &mut config.min_similar_functions,

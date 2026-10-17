@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AnalysisCoverage, AnalysisProvenance, BaselineComparison, BaselineEntry, BaselineState, Issue,
+    AnalysisCoverage, AnalysisProvenance, BaselineComparison, BaselineState, Issue,
     REPORT_SCHEMA_VERSION, ReportProvenance, RuleProvenance, comparison_entry,
     coverage_is_downgraded, stable_id, validate_coverage, validate_issues, validate_namespace,
     validate_provenance, validate_rule_provenance,
@@ -188,14 +188,16 @@ impl Report {
             .into_iter()
             .map(|id| {
                 let entry = match (current.get(id), previous.get(id)) {
-                    (Some(after), Some(before)) => BaselineEntry {
-                        state: if after.content_fingerprint == before.content_fingerprint {
+                    (Some(after), Some(before)) => comparison_entry(
+                        self,
+                        baseline,
+                        after,
+                        if after.content_fingerprint == before.content_fingerprint {
                             BaselineState::Unchanged
                         } else {
                             BaselineState::Updated
                         },
-                        reason: None,
-                    },
+                    ),
                     (Some(issue), None) => {
                         comparison_entry(self, baseline, issue, BaselineState::New)
                     }

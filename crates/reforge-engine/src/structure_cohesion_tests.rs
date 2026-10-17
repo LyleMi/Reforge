@@ -227,3 +227,56 @@ fn skips_split_modules_router_controller_callbacks_and_python() -> Result<()> {
     }
     Ok(())
 }
+
+fn python_cohesion_source() -> &'static str {
+    "def render_page():\n    render_header()\n    render_body()\ndef render_header(): pass\ndef render_body(): pass\ndef diff_page():\n    diff_header()\n    diff_body()\ndef diff_header(): pass\ndef diff_body(): pass\n"
+}
+
+#[test]
+fn python_module_clusters_have_explicit_members_and_ignore_nested_scopes() -> Result<()> {
+    let detections = scan_structure(
+        &[source_file("src/checks.py", python_cohesion_source())],
+        &cohesion_options(),
+    )?;
+    let evidence = detections
+        .iter()
+        .find(|item| item.kind == Rule::LowModuleCohesion)
+        .unwrap();
+    assert_eq!(evidence.related_locations.len(), 6);
+    assert!(evidence.message.contains("render"));
+    assert!(evidence.message.contains("diff"));
+    for source in [
+        python_cohesion_source().replace("def render_page():", "def render_page(render_header):"),
+        python_cohesion_source().replace(
+            "    render_header()",
+            "    render_header = factory()\n    render_header()",
+        ),
+        python_cohesion_source().replace(
+            "    render_header()",
+            "    from other import render_header\n    render_header()",
+        ),
+        python_cohesion_source().replace(
+            "    render_header()",
+            "    def render_header(): pass\n    render_header()",
+        ),
+        python_cohesion_source().replace("    render_header()", "    obj.render_header()"),
+        format!(
+            "{}\nrender_header = replacement\n",
+            python_cohesion_source()
+        ),
+        python_cohesion_source()
+            .replace("def render_header():", "@decorator\ndef render_header():"),
+    ] {
+        let detections = scan_structure(
+            &[source_file("src/checks.py", &source)],
+            &cohesion_options(),
+        )?;
+        assert!(
+            detections
+                .iter()
+                .all(|item| item.kind != Rule::LowModuleCohesion),
+            "{source}"
+        );
+    }
+    Ok(())
+}

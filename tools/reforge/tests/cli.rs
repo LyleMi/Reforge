@@ -332,3 +332,146 @@ fn removed_commands_and_legacy_config_are_explicit_errors() {
     );
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn explicit_preview_gate_ratchets_code_growth_and_rejects_scope_or_coverage_gaps() {
+    let root = fixture("repository-gate");
+    let config = root.join("reforge.toml");
+    std::fs::write(&config, "version = 2\n[rules]\nenable = [\"reforge.codebase.redefined_name\"]\n[codebase]\nchurn = \"off\"\n").unwrap();
+    std::fs::write(root.join("src/broken.sh"), "if then\n").unwrap();
+    let source = root.join("src/checks.py");
+    std::fs::write(&source, "def check(): pass\ndef check(): pass\n").unwrap();
+    let baseline = root.join("baseline.json");
+    analyze(&root, Some("codebase"), &baseline);
+    let current = root.join("current.json");
+    let run = |mode: &str, extra: &[&str]| {
+        let mut command = binary();
+        command.args([
+            "analyze",
+            root.to_str().unwrap(),
+            "--analysis",
+            "codebase",
+            "--gate",
+            mode,
+            "--gate-rule",
+            "reforge.codebase.redefined_name",
+            "--output",
+            "json",
+            "--output-file",
+            current.to_str().unwrap(),
+            "--reproducible",
+        ]);
+        if mode == "new" {
+            command.args(["--baseline", baseline.to_str().unwrap()]);
+        }
+        command.args(extra).output().unwrap()
+    };
+    assert!(!run("all", &[]).status.success());
+    assert!(
+        current.is_file(),
+        "failed gates must still write the report"
+    );
+    assert!(run("new", &[]).status.success());
+    std::fs::write(root.join("src/new.py"), "def fresh(): pass\n").unwrap();
+    let result = run("new", &[]);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    std::fs::write(
+        root.join("src/new.py"),
+        "def fresh(): pass\ndef fresh(): pass\n",
+    )
+    .unwrap();
+    assert!(!run("new", &[]).status.success());
+    let report: reforge_schema::Report =
+        serde_json::from_slice(&std::fs::read(&current).unwrap()).unwrap();
+    assert!(
+        report
+            .baseline_comparison
+            .unwrap()
+            .issues
+            .values()
+            .any(|entry| entry.state == reforge_schema::BaselineState::New)
+    );
+    std::fs::remove_file(root.join("src/new.py")).unwrap();
+    std::fs::write(&source, "def check(): pass\n").unwrap();
+    assert!(run("new", &[]).status.success());
+    std::fs::write(root.join(".ignore"), "src/checks.py\n").unwrap();
+    let changed_scope = run("new", &[]);
+    assert!(!changed_scope.status.success());
+    assert!(String::from_utf8_lossy(&changed_scope.stderr).contains("scope"));
+    std::fs::remove_file(root.join(".ignore")).unwrap();
+    std::fs::write(&source, "def broken(:\n").unwrap();
+    let diagnostics = root.join("diagnostics.json");
+    let incomplete = run(
+        "all",
+        &["--diagnostics-output", diagnostics.to_str().unwrap()],
+    );
+    let details: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&diagnostics).unwrap()).unwrap();
+    assert!(
+        details["parse_failures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|failure| failure["path"] == "src/checks.py")
+    );
+    assert!(!incomplete.status.success());
+    assert!(String::from_utf8_lossy(&incomplete.stderr).contains("incomplete coverage"));
+    std::fs::write(&source, "def check(): pass\n").unwrap();
+    let disabled = run("all", &["--set", "rules.enable=[]"]);
+    assert!(!disabled.status.success());
+    assert!(String::from_utf8_lossy(&disabled.stderr).contains("rules.enable"));
+    assert!(
+        !run("all", &["--gate-rule", "reforge.codebase.typo"])
+            .status
+            .success()
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn explicit_gate_compares_only_selected_evidence_in_aggregated_issues() {
+    let root = fixture("gate-evidence");
+    std::fs::write(root.join("reforge.toml"), "version = 2\n[rules]\nenable = [\"reforge.codebase.long_function\", \"reforge.codebase.complex_function\"]\n[codebase]\nchurn = \"off\"\nmax-function-lines = 2\nmax-function-complexity = 1\n").unwrap();
+    let source = root.join("src/check.py");
+    std::fs::write(
+        &source,
+        "def check(x, y):\n    value = x\n    return value\n",
+    )
+    .unwrap();
+    let baseline = root.join("baseline.json");
+    analyze(&root, Some("codebase"), &baseline);
+    std::fs::write(
+        &source,
+        "def check(x, y):\n    if x and y: return x\n    return y\n",
+    )
+    .unwrap();
+    let output = binary()
+        .args([
+            "analyze",
+            root.to_str().unwrap(),
+            "--analysis",
+            "codebase",
+            "--baseline",
+            baseline.to_str().unwrap(),
+            "--gate",
+            "new",
+            "--gate-rule",
+            "reforge.codebase.long_function",
+            "--output",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: reforge_schema::Report = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(report.issues.iter().any(|issue| issue.evidence.len() > 1));
+    std::fs::remove_dir_all(root).unwrap();
+}

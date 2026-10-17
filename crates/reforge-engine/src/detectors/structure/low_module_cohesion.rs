@@ -11,18 +11,23 @@ struct CohesionEvidenceData<'analysis, 'metric> {
 }
 
 fn scan_low_module_cohesion(
-    file: &SourceFile,
-    family: LanguageFamily,
+    parsed: &ParsedSourceFile,
     functions: &[FunctionMetric],
     options: &StructureOptions,
     signals: &mut FileSignals,
 ) {
-    if family != LanguageFamily::JavaScriptTypeScript {
+    let file = &parsed.file;
+    let family = parsed.family;
+    let root = parsed.tree.root_node();
+    if !matches!(family, LanguageFamily::JavaScriptTypeScript | LanguageFamily::Python) {
         return;
     }
+    let rebound = if family == LanguageFamily::Python {
+        python_calls::module_rebindings(root, &file.source)
+    } else { BTreeSet::new() };
     let mut candidates = functions
         .iter()
-        .filter(|function| function.is_module_scope && !function.is_anonymous)
+        .filter(|function| function.is_module_scope && !function.is_anonymous && !rebound.contains(&function.name))
         .collect::<Vec<_>>();
     candidates.sort_by_key(|function| (function.line, function.name.as_str()));
     if candidates.len() < options.min_module_functions {

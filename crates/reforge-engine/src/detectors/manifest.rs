@@ -56,7 +56,12 @@ static RULE_SPECS: LazyLock<Vec<RuleSpec>> = LazyLock::new(|| {
             description: seed.description.into(),
             maturity: RuleMaturity::Preview,
             default_enabled: false,
-            semantic_version: "1.0.0".into(),
+            semantic_version: if seed.kind == Rule::LowModuleCohesion {
+                "1.1.0"
+            } else {
+                "1.0.0"
+            }
+            .into(),
             validation_basis: ValidationBasis::Fixture,
         })
         .collect()

@@ -82,7 +82,7 @@ Structural detectors use Tree-sitter for supported languages.
   functions. This is an over-splitting signal, not proof that any function is
   unused. It counts only named, non-nested callables, so nested callbacks do not
   inflate the file function inventory.
-- `low_module_cohesion` (JavaScript, TypeScript, TSX, and Vue): a module has at
+- `low_module_cohesion` (JavaScript, TypeScript, TSX, Vue, and Python): a module has at
   least two responsibility clusters of three or more module-scope functions.
   A cluster edge requires both an exact direct local call and a shared
   normalized function-name concept. Member calls, dynamic calls, class methods,
@@ -90,7 +90,12 @@ Structural detectors use Tree-sitter for supported languages.
   `codebase.min-module-functions` and
   `codebase.min-clustered-function-percent`.
 
-Tests are excluded from general structural Evidence. Use `--exclude-tests` only
+`redefined_name` also checks Python test code for direct repeated definitions.
+It excludes decorated bindings and conditional alternatives. `duplicate_file`
+compares complete decoded source across the selected inventory, including tests,
+using hashes followed by exact content checks. Both rules are preview/off.
+
+Other general structural Evidence excludes tests. Use `--exclude-tests` only
 when test files should be removed from the source inventory entirely.
 
 For Rust, `large_public_surface` counts items with visibility modifiers such as
@@ -221,7 +226,7 @@ locations, and Coverage. Treat heuristic Evidence as a prompt for inspection,
 not an automatic refactor instruction.
 
 `issues=0` means no enabled rule surfaced an unsuppressed Issue. It does not
-mean disabled preview observations were evaluated as findings, or prove that
+mean disabled detectors ran, or prove that
 the scanned code is healthy or bug-free. Check rule activation, Coverage, and
 the suppression summary when explaining an empty Issue list.
 
@@ -234,3 +239,10 @@ reason, and optional line.
 Suppressions remove matching Evidence before Issue aggregation. The suppression
 summary preserves audit context so zero unsuppressed Issues is not mistaken for
 zero observed signals.
+
+Disabled Codebase rules have `enabled_source = "disabled"`,
+`status = "not_applicable"`, and no observations. Expensive detector stages are
+scheduled only when selected rules require them; shared parsing and raw metrics
+may still serve other selected analyses. This is execution isolation, not input
+sampling. Evidence identity uses per-file symbol indexes, preserving stable
+anchors without repeatedly scanning the entire workspace symbol inventory.

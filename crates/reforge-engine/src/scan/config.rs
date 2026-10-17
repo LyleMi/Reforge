@@ -23,6 +23,7 @@ pub(crate) use data_flow::{DataFlowBoundaryConfig, DataFlowConfig};
 pub(crate) struct ConfigFile {
     preset: Option<ThresholdPreset>,
     max_file_lines: Option<usize>,
+    min_duplicate_file_lines: Option<usize>,
     max_dir_files: Option<usize>,
     min_similar_functions: Option<usize>,
     min_function_tokens: Option<usize>,
@@ -73,6 +74,7 @@ impl From<&ConfigFile> for ConfigThresholdDefaults {
             preset: config.preset,
             file: ConfigFileThresholdDefaults {
                 max_file_lines: config.max_file_lines,
+                min_duplicate_file_lines: config.min_duplicate_file_lines,
                 max_dir_files: config.max_dir_files,
             },
             similarity: ConfigSimilarityThresholdDefaults {
@@ -117,28 +119,9 @@ pub(crate) fn parse_config_value(config: &toml::Value) -> Result<ConfigFile> {
     {
         output.insert("ignore-paths".into(), paths.clone());
     }
-    let root = config
-        .get(reforge_schema::ANALYSIS_DATAFLOW)
-        .and_then(toml::Value::as_table);
-    let mut dataflow = root
-        .and_then(|value| value.get("search"))
-        .and_then(toml::Value::as_table)
-        .cloned()
-        .unwrap_or_default();
-    for section in ["relay", "fan-out"] {
-        if let Some(values) = root
-            .and_then(|value| value.get(section))
-            .and_then(toml::Value::as_table)
-        {
-            dataflow.extend(values.clone());
-        }
-    }
-    if let Some(policies) = root.and_then(|value| value.get("policies")).cloned() {
-        dataflow.insert("boundaries".into(), policies);
-    }
     output.insert(
         reforge_schema::ANALYSIS_DATAFLOW.into(),
-        toml::Value::Table(dataflow),
+        normalized_dataflow_config(config),
     );
     if let Some(suppressions) = config.get("suppressions").and_then(toml::Value::as_array) {
         let mapped = suppressions
@@ -163,8 +146,34 @@ pub(crate) fn parse_config_value(config: &toml::Value) -> Result<ConfigFile> {
     let config: ConfigFile = toml::Value::Table(output)
         .try_into()
         .context("failed to parse typed Reforge configuration")?;
+    if config.min_duplicate_file_lines == Some(0) {
+        bail!("codebase.min-duplicate-file-lines must be greater than zero");
+    }
     validate_data_flow_config(&config.data_flow)?;
     Ok(config)
+}
+
+fn normalized_dataflow_config(config: &toml::Value) -> toml::Value {
+    let root = config
+        .get(reforge_schema::ANALYSIS_DATAFLOW)
+        .and_then(toml::Value::as_table);
+    let mut dataflow = root
+        .and_then(|value| value.get("search"))
+        .and_then(toml::Value::as_table)
+        .cloned()
+        .unwrap_or_default();
+    for section in ["relay", "fan-out"] {
+        if let Some(values) = root
+            .and_then(|value| value.get(section))
+            .and_then(toml::Value::as_table)
+        {
+            dataflow.extend(values.clone());
+        }
+    }
+    if let Some(policies) = root.and_then(|value| value.get("policies")).cloned() {
+        dataflow.insert("boundaries".into(), policies);
+    }
+    toml::Value::Table(dataflow)
 }
 
 pub(crate) fn effective_scan_config_with(

@@ -32,10 +32,9 @@ fn lossless_index_matches_exhaustive_pair_oracle() {
         .flat_map(|length| sequences(length, 3))
         .map(candidate)
         .collect::<Vec<_>>();
-    let buckets = candidate_buckets(&candidates);
 
     for threshold in [0.0, 0.5, 0.75, 0.85, 1.0] {
-        let index = CandidateIndex::build(&candidates, &buckets, threshold);
+        let mut index = CandidateIndex::new(&candidates, threshold);
         for left in 0..candidates.len() {
             for right in left + 1..candidates.len() {
                 let mut workspace = LcsWorkspace::default();
@@ -84,5 +83,23 @@ fn disjoint_large_fixture_avoids_lcs_work() {
     assert_eq!(stats.total_candidate_pairs, 7_140);
     assert_eq!(stats.indexed_candidate_pairs, 0);
     assert_eq!(stats.multiset_pruned_pairs, 7_140);
+    assert_eq!(stats.lcs_comparisons, 0);
+}
+
+#[test]
+fn repeated_scaffolds_do_not_materialize_quadratic_candidate_pairs() {
+    let candidates = (0..10_000)
+        .map(|_| candidate(vec![1, 2, 3, 4]))
+        .collect::<Vec<_>>();
+    let options = SimilarFunctionOptions {
+        min_group_size: 3,
+        min_tokens: 1,
+        threshold: 0.85,
+        include_test_similarity: true,
+    };
+    let (detections, stats) = group_candidates(&candidates, &options, &mut NoopSimilarityProgress);
+    assert_eq!(detections.len(), 1);
+    assert_eq!(stats.total_candidate_pairs, 49_995_000);
+    assert_eq!(stats.indexed_candidate_pairs, 9_999);
     assert_eq!(stats.lcs_comparisons, 0);
 }

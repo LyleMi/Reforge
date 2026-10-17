@@ -328,6 +328,8 @@ fn known_detection_kinds() -> Vec<String> {
         Rule::ImportHeavyFile,
         Rule::FunctionProliferation,
         Rule::LowModuleCohesion,
+        Rule::RedefinedName,
+        Rule::DuplicateFile,
         Rule::UnusedFunction,
         Rule::RepeatedLiteral,
         Rule::RepeatedErrorPattern,

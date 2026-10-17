@@ -1,3 +1,4 @@
+use crate::lang::PYTHON_LANGUAGE;
 use ObservationSource as O;
 use SubjectKind as S;
 use IssueFamily as F;
@@ -9,7 +10,7 @@ const ALL_PARSED: &[&str] = &[
     "javascript",
     "typescript",
     "tsx",
-    "python",
+    PYTHON_LANGUAGE,
     "go",
     "java",
     "csharp",
@@ -24,7 +25,7 @@ const UNUSED: &[&str] = &[
     "javascript",
     "typescript",
     "tsx",
-    "python",
+    PYTHON_LANGUAGE,
     "go",
     "csharp",
 ];
@@ -33,14 +34,15 @@ const GRAPH: &[&str] = &[
     "javascript",
     "typescript",
     "tsx",
-    "python",
+    PYTHON_LANGUAGE,
     "ruby",
     "c",
     "cpp",
     "csharp",
 ];
-const FLOW: &[&str] = &["rust", "javascript", "typescript", "tsx", "python"];
-const JAVASCRIPT_MODULES: &[&str] = &[
+const FLOW: &[&str] = &["rust", "javascript", "typescript", "tsx", PYTHON_LANGUAGE];
+const COHESION_MODULES: &[&str] = &[
+    PYTHON_LANGUAGE,
     crate::lang::JAVASCRIPT_LANGUAGE,
     crate::lang::TYPESCRIPT_LANGUAGE,
     "tsx",
@@ -85,6 +87,8 @@ const fn seed_observation_source(kind: Rule, subject: SubjectKind) -> Observatio
 
 const fn rule_description(kind: Rule) -> &'static str {
     match kind {
+        K::DuplicateFile => "Groups files with identical decoded source and records every copy location.",
+        K::RedefinedName => "Reports repeated undecorated Python definitions in the same direct lexical scope.",
         K::LargeFile
         | K::LargeDirectory
         | K::DebtMarker
@@ -156,7 +160,7 @@ const fn codebase_metric_description(kind: Rule) -> &'static str {
             "Reports files combining high function count, density, and small-function ratio."
         }
         K::LowModuleCohesion => {
-            "Reports JavaScript-family modules containing multiple call-connected responsibility clusters."
+            "Reports JavaScript-family and Python modules containing multiple call-connected responsibility clusters."
         }
         K::UnusedFunction => {
             "Reports private functions with no project-wide reference outside their own body."
@@ -253,7 +257,9 @@ const RULE_SPEC_SEEDS: &[RuleSpecSeed] = &[
     seed(K::LargePublicSurface, ANALYSIS_CODEBASE, (F::ModuleSurface, S::File), (ALL_PARSED, &[M::FilePublicItems])),
     seed(K::ImportHeavyFile, ANALYSIS_CODEBASE, (F::ModuleSurface, S::File), (ALL_PARSED, &[M::FileImports])),
     seed(K::FunctionProliferation, ANALYSIS_CODEBASE, (F::ResponsibilityDecomposition, S::File), (ALL_PARSED, &[M::FileFunctionCount, M::FileFunctionsPerHundredLines, M::FileSmallFunctionRatio])),
-    seed(K::LowModuleCohesion, ANALYSIS_CODEBASE, (F::ResponsibilityDecomposition, S::File), (JAVASCRIPT_MODULES, &[M::FileModuleFunctionCount, M::FileResponsibilityClusterCount, M::FileClusteredFunctionPercent])),
+    seed(K::LowModuleCohesion, ANALYSIS_CODEBASE, (F::ResponsibilityDecomposition, S::File), (COHESION_MODULES, &[M::FileModuleFunctionCount, M::FileResponsibilityClusterCount, M::FileClusteredFunctionPercent])),
+    seed(K::DuplicateFile, ANALYSIS_CODEBASE, (F::ImplementationDuplication, S::Group), (PATHS, &[M::GroupSize, M::FileLoc])),
+    seed(K::RedefinedName, ANALYSIS_CODEBASE, (F::ImplementationDuplication, S::Group), (&[PYTHON_LANGUAGE], &[M::GroupSize])),
     seed(K::UnusedFunction, ANALYSIS_CODEBASE, (F::DeadCode, S::Symbol), (UNUSED, &[M::FunctionReferences])),
     seed(K::RepeatedLiteral, ANALYSIS_CODEBASE, (F::LiteralOwnership, S::Group), (ALL_PARSED, &[M::GroupSize])),
     seed(K::RepeatedErrorPattern, ANALYSIS_CODEBASE, (F::ErrorHandlingDuplication, S::Group), (ALL_PARSED, &[M::GroupSize])),

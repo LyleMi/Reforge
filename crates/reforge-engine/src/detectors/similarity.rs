@@ -220,7 +220,7 @@ fn group_candidates(
     progress: &mut dyn SimilarFunctionProgress,
 ) -> (Vec<DetectedEvidence>, SimilarityComparisonStats) {
     let buckets = candidate_buckets(candidates);
-    let mut candidate_index = CandidateIndex::build(candidates, &buckets, options.threshold);
+    let mut candidate_index = CandidateIndex::new(candidates, options.threshold);
     let mut comparison_progress = ComparisonProgress::new(progress, total_comparisons(&buckets));
     let mut detections = Vec::new();
 
@@ -265,7 +265,7 @@ fn group_candidate_bucket(
     candidates: &[FunctionCandidate],
     indexes: &[usize],
     options: &SimilarFunctionOptions,
-    candidate_index: &mut CandidateIndex,
+    candidate_index: &mut CandidateIndex<'_>,
     progress: &mut ComparisonProgress<'_>,
 ) -> Vec<DetectedEvidence> {
     let mut detections = Vec::new();
@@ -331,7 +331,7 @@ fn collect_similar_group(
     bucket: &CandidateBucket<'_>,
     used: &[bool],
     representative: Representative,
-    comparison: &mut CandidateComparison<'_, '_>,
+    comparison: &mut CandidateComparison<'_, '_, '_>,
 ) -> Vec<usize> {
     let representative_candidate = &bucket.candidates[representative.index];
     let mut group = vec![representative.index];
@@ -354,13 +354,13 @@ fn collect_similar_group(
     group
 }
 
-struct CandidateComparison<'index, 'progress> {
-    index: &'index mut CandidateIndex,
+struct CandidateComparison<'index, 'progress, 'candidates> {
+    index: &'index mut CandidateIndex<'candidates>,
     progress: &'index mut ComparisonProgress<'progress>,
     workspace: LcsWorkspace,
 }
 
-impl CandidateComparison<'_, '_> {
+impl CandidateComparison<'_, '_, '_> {
     fn are_similar(
         &mut self,
         representative_index: usize,

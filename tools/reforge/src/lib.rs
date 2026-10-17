@@ -12,6 +12,7 @@ use serde::Serialize;
 
 mod comments;
 mod configuration;
+mod gate;
 use configuration::*;
 
 const CONFIG_NAME: &str = "reforge.toml";
@@ -61,6 +62,10 @@ struct AnalyzeCommand {
     baseline: Option<PathBuf>,
     #[arg(long, value_enum)]
     gate: Option<GateArg>,
+    /// Explicit repository acceptance rule, including preview advisories. Repeat
+    /// to select multiple rules; incomplete coverage also fails the gate.
+    #[arg(long = "gate-rule", requires = "gate")]
+    gate_rules: Vec<String>,
     #[arg(long)]
     reproducible: bool,
     #[arg(long)]
@@ -79,6 +84,9 @@ struct AnalyzeCommand {
     /// Write the complete Dataflow IR to a separate JSON sidecar.
     #[arg(long)]
     flow_ir_output: Option<PathBuf>,
+    /// Write every source-read and syntax failure with its path to a JSON sidecar.
+    #[arg(long)]
+    diagnostics_output: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -212,13 +220,22 @@ fn analyze(command: AnalyzeCommand) -> Result<()> {
     }
     validate_config(&config)?;
     let mut report = run_analysis(&command, &config)?;
-    attach_baseline(&mut report, command.baseline.as_deref())?;
+    let baseline = attach_baseline(&mut report, command.baseline.as_deref())?;
     let failures = gate_failures(&report, command.gate)?;
+    let selected_failures = gate::selected_rule_failures(
+        &report,
+        baseline.as_ref(),
+        &command.gate_rules,
+        command.gate,
+    );
     let format = OutputFormat::infer(
         command.output.map(Into::into),
         command.output_file.as_deref(),
     );
     write_destination(command.output_file.as_deref(), &report, format)?;
+    if !selected_failures.is_empty() {
+        bail!("repository gate failed:\n{}", selected_failures.join("\n"));
+    }
     if failures > 0 {
         bail!("analysis gate failed with {failures} issue(s)");
     }
@@ -243,16 +260,18 @@ fn run_analysis(command: &AnalyzeCommand, config: &toml::Value) -> Result<Report
         reproducible: command.reproducible,
         metrics_output: command.metrics_output.clone(),
         flow_ir_output: command.flow_ir_output.clone(),
+        diagnostics_output: command.diagnostics_output.clone(),
     })
 }
 
-fn attach_baseline(report: &mut Report, baseline: Option<&Path>) -> Result<()> {
+fn attach_baseline(report: &mut Report, baseline: Option<&Path>) -> Result<Option<Report>> {
     if let Some(path) = baseline {
         let baseline = load_report(path)?;
         report.validate_baseline(&baseline)?;
         report.baseline_comparison = Some(report.compare_to(&baseline));
+        return Ok(Some(baseline));
     }
-    Ok(())
+    Ok(None)
 }
 
 fn gate_failures(report: &Report, gate: Option<GateArg>) -> Result<usize> {

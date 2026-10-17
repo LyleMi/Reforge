@@ -213,13 +213,20 @@ fn relevant_failure_counts(
     entry: &crate::model::RuleSpec,
     context: &CoverageContext<'_, '_>,
 ) -> (usize, usize) {
-    let parse_failures = context.input.parse_failures.iter().filter(|failure| {
-        entry.kind != Rule::CommentHygiene || crate::api::comments::supports_comments(Path::new(&failure.path))
-    }).count();
-    let source_failures = context.input.source_failures.iter().filter(|failure| {
-        entry.kind != Rule::CommentHygiene || crate::api::comments::supports_comments(Path::new(&failure.path))
-    }).count();
+    let parse_failures = context.input.parse_failures.iter()
+        .filter(|failure| failure_relevant(entry, &failure.path, Some(&failure.language))).count();
+    let source_failures = context.input.source_failures.iter()
+        .filter(|failure| failure_relevant(entry, &failure.path, detected_language(Path::new(&failure.path)).as_deref())).count();
     (parse_failures, source_failures)
+}
+
+fn failure_relevant(entry: &crate::model::RuleSpec, path: &str, language: Option<&str>) -> bool {
+    if entry.kind == Rule::CommentHygiene {
+        return crate::api::comments::supports_comments(Path::new(path));
+    }
+    entry.language_capabilities.contains_key("language_neutral_paths")
+        || entry.language_capabilities.contains_key("repository")
+        || language.is_some_and(|language| entry.language_capabilities.contains_key(language))
 }
 
 fn detector_requires_parse(entry: &crate::model::RuleSpec) -> bool {

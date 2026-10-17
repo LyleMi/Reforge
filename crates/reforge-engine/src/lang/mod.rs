@@ -1,3 +1,5 @@
+pub(crate) const PYTHON_LANGUAGE: &str = "python";
+
 use std::path::Path;
 
 use tree_sitter::{Language, Node};

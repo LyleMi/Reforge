@@ -52,8 +52,9 @@ Rule arrays require complete IDs. Duplicate, conflicting, and unknown IDs are
 errors. `enforce` implies enable and accepts only stable rules. Experimental
 rules remain internal observations; preview rules are off unless enabled and
 can only produce advisory Issues. The CLI starter configuration enables four
-preview rules explicitly. Only enforced stable rules produce policy Issues or
-participate in a gate.
+preview rules explicitly. Only enforced stable rules produce policy Issues and participate in the default
+policy gate. Explicit `--gate-rule` selections also gate preview advisories as
+repository acceptance rules; see the [gate guide](user-guide.md#explicit-repository-acceptance-rules).
 
 Each Dataflow policy is single-language and names exact sink declarations:
 
@@ -93,3 +94,23 @@ Override them with the positive-integer
 `codebase.min-clustered-function-percent`. The same dotted keys work with
 `--set`; `config show` materializes preset-derived values and records their
 source.
+
+## Large repositories
+
+Source scanning has no file-count or byte budget. Narrow scope through explicit
+ownership exclusions, not truncation. Whole-file copies reuse immutable parsed
+syntax and source buffers within a run; similarity grouping filters pairs on
+demand instead of retaining a quadratic pair matrix. Analysis currently runs
+serially. On a 32-core machine, use `CARGO_BUILD_JOBS=4` for builds,
+`RUST_TEST_THREADS=4` for tests, and run repository analyses sequentially to leave resources for other work.
+
+Enable `reforge.codebase.duplicate_file` to inspect complete source copies.
+`codebase.min-duplicate-file-lines` defaults to 20 for all presets and must be
+positive. This is an advisory threshold, not a reading limit.
+
+For projects with fixtures, review tooling code and distributable cases with
+explicit scope configurations. Do not silently classify every `cases/` file as
+third-party code: many projects keep authored graders and generators there.
+Store reports outside scanned source trees and review both findings and coverage
+before choosing `--gate-rule` selections. New or changed suppression and ignore
+policies invalidate baseline comparability.

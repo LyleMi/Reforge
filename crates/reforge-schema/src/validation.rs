@@ -124,10 +124,44 @@ fn coverage_unknown_reason(input: &ComparisonInputs<'_>) -> Option<String> {
     let current = input.current.coverage.get(&input.issue.analysis);
     let baseline = input.baseline.coverage.get(&input.issue.analysis);
     match (current, baseline) {
-        (Some(current), Some(baseline)) if current == baseline => None,
+        (Some(current), Some(baseline)) if !input.issue.evidence.is_empty()
+            && input.issue.evidence.iter().all(|evidence| {
+                match (current.rules.get(&evidence.rule), baseline.rules.get(&evidence.rule)) {
+                    (Some(now), Some(before)) => comparable_rule_coverage(now, before),
+                    _ => false,
+                }
+            }) => None,
+        (Some(current), Some(baseline)) if fully_observed(current) && fully_observed(baseline)
+            && current.rules.keys().eq(baseline.rules.keys())
+            && current.rules.iter().all(|(rule, now)| {
+                let before = &baseline.rules[rule];
+                now.enabled_source == before.enabled_source
+                    && now.maturity == before.maturity
+            }) => None,
         (Some(_), Some(_)) => Some("coverage_changed".into()),
         _ => Some("analysis_not_evaluated".into()),
     }
+}
+
+fn comparable_rule_coverage(current: &RuleExecution, baseline: &RuleExecution) -> bool {
+    matches!(current.status, CoverageStatus::Observed | CoverageStatus::NotApplicable)
+        && matches!(baseline.status, CoverageStatus::Observed | CoverageStatus::NotApplicable)
+        && current.limitations.is_empty() && baseline.limitations.is_empty()
+        && current.enabled_source == baseline.enabled_source && current.maturity == baseline.maturity
+}
+
+// Inventory and observation counts naturally change when code is added or
+// removed. They are measurements, not changes in the configured scan scope.
+fn fully_observed(coverage: &AnalysisCoverage) -> bool {
+    coverage.status == CoverageStatus::Observed
+        && coverage.limitations.is_empty()
+        && coverage.languages.values().all(|language| {
+            language.status == CoverageStatus::Observed && language.limitations.is_empty()
+        })
+        && coverage.rules.values().all(|rule| {
+            matches!(rule.status, CoverageStatus::Observed | CoverageStatus::NotApplicable)
+                && rule.limitations.is_empty()
+        })
 }
 
 fn rule_unknown_reason(input: &ComparisonInputs<'_>) -> Option<String> {

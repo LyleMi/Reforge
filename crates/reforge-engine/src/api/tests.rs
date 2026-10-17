@@ -73,7 +73,7 @@ fn repository_dogfood_enables_every_preview_rule_without_changing_defaults() {
     let dogfood = Config::parse_toml(&std::fs::read_to_string(path).unwrap()).unwrap();
     let registry = crate::detectors::manifest::rule_registry();
 
-    assert_eq!(registry.len(), 35);
+    assert_eq!(registry.len(), 37);
     assert_eq!(dogfood.rules.enabled.len(), registry.len());
     assert!(
         registry.iter().all(|rule| {
@@ -137,7 +137,7 @@ fn low_module_cohesion_config_rejects_invalid_boundaries() {
 }
 
 #[test]
-fn low_module_cohesion_report_is_schema_stable_and_python_is_not_applicable() {
+fn low_module_cohesion_report_is_schema_stable_and_python_is_observed() {
     let root = std::env::temp_dir().join(format!(
         "reforge-low-module-cohesion-{}",
         std::process::id()
@@ -160,6 +160,7 @@ fn low_module_cohesion_report_is_schema_stable_and_python_is_not_applicable() {
             reproducible: true,
             metrics_output: None,
             flow_ir_output: None,
+            diagnostics_output: None,
         })
         .unwrap()
     };
@@ -183,7 +184,7 @@ fn low_module_cohesion_report_is_schema_stable_and_python_is_not_applicable() {
     assert!(python.issues.is_empty());
     assert_eq!(
         python.coverage["codebase"].rules["reforge.codebase.low_module_cohesion"].status,
-        CoverageStatus::NotApplicable
+        CoverageStatus::Observed
     );
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -197,6 +198,7 @@ fn options(root: &Path, config: &Path, enabled: BTreeSet<Analysis>) -> AnalyzeOp
         reproducible: true,
         metrics_output: None,
         flow_ir_output: None,
+        diagnostics_output: None,
     }
 }
 
@@ -293,6 +295,7 @@ fn dataflow_retains_discovered_unsupported_languages() {
         reproducible: true,
         metrics_output: None,
         flow_ir_output: None,
+        diagnostics_output: None,
     })
     .unwrap();
     let language = &report.coverage["dataflow"].languages["go"];
@@ -325,6 +328,7 @@ fn dataflow_unresolved_call_limitations_are_scoped_to_their_language_and_capabil
         reproducible: true,
         metrics_output: None,
         flow_ir_output: None,
+        diagnostics_output: None,
     })
     .unwrap();
     let rust = &report.coverage["dataflow"].languages["rust"];
@@ -364,4 +368,170 @@ fn every_core_rule_has_a_specific_description() {
             .iter()
             .all(|description| !description.contains("refactoring evidence"))
     );
+}
+
+#[test]
+fn redefined_names_respect_selection_exclusions_and_analysis_isolation() {
+    let root =
+        std::env::temp_dir().join(format!("reforge-redefinition-api-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("test_checks.py"),
+        "def check(): pass\ndef check(): pass\n",
+    )
+    .unwrap();
+    for (settings, expected) in [
+        ("[rules]\nenable = [\"reforge.codebase.redefined_name\"]", 1),
+        (
+            "[rules]\ndisable = [\"reforge.codebase.redefined_name\"]",
+            0,
+        ),
+        (
+            "[scope]\nexclude-tests = true\n[rules]\nenable = [\"reforge.codebase.redefined_name\"]",
+            0,
+        ),
+        (
+            "[scope]\nignore-paths = [\"test_checks.py\"]\n[rules]\nenable = [\"reforge.codebase.redefined_name\"]",
+            0,
+        ),
+        ("[analysis]\nenabled = [\"dataflow\"]", 0),
+    ] {
+        let config = Config::parse_toml(&format!(
+            "version = 2\n{settings}\n[codebase]\nchurn = \"off\"\n"
+        ))
+        .unwrap();
+        let report = analyze(&AnalyzeOptions {
+            root: root.clone(),
+            config,
+            reproducible: true,
+            metrics_output: None,
+            flow_ir_output: None,
+            diagnostics_output: None,
+        })
+        .unwrap();
+        report.validate().unwrap();
+        assert_eq!(report.issues.len(), expected, "{settings}");
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn independent_redefinition_groups_keep_distinct_report_identities() {
+    let root = std::env::temp_dir().join(format!(
+        "reforge-redefinition-groups-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let source = "def first(): pass\ndef first(): pass\ndef second(): pass\ndef second(): pass\nclass A:\n def method(self): pass\n def method(self): pass\nclass B:\n def method(self): pass\n def method(self): pass\n";
+    std::fs::write(root.join("checks.py"), source).unwrap();
+    let options = AnalyzeOptions {
+        root: root.clone(),
+        config: Config::parse_toml("version = 2\n[rules]\nenable = [\"reforge.codebase.redefined_name\"]\n[codebase]\nchurn = \"off\"\n").unwrap(),
+        reproducible: true, metrics_output: None, flow_ir_output: None, diagnostics_output: None,
+    };
+    let before = analyze(&options).unwrap();
+    before.validate().unwrap();
+    assert_eq!(
+        before
+            .issues
+            .iter()
+            .map(|i| i.evidence.len())
+            .sum::<usize>(),
+        4
+    );
+    let ids = |report: &Report| {
+        report
+            .issues
+            .iter()
+            .flat_map(|i| i.evidence.iter().map(|e| e.id.clone()))
+            .collect::<BTreeSet<_>>()
+    };
+    assert_eq!(ids(&before).len(), 4);
+    std::fs::write(root.join("checks.py"), format!("# shifted\n\n{source}")).unwrap();
+    let after = analyze(&options).unwrap();
+    assert_eq!(ids(&before), ids(&after));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn whole_file_copies_cover_unparsed_sources_and_respect_thresholds() {
+    let root = std::env::temp_dir().join(format!("reforge-file-copies-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    for path in ["first.c", "second.c"] {
+        std::fs::write(root.join(path), "int value = 1;\n").unwrap();
+    }
+    let run = |minimum| {
+        analyze(&AnalyzeOptions {
+            root: root.clone(),
+            config: Config::parse_toml(&format!("version = 2\n[rules]\nenable = [\"reforge.codebase.duplicate_file\"]\n[codebase]\nchurn = \"off\"\nmin-duplicate-file-lines = {minimum}\n")).unwrap(),
+            reproducible: true, metrics_output: None, flow_ir_output: None, diagnostics_output: None,
+        }).unwrap()
+    };
+    let report = run(1);
+    report.validate().unwrap();
+    assert_eq!(report.issues.len(), 1);
+    assert_eq!(
+        report.coverage["codebase"].rules["reforge.codebase.duplicate_file"].status,
+        CoverageStatus::Observed
+    );
+    assert!(run(2).issues.is_empty());
+    assert!(Config::parse_toml("version = 2\n[codebase]\nmin-duplicate-file-lines = 0\n").is_err());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn selected_detectors_preserve_evidence_and_mark_disabled_work_unobserved() {
+    let root =
+        std::env::temp_dir().join(format!("reforge-selected-detectors-{}", std::process::id()));
+    std::fs::create_dir_all(root.join("shared")).unwrap();
+    let source = "def check(): pass\ndef check(): pass\n";
+    for file in ["shared/helpers.py", "shared/utils.py"] {
+        std::fs::write(root.join(file), source).unwrap();
+    }
+    let selected = [
+        "reforge.codebase.redefined_name",
+        "reforge.codebase.duplicate_file",
+        "reforge.codebase.generic_bucket_drift",
+    ];
+    let all = crate::detectors::manifest::rule_registry()
+        .iter()
+        .filter(|spec| spec.analysis == "codebase")
+        .map(|spec| spec.rule.as_str())
+        .collect::<Vec<_>>();
+    let run = |rules: &[&str]| {
+        let encoded = serde_json::to_string(rules).unwrap();
+        analyze(&AnalyzeOptions {
+            root: root.clone(),
+            config: Config::parse_toml(&format!("version = 2\n[rules]\nenable = {encoded}\n[codebase]\nchurn = \"off\"\nmin-duplicate-file-lines = 1\n")).unwrap(),
+            reproducible: true, metrics_output: None, flow_ir_output: None, diagnostics_output: None,
+        }).unwrap()
+    };
+    let full = run(&all);
+    let focused = run(&selected);
+    let evidence = |report: &Report| {
+        report
+            .issues
+            .iter()
+            .flat_map(|issue| &issue.evidence)
+            .filter(|e| selected.contains(&e.rule.as_str()))
+            .map(|e| serde_json::to_string(e).unwrap())
+            .collect::<BTreeSet<_>>()
+    };
+    assert!(!evidence(&focused).is_empty());
+    assert_eq!(evidence(&full), evidence(&focused));
+    for rule in [
+        "reforge.codebase.similar_functions",
+        "reforge.codebase.duplicate_type_shape",
+        "reforge.codebase.unused_function",
+    ] {
+        let receipt = &focused.coverage["codebase"].rules[rule];
+        assert_eq!(
+            receipt.enabled_source,
+            reforge_schema::RuleActivation::Disabled
+        );
+        assert_eq!(receipt.status, CoverageStatus::NotApplicable);
+        assert!(receipt.observations.is_empty());
+    }
+    std::fs::remove_dir_all(root).unwrap();
 }

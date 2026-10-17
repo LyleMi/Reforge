@@ -476,3 +476,53 @@ fn content_fingerprint_ignores_prose_lines_and_order_but_tracks_measurements() {
         c.issues[0].content_fingerprint
     );
 }
+
+#[test]
+fn observed_inventory_growth_does_not_make_baseline_comparison_unknown() {
+    let baseline = report(vec![Evidence::new(
+        "reforge.codebase.large_file",
+        "src/lib.rs",
+        "large file",
+    )]);
+    let mut current = baseline.clone();
+    current.issues.clear();
+    current.summary.issue_count = 0;
+    current.summary.evidence_count = 0;
+    current.coverage.get_mut("codebase").unwrap().scanned_files = 200;
+    assert_eq!(
+        current.compare_to(&baseline).issues[&baseline.issues[0].id].state,
+        BaselineState::Absent
+    );
+    current.coverage.get_mut("codebase").unwrap().status = CoverageStatus::Partial;
+    assert_eq!(
+        current.compare_to(&baseline).issues[&baseline.issues[0].id].state,
+        BaselineState::Unknown
+    );
+}
+
+#[test]
+fn present_baseline_issues_are_unknown_when_scope_or_rule_semantics_change() {
+    let baseline = report(vec![Evidence::new(
+        "reforge.codebase.large_file",
+        "src/lib.rs",
+        "large file",
+    )]);
+    let id = &baseline.issues[0].id;
+    let mut current = baseline.clone();
+    current.provenance.scope_digest = "changed".into();
+    assert_eq!(
+        current.compare_to(&baseline).issues[id].state,
+        BaselineState::Unknown
+    );
+    let mut current = baseline.clone();
+    current
+        .provenance
+        .rules
+        .get_mut("reforge.codebase.large_file")
+        .unwrap()
+        .semantic_version = "2.0.0".into();
+    assert_eq!(
+        current.compare_to(&baseline).issues[id].state,
+        BaselineState::Unknown
+    );
+}

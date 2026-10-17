@@ -2,6 +2,7 @@ pub(crate) mod concepts;
 pub(crate) mod data_flow;
 pub(crate) mod dependency_graph;
 pub(crate) mod drift;
+pub(crate) mod duplicate_files;
 pub(crate) mod manifest;
 pub(crate) mod similarity;
 pub(crate) mod structure;

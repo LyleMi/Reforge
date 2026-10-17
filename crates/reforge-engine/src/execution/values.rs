@@ -31,6 +31,7 @@ impl EffectiveConfig {
             path,
             preset: None,
             max_file_lines: thresholds.file.max_file_lines,
+            min_duplicate_file_lines: 20,
             max_dir_files: thresholds.file.max_dir_files,
             filters: ScanFilterArgs::default(),
             codebase_thresholds: CodebaseThresholds {

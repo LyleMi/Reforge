@@ -234,6 +234,9 @@ fn callable_binding_name(node: Node<'_>, source: &str) -> Option<String> {
 }
 
 fn is_module_scope_callable(node: Node<'_>, family: LanguageFamily) -> bool {
+    if family == LanguageFamily::Python {
+        return node.kind() == FUNCTION_DEFINITION && node.parent().is_some_and(|parent| parent.kind() == "module");
+    }
     if family != LanguageFamily::JavaScriptTypeScript || node.kind() == METHOD_DEFINITION {
         return false;
     }
@@ -256,6 +259,9 @@ fn is_module_scope_callable(node: Node<'_>, family: LanguageFamily) -> bool {
 }
 
 fn direct_identifier_calls(body: Node<'_>, traversal: StructureTraversal<'_>) -> BTreeSet<String> {
+    if traversal.family == LanguageFamily::Python {
+        return python_calls::calls(body, traversal.source);
+    }
     if traversal.family != LanguageFamily::JavaScriptTypeScript {
         return BTreeSet::new();
     }
@@ -303,6 +309,10 @@ fn collect_local_call_bindings(
     bindings: &mut BTreeSet<String>,
     is_root: bool,
 ) {
+    if traversal.family == LanguageFamily::Python {
+        python_calls::bindings(node, traversal.source, bindings);
+        return;
+    }
     if traversal.family != LanguageFamily::JavaScriptTypeScript {
         return;
     }

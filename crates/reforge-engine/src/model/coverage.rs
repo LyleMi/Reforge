@@ -27,3 +27,17 @@ pub struct ParseFailure {
     pub language: String,
     pub reason: ParseFailureReason,
 }
+
+pub(crate) fn source_failure_limitations<'a>(
+    failures: impl Iterator<Item = &'a SourceFailure>,
+) -> Vec<reforge_schema::CoverageLimitation> {
+    let count = failures.count();
+    if count == 0 {
+        return Vec::new();
+    }
+    vec![reforge_schema::CoverageLimitation {
+        code: "source_read_failure".into(),
+        count,
+        message: "source files could not be read".into(),
+    }]
+}

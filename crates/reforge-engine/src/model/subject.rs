@@ -29,6 +29,8 @@ define_rules!(
     ImportHeavyFile,
     FunctionProliferation,
     LowModuleCohesion,
+    RedefinedName,
+    DuplicateFile,
     UnusedFunction,
     RepeatedLiteral,
     RepeatedErrorPattern,

@@ -1,0 +1,31 @@
+version = 2
+
+[analysis]
+enabled = ["codebase"]
+
+# Keep case graders and generators visible. Add project-specific ownership
+# exclusions only after reviewing the inventory and diagnostics.
+[scope]
+ignore-paths = []
+
+[rules]
+enable = [
+  "reforge.codebase.redefined_name",
+  "reforge.codebase.duplicate_file",
+  "reforge.codebase.large_file",
+  "reforge.codebase.large_directory",
+  "reforge.codebase.long_function",
+  "reforge.codebase.complex_function",
+  "reforge.codebase.low_module_cohesion",
+  "reforge.codebase.generic_bucket_drift",
+  "reforge.codebase.directory_drift",
+  "reforge.codebase.similar_functions",
+  "reforge.codebase.dependency_cycle",
+]
+disable = []
+enforce = []
+
+[codebase]
+preset = "balanced"
+churn = "off"
+min-duplicate-file-lines = 20

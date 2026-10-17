@@ -12,19 +12,47 @@ pub(super) struct ScanSignalContext<'a> {
 impl ScanSignalContext<'_> {
     pub(super) fn run(&mut self) -> Result<()> {
         if self.plan.codebase {
+            self.scan_selected_codebase_signals()?;
+        }
+        if self.plan.dataflow {
+            self.scan_data_flow_signals()?;
+        }
+        Ok(())
+    }
+
+    fn scan_selected_codebase_signals(&mut self) -> Result<()> {
+        if self.plan.wants_any(crate::detectors::structure::RULES) {
             self.scan_structural_signals()?;
+        }
+        if self.plan.wants(Rule::DuplicateFile) {
+            self.scan
+                .detections
+                .extend(crate::detectors::duplicate_files::scan(
+                    &self.scan.codebase_sources,
+                    self.args.min_duplicate_file_lines,
+                ));
+        }
+        if self.plan.wants(Rule::CommentHygiene) {
             self.scan
                 .detections
                 .extend(crate::api::comments::review_detections(
                     &self.scan.parsed_sources,
                 ));
-            self.scan_unused_function_signals();
-            self.scan_dependency_graph_signals();
-            self.scan_concept_drift_signals();
-            self.scan_similarity_signals()?;
         }
-        if self.plan.dataflow {
-            self.scan_data_flow_signals()?;
+        if self.plan.wants(Rule::UnusedFunction) {
+            self.scan_unused_function_signals();
+        }
+        if self
+            .plan
+            .wants_any(&[Rule::DependencyCycle, Rule::DependencyHub])
+        {
+            self.scan_dependency_graph_signals();
+        }
+        if self.plan.wants_any(crate::detectors::drift::RULES) {
+            self.scan_concept_drift_signals();
+        }
+        if self.plan.wants(Rule::SimilarFunctions) {
+            self.scan_similarity_signals()?;
         }
         Ok(())
     }
@@ -69,9 +97,11 @@ impl ScanSignalContext<'_> {
             max_dir_files: self.args.max_dir_files,
             include_test_structure: false,
         };
-        self.scan
-            .detections
-            .extend(scan_concept_drift(&self.scan.codebase_sources, &options));
+        self.scan.detections.extend(scan_concept_drift_selected(
+            &self.scan.codebase_sources,
+            &options,
+            |rule| self.plan.wants(rule),
+        ));
     }
 
     fn scan_structural_signals(&mut self) -> Result<()> {
@@ -152,5 +182,35 @@ impl ScanSignalContext<'_> {
             .iter()
             .filter(|detection| detection.kind == Rule::SimilarFunctions)
             .count())
+    }
+}
+
+#[cfg(test)]
+mod dispatch_tests {
+    use super::*;
+
+    #[test]
+    fn every_codebase_rule_has_exactly_one_detector_dispatch_owner() {
+        let mut scheduled = crate::detectors::structure::RULES.to_vec();
+        scheduled.extend_from_slice(crate::detectors::drift::RULES);
+        scheduled.extend([
+            Rule::LargeFile,
+            Rule::LargeDirectory,
+            Rule::DebtMarker,
+            Rule::DuplicateFile,
+            Rule::CommentHygiene,
+            Rule::UnusedFunction,
+            Rule::DependencyCycle,
+            Rule::DependencyHub,
+            Rule::SimilarFunctions,
+        ]);
+        let unique = scheduled.iter().copied().collect::<BTreeSet<_>>();
+        assert_eq!(scheduled.len(), unique.len());
+        let registered = rule_registry()
+            .iter()
+            .filter(|spec| spec.analysis == reforge_schema::ANALYSIS_CODEBASE)
+            .map(|spec| spec.kind)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(unique, registered);
     }
 }

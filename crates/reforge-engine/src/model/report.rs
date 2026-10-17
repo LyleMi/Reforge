@@ -186,6 +186,7 @@ impl SuppressionSummary {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RunResult {
+    pub ignore_policy_digest: String,
     pub source_revision: Option<String>,
     pub summary: RunSummary,
     pub stats: RunStats,

@@ -44,6 +44,8 @@ enable = [
   "reforge.codebase.parallel_implementation",
   "reforge.codebase.repeated_error_pattern",
   "reforge.codebase.repeated_literal",
+  "reforge.codebase.redefined_name",
+  "reforge.codebase.duplicate_file",
   "reforge.codebase.shadowed_abstraction",
   "reforge.codebase.similar_functions",
   "reforge.codebase.stale_compatibility_path",

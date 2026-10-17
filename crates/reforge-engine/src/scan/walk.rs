@@ -26,20 +26,23 @@ struct WorkspaceScanOptions {
 }
 
 fn scan_sources(
-    source_plan: WorkspacePlan,
+    mut source_plan: WorkspacePlan,
     args: &EffectiveConfig,
     options: WorkspaceScanOptions,
     progress: &mut dyn ProgressSink,
     scan: &mut WorkspaceIndex,
 ) -> Result<()> {
+    scan.ignore_policy_digest = source_plan.ignore_policy_digest.clone();
     scan.stats.directories_scanned = source_plan.directories_scanned;
     scan.stats.source_files_discovered = source_plan.source_files.len();
+    source_plan.source_files.sort();
+    let mut cache = parse_cache::ParseCache::default();
     for (index, path) in source_plan.source_files.iter().enumerate() {
         let file_options = FileScanOptions {
             max_file_lines: args.max_file_lines,
             codebase: options.execution.codebase,
         };
-        scan_file(path, file_options, scan)?;
+        scan_file(path, file_options, &mut cache, scan)?;
         report_file_scan_progress(progress, index + 1, options.total_source_files, path);
     }
 
@@ -108,11 +111,13 @@ fn collect_source_scan_plan_with(
     accepts: impl Fn(&Path) -> bool,
 ) -> Result<WorkspacePlan> {
     let mut plan = WorkspacePlan::default();
+    let mut policy = ignore_policy::IgnorePolicy::for_root(root, !args.filters.no_gitignore)?;
 
     if root.is_file() {
         if accepts(root) && should_scan_source_file(root, args) {
             plan.source_files.push(root.to_path_buf());
         }
+        plan.ignore_policy_digest = policy.digest(root);
         return Ok(plan);
     }
 
@@ -137,6 +142,7 @@ fn collect_source_scan_plan_with(
 
         if file_type.is_dir() {
             plan.directories_scanned += 1;
+            policy.observe_directory(entry.path(), !args.filters.no_gitignore)?;
         } else if file_type.is_file()
             && accepts(entry.path())
             && should_scan_source_file(entry.path(), args)
@@ -147,12 +153,14 @@ fn collect_source_scan_plan_with(
         }
     }
 
+    plan.ignore_policy_digest = policy.digest(root);
     Ok(plan)
 }
 
 fn scan_file(
     path: &Path,
     options: FileScanOptions,
+    cache: &mut parse_cache::ParseCache,
     scan: &mut WorkspaceIndex,
 ) -> Result<()> {
     if !is_supported_source(path) {
@@ -177,7 +185,7 @@ fn scan_file(
             && (source.contains("[Test]") || source.contains("[UnityTest]")));
 
     record_file_observations(&display_path, &source, is_test, options, scan);
-    scan_structure_source(path, display_path, source, scan)?;
+    scan_structure_source(path, display_path, source, cache, scan)?;
     Ok(())
 }
 
@@ -232,26 +240,25 @@ fn scan_structure_source(
     path: &Path,
     display_path: String,
     source: Arc<str>,
+    cache: &mut parse_cache::ParseCache,
     scan: &mut WorkspaceIndex,
 ) -> Result<()> {
-    if is_supported_structure_source(path) {
-        let source_file = SourceFile {
-            path: path.to_path_buf(),
-            display_path: display_path.clone(),
-            source: Arc::clone(&source),
-        };
-
-        match parse_source_file(source_file.clone())? {
-            Some(parsed) => scan.parsed_sources.push(parsed),
-            None => scan.parse_failures.push(ParseFailure {
-                path: display_path.clone(),
-                language: detected_language(path).unwrap_or_else(|| "unknown".into()),
-                reason: ParseFailureReason::SyntaxError,
-            }),
-        }
-
-        scan.codebase_sources.push(source_file);
+    let source_file = SourceFile {
+        path: path.to_path_buf(),
+        display_path: display_path.clone(),
+        source,
+    };
+    let (source_file, parsed) = cache.parse(source_file)?;
+    match parsed {
+        Some(parsed) => scan.parsed_sources.push(parsed),
+        None if is_supported_structure_source(path) => scan.parse_failures.push(ParseFailure {
+            path: display_path,
+            language: detected_language(path).unwrap_or_else(|| "unknown".into()),
+            reason: ParseFailureReason::SyntaxError,
+        }),
+        None => {}
     }
+    scan.codebase_sources.push(source_file);
     Ok(())
 }
 

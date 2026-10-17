@@ -3,6 +3,7 @@ use super::*;
 const CODEBASE_CONFIG_KEYS: &[&str] = &[
     "preset",
     "max-file-lines",
+    "min-duplicate-file-lines",
     "max-dir-files",
     "min-similar-functions",
     "min-function-tokens",

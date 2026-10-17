@@ -94,10 +94,67 @@ reforge analyze . --output json --output-file current.json \
 enable selected preview rules as advisories in versioned `reforge.toml`. Only
 stable rules can be enforced as policy.
 
+### Explicit repository acceptance rules
+
+To gate selected preview findings without promoting them to stable policy rules,
+repeat `--gate-rule` with complete rule IDs. Enable those rules in `reforge.toml`
+first. For example:
+
+```sh
+reforge analyze . --output json --output-file current.json \
+  --baseline reforge-baseline.json --gate new \
+  --gate-rule reforge.codebase.redefined_name --reproducible
+```
+
+`--gate all --gate-rule ...` rejects every current finding from the selected
+rules. `--gate new --gate-rule ...` accepts unchanged baseline findings and
+rejects new, updated, or unknown ones, including disappearing baseline findings
+whose absence cannot be established. Reports keep their advisory/policy kinds.
+The report is written before a gate failure is returned.
+
+An explicit gate also rejects missing or disabled selected rules, partial or
+unsupported selected-rule coverage, and an empty source scan. Changing scope,
+ignore policy, suppressions, selected-rule semantics, or analysis configuration
+requires baseline review; it cannot silently turn an existing failure green.
+Normal source-file additions and removals and changing observation counts do not
+by themselves change scope. Refresh older baselines once after adopting this
+scope-fingerprint implementation.
+
+### Repository starting configuration
+
+The repository includes [`examples/repository-gate/reforge.toml`](../examples/repository-gate/reforge.toml).
+It enables structural, duplication, and Python ownership findings without
+excluding authored case code or enforcing every advisory. From the Reforge
+checkout, generate a report for review:
+
+```sh
+mkdir -p /tmp/reforge-reports/project
+reforge analyze /path/to/project \
+  --config examples/repository-gate/reforge.toml \
+  --output json --output-file /tmp/reforge-reports/project/baseline.json \
+  --diagnostics-output /tmp/reforge-reports/project/diagnostics.json \
+  --reproducible
+```
+
+Once that baseline and its scope have been reviewed, run the same configuration
+with `--baseline /tmp/reforge-reports/project/baseline.json --gate new
+--gate-rule reforge.codebase.redefined_name` and a different `--output-file`.
+Add `--gate-rule reforge.codebase.duplicate_file` only if new template/snapshot
+copies should require review. Store accepted baselines durably in CI; `/tmp` is
+only a local demonstration. Keep separate reports and baselines per repository,
+and run repositories sequentially. A parse/read gap in a selected rule blocks
+that gate until the source or its explicit ownership scope is resolved.
+
 ## Configuration and rules
 
 `reforge init` writes a versioned configuration. Use `reforge config validate`, `reforge config show`, and `reforge rules --output json` to inspect effective settings and rule contracts. Durable settings belong in `reforge.toml`; temporary overrides use `--set key=value`.
 
 ## Troubleshooting
+
+When coverage is partial, add `--diagnostics-output diagnostics.json` to retain
+every source-read and syntax failure with its relative path, language (for syntax
+failures), and reason. The sidecar also records discovered and analyzed source
+counts. It is written even when a repository gate later fails. Keep this artifact
+outside the source tree alongside the report; no failure list is truncated.
 
 Use Coverage and its capability limitations when zero Issues are reported. Regenerate incompatible older reports rather than editing them. If a Dataflow policy is rejected, verify that it names one supported language and that every source and sink path/symbol names exactly one frontend declaration.

@@ -72,6 +72,7 @@ preset = "balanced"
 churn = "auto"
 churn-window-days = 90
 max-file-lines = 600
+min-duplicate-file-lines = 20
 
 [dataflow.search]
 max-path-steps = 24
@@ -343,6 +344,7 @@ pub struct AnalyzeOptions {
     pub reproducible: bool,
     pub metrics_output: Option<PathBuf>,
     pub flow_ir_output: Option<PathBuf>,
+    pub diagnostics_output: Option<PathBuf>,
 }
 
 pub fn analyze(options: &AnalyzeOptions) -> Result<Report> {
@@ -367,6 +369,15 @@ fn analyze_selected(options: &AnalyzeOptions) -> Result<Report> {
         codebase: options.config.enabled.contains(&Analysis::Codebase),
         dataflow: options.config.enabled.contains(&Analysis::Dataflow),
         materialize_flow_ir: options.flow_ir_output.is_some(),
+        selected_rules: std::array::from_fn(|index| {
+            let spec = crate::detectors::manifest::rule_registry()
+                .iter()
+                .find(|spec| spec.kind == crate::model::Rule::ALL[index])
+                .expect("every executable rule has a specification");
+            options
+                .config
+                .rule_enabled(&spec.rule, spec.default_enabled)
+        }),
     };
     let run = crate::scan::run_with_plan_and_config(
         &args,
@@ -374,6 +385,18 @@ fn analyze_selected(options: &AnalyzeOptions) -> Result<Report> {
         scan_plan,
         &options.config.engine,
     )?;
+    if let Some(path) = &options.diagnostics_output {
+        write_debug_output(
+            path,
+            &serde_json::json!({
+                "schema_version": 1,
+                "source_files_discovered": run.stats.source_files_discovered,
+                "source_files_analyzed": run.stats.source_files_analyzed,
+                "source_failures": run.source_failures,
+                "parse_failures": run.parse_failures,
+            }),
+        )?;
+    }
     if let Some(path) = &options.metrics_output {
         write_debug_output(path, &run.raw_metrics)?;
     }

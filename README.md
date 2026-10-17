@@ -121,7 +121,10 @@ reforge analyze . --output sarif --output-file reforge.sarif --reproducible
 
 All current core rules are preview and advisory-only. The `--gate` options apply
 only to rules that later satisfy Reforge's calibration contract, become stable,
-and are explicitly enforced; preview findings do not fail CI.
+and are explicitly enforced. To opt into repository acceptance checks for preview
+findings, enable the rules and select them explicitly with repeatable
+`--gate-rule` options. Selected-rule coverage must be complete; see the
+[gate guide](docs/user-guide.md#explicit-repository-acceptance-rules).
 
 ## Advanced Dataflow analysis
 

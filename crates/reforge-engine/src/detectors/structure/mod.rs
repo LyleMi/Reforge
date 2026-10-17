@@ -1,3 +1,6 @@
+mod python_calls;
+mod redefined_name;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -14,6 +17,26 @@ use crate::lang::{
 };
 use crate::model::{DetectedEvidence, DetectedMeasurement, MetricId, RelatedLocation, Rule};
 use crate::scan::is_test_source;
+
+pub(crate) const RULES: &[Rule] = &[
+    Rule::LongFunction,
+    Rule::ComplexFunction,
+    Rule::DeepNesting,
+    Rule::ManyParameters,
+    Rule::LargeType,
+    Rule::LargePublicSurface,
+    Rule::ImportHeavyFile,
+    Rule::FunctionProliferation,
+    Rule::LowModuleCohesion,
+    Rule::RedefinedName,
+    Rule::RepeatedLiteral,
+    Rule::RepeatedErrorPattern,
+    Rule::TestDuplication,
+    Rule::HappyPathOnlyTests,
+    Rule::FileNamingDrift,
+    Rule::DirectoryDrift,
+    Rule::DataClump,
+];
 
 #[derive(Debug, Clone)]
 pub struct StructureOptions {
@@ -163,15 +186,12 @@ pub(crate) fn scan_parsed_structure(
     for file in files {
         collect_file_naming_style(&file.file, &mut signals);
 
+        if file.family == LanguageFamily::Python {
+            redefined_name::scan(file, &mut signals.detections);
+        }
         let is_test = is_test_source(&file.file.path);
         if !is_test || options.include_test_structure {
-            scan_production_file(
-                &file.file,
-                file.family,
-                file.tree.root_node(),
-                options,
-                &mut signals,
-            );
+            scan_production_file(file, options, &mut signals);
         }
 
         if is_test {
@@ -278,15 +298,15 @@ pub fn is_supported_structure_source(path: &Path) -> bool {
 }
 
 fn scan_production_file(
-    file: &SourceFile,
-    family: LanguageFamily,
-    root: Node<'_>,
+    parsed: &ParsedSourceFile,
     options: &StructureOptions,
     signals: &mut FileSignals,
 ) {
+    let file = &parsed.file;
+    let root = parsed.tree.root_node();
     let traversal = StructureTraversal {
         source: &file.source,
-        family,
+        family: parsed.family,
         include_test_structure: options.include_test_structure,
     };
 
@@ -295,7 +315,7 @@ fn scan_production_file(
     scan_type_metrics(file, &ast_signals.types, options, signals);
     scan_file_metrics(file, root, traversal, options, signals);
     scan_function_proliferation(file, root, &ast_signals.functions, options, signals);
-    scan_low_module_cohesion(file, family, &ast_signals.functions, options, signals);
+    scan_low_module_cohesion(parsed, &ast_signals.functions, options, signals);
     collect_cross_file_patterns(file, root, traversal, signals);
 }
 

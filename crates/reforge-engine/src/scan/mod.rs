@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use ignore::{DirEntry, WalkBuilder};
 
 use crate::detectors::dependency_graph::scan_dependency_graph_report;
-use crate::detectors::drift::{ConceptDriftOptions, scan_concept_drift};
+use crate::detectors::drift::{ConceptDriftOptions, scan_concept_drift_selected};
 use crate::detectors::manifest::rule_registry;
 use crate::detectors::similarity::{
     ParsedSourceFile, SimilarFunctionOptions, SimilarFunctionProgress, SimilarityComparisonStats,
@@ -31,6 +31,8 @@ mod anchors;
 mod churn;
 pub(crate) mod config;
 mod detection_control;
+mod ignore_policy;
+mod parse_cache;
 mod paths;
 #[allow(dead_code)]
 mod progress;
@@ -64,6 +66,7 @@ const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
 ];
 #[derive(Debug, Default)]
 struct WorkspaceIndex {
+    ignore_policy_digest: String,
     detections: Vec<DetectedEvidence>,
     parsed_sources: Vec<ParsedSourceFile>,
     codebase_sources: Vec<SourceFile>,
@@ -81,6 +84,7 @@ struct WorkspaceIndex {
 
 #[derive(Debug, Default)]
 struct WorkspacePlan {
+    ignore_policy_digest: String,
     source_files: Vec<PathBuf>,
     directory_source_files: BTreeMap<PathBuf, usize>,
     directories_scanned: usize,
@@ -122,6 +126,7 @@ pub(crate) struct ExecutionPlan {
     pub codebase: bool,
     pub dataflow: bool,
     pub materialize_flow_ir: bool,
+    pub selected_rules: [bool; Rule::ALL.len()],
 }
 
 impl ExecutionPlan {
@@ -129,7 +134,16 @@ impl ExecutionPlan {
         codebase: true,
         dataflow: true,
         materialize_flow_ir: true,
+        selected_rules: [true; Rule::ALL.len()],
     };
+
+    pub(super) fn wants(self, rule: Rule) -> bool {
+        self.codebase && self.selected_rules[rule as usize]
+    }
+
+    pub(super) fn wants_any(self, rules: &[Rule]) -> bool {
+        rules.iter().any(|rule| self.wants(*rule))
+    }
 }
 
 #[allow(dead_code)]
@@ -175,6 +189,11 @@ fn run_with_effective(
     let effective_args = effective.args;
     let (mut scan, churn_summary) =
         collect_scan_observations(&root, &effective_args, &effective.data_flow, plan, progress)?;
+    scan.detections.retain(|detection| {
+        crate::detectors::manifest::analysis_name(detection.kind)
+            != reforge_schema::ANALYSIS_CODEBASE
+            || plan.wants(detection.kind)
+    });
     anchors::assign_stable_anchors(
         &mut scan.detections,
         &scan.raw_metrics,
@@ -185,7 +204,17 @@ fn run_with_effective(
     let post_score_controls =
         apply_post_score_detection_controls(&mut scan, &root, &effective.suppressions)?;
     let manifest = rule_registry();
-    let rule_execution = project_scan_coverage(&scan, manifest);
+    let mut rule_execution = project_scan_coverage(&scan, manifest);
+    for spec in manifest
+        .iter()
+        .filter(|spec| spec.analysis == reforge_schema::ANALYSIS_CODEBASE && !plan.wants(spec.kind))
+    {
+        if let Some(receipt) = rule_execution.get_mut(&spec.kind) {
+            receipt.status = reforge_schema::CoverageStatus::NotApplicable;
+            receipt.observations.clear();
+            receipt.limitations.clear();
+        }
+    }
 
     let summary = build_run_summary(RunSummaryInput {
         scan: &scan,
@@ -201,6 +230,7 @@ fn run_with_effective(
     finish_progress(progress, &summary);
 
     Ok(RunResult {
+        ignore_policy_digest: scan.ignore_policy_digest.clone(),
         source_revision,
         summary,
         stats: scan.stats,

@@ -80,15 +80,39 @@ struct OccurrenceGroupSpec {
     require_cross_file: bool,
 }
 
+pub(crate) const RULES: &[Rule] = &[
+    Rule::ParallelImplementation,
+    Rule::ShadowedAbstraction,
+    Rule::DuplicateTypeShape,
+    Rule::ConfigKeyDrift,
+    Rule::FixtureFactoryDrift,
+    Rule::GenericBucketDrift,
+    Rule::AdapterBoundaryBypass,
+    Rule::StaleCompatibilityPath,
+];
+
+#[cfg(test)]
 pub fn scan_concept_drift(
     files: &[SourceFile],
     options: &ConceptDriftOptions,
 ) -> Vec<DetectedEvidence> {
+    scan_concept_drift_selected(files, options, |_| true)
+}
+
+pub fn scan_concept_drift_selected(
+    files: &[SourceFile],
+    options: &ConceptDriftOptions,
+    wanted: impl Fn(Rule) -> bool,
+) -> Vec<DetectedEvidence> {
     let mut signals = DriftSignals::default();
 
     for file in files {
-        let boundaries = boundary_inventory(files, &file.path);
-        collect_file_signals(file, options, boundaries, &mut signals);
+        let boundaries = if wanted(Rule::AdapterBoundaryBypass) {
+            boundary_inventory(files, &file.path)
+        } else {
+            BoundaryInventory::default()
+        };
+        collect_file_signals(file, options, boundaries, &mut signals, &wanted);
     }
 
     let mut detections = Vec::new();
@@ -144,24 +168,48 @@ fn collect_file_signals(
     options: &ConceptDriftOptions,
     boundaries: BoundaryInventory,
     signals: &mut DriftSignals,
+    wanted: &impl Fn(Rule) -> bool,
 ) {
     let is_test = is_test_source(&file.path);
     let file_words = path_words(&file.path);
 
-    if is_test {
+    if is_test && wanted(Rule::FixtureFactoryDrift) {
         collect_fixture_factories(file, &file_words, signals);
     }
 
     if !is_test || options.include_test_structure {
-        collect_generic_bucket_signals(file, &file_words, signals);
-        collect_function_signals(file, &file_words, is_test, signals);
-        collect_type_shapes(file, signals);
-        collect_config_keys(file, signals);
-        collect_compatibility_paths(file, compatibility_path_intent(&file_words), signals);
+        collect_owned_file_signals(file, &file_words, is_test, signals, wanted);
     }
 
-    if !is_test && !is_operational_entrypoint_source(&file_words) {
+    if !is_test
+        && wanted(Rule::AdapterBoundaryBypass)
+        && !is_operational_entrypoint_source(&file_words)
+    {
         collect_boundary_bypasses(file, boundaries, signals);
+    }
+}
+
+fn collect_owned_file_signals(
+    file: &SourceFile,
+    words: &[String],
+    is_test: bool,
+    signals: &mut DriftSignals,
+    wanted: &impl Fn(Rule) -> bool,
+) {
+    if wanted(Rule::GenericBucketDrift) {
+        collect_generic_bucket_signals(file, words, signals);
+    }
+    if wanted(Rule::ParallelImplementation) || wanted(Rule::ShadowedAbstraction) {
+        collect_function_signals(file, words, is_test, signals);
+    }
+    if wanted(Rule::DuplicateTypeShape) {
+        collect_type_shapes(file, signals);
+    }
+    if wanted(Rule::ConfigKeyDrift) {
+        collect_config_keys(file, signals);
+    }
+    if wanted(Rule::StaleCompatibilityPath) {
+        collect_compatibility_paths(file, compatibility_path_intent(words), signals);
     }
 }
 
