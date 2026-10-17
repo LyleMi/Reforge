@@ -112,9 +112,13 @@ fn collect_source_scan_plan_with(
 ) -> Result<WorkspacePlan> {
     let mut plan = WorkspacePlan::default();
     let mut policy = ignore_policy::IgnorePolicy::for_root(root, !args.filters.no_gitignore)?;
+    let ignores = IgnorePaths::new(&args.filters.ignore_paths)?;
 
     if root.is_file() {
-        if accepts(root) && should_scan_source_file(root, args) {
+        if accepts(root)
+            && should_scan_source_file(root, args)
+            && !ignores.matches(root, root.parent().unwrap_or(root))
+        {
             plan.source_files.push(root.to_path_buf());
         }
         plan.ignore_policy_digest = policy.digest(root);
@@ -132,7 +136,9 @@ fn collect_source_scan_plan_with(
     let root_for_filter = root.to_path_buf();
     let args_for_filter = args.clone();
     for entry in builder
-        .filter_entry(move |entry| should_visit_entry(entry, &root_for_filter, &args_for_filter))
+        .filter_entry(move |entry| {
+            should_visit_entry(entry, &root_for_filter, &args_for_filter, &ignores)
+        })
         .build()
     {
         let entry = entry?;
@@ -365,33 +371,18 @@ fn is_default_excluded_dir(entry: &DirEntry) -> bool {
             .is_some_and(|name| DEFAULT_EXCLUDED_DIRS.contains(&name))
 }
 
-fn should_visit_entry(entry: &DirEntry, root: &Path, args: &EffectiveConfig) -> bool {
+fn should_visit_entry(
+    entry: &DirEntry,
+    root: &Path,
+    args: &EffectiveConfig,
+    ignores: &IgnorePaths,
+) -> bool {
     let is_root = entry.path() == root;
     is_root
         || ((args.filters.include_hidden || !is_hidden(entry))
             && (args.filters.include_generated || !is_default_excluded_dir(entry)))
-            && !is_ignored_path(entry.path(), root, args)
+            && !ignores.matches(entry.path(), root)
             && !is_excluded_test_path(entry.path(), args)
-}
-
-fn is_ignored_path(path: &Path, root: &Path, args: &EffectiveConfig) -> bool {
-    if args.filters.ignore_paths.is_empty() {
-        return false;
-    }
-
-    let relative = path
-        .strip_prefix(root)
-        .ok()
-        .map(display_path)
-        .unwrap_or_else(|| display_path(path));
-    args.filters.ignore_paths.iter().any(|ignore| {
-        let ignore = ignore.replace('\\', "/").trim_matches('/').to_string();
-        !ignore.is_empty()
-            && (relative == ignore
-                || relative
-                    .strip_prefix(&ignore)
-                    .is_some_and(|suffix| suffix.starts_with('/')))
-    })
 }
 
 fn is_excluded_test_path(path: &Path, args: &EffectiveConfig) -> bool {

@@ -393,3 +393,24 @@ fn cleans_mixed_language_workspace_with_existing_scope_filters() {
         );
     }
 }
+
+#[test]
+fn glob_exclusions_apply_to_comment_directories_and_single_files() {
+    let f = TestWorkspace::new();
+    for path in [".", "main.ts"] {
+        let picked: serde_json::Value = serde_json::from_str(&success(f.run(&[
+            "comments",
+            "pick",
+            path,
+            "--ignore-path",
+            "**/*.ts",
+            "--output",
+            "json",
+        ])))
+        .unwrap();
+        assert!(picked["comments"].as_array().unwrap().is_empty());
+    }
+    let output = f.run(&["comments", "pick", "--ignore-path", "[invalid"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid glob"));
+}

@@ -114,3 +114,30 @@ third-party code: many projects keep authored graders and generators there.
 Store reports outside scanned source trees and review both findings and coverage
 before choosing `--gate-rule` selections. New or changed suppression and ignore
 policies invalidate baseline comparability.
+
+### Path exclusions
+
+`scope.ignore-paths` and repeated `--ignore-path` options accept paths and globs
+relative to the analysis root (or the parent directory when analyzing one file).
+Matching is case-sensitive. A literal path excludes that file or directory and
+its descendants; `vendor` does not match `vendor-old` or `src/vendor`.
+
+- `*` and `?` match within one path component: `src/*.py`, `src/test_?.py`.
+- `**` matches across directories: `**/*.min.js`, `cases/**`.
+- Character classes and alternatives are supported: `src/test_[ab].py`,
+  `{cases,audits}/**`.
+- Use `**/vendor` to exclude directories named `vendor` at any depth.
+
+Patterns use `/`; backslashes are normalized to `/` for compatibility with
+existing path exclusions. Leading/trailing slashes and a leading `./` are
+accepted. Patterns do not support gitignore negation (`!`). Invalid glob syntax
+fails the scan with the configuration key and offending pattern.
+
+```sh
+reforge analyze . --ignore-path 'cases/**' --ignore-path '**/*.min.js'
+```
+
+Quote CLI patterns so the shell passes them unchanged. The matcher is compiled
+once per traversal, and excluded directories are pruned before their files are
+read. The same exclusions apply to Codebase, Dataflow, and comment commands;
+normal generated-directory and gitignore filtering still applies.

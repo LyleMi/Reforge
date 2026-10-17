@@ -475,3 +475,52 @@ fn explicit_gate_compares_only_selected_evidence_in_aggregated_issues() {
     assert!(report.issues.iter().any(|issue| issue.evidence.len() > 1));
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn glob_exclusions_apply_to_both_analyses_and_reject_invalid_patterns() {
+    let root = fixture("glob-scope");
+    std::fs::create_dir_all(root.join("cases/deep")).unwrap();
+    std::fs::write(root.join("cases/deep/bad.rs"), [0xff]).unwrap();
+    std::fs::write(root.join("src/generated.rs"), [0xff]).unwrap();
+    std::fs::write(
+        root.join("reforge.toml"),
+        "version = 2\n[scope]\nignore-paths = ['cases/**', '**/generated.*']\n",
+    )
+    .unwrap();
+    let result = binary()
+        .args([
+            "analyze",
+            root.to_str().unwrap(),
+            "--analysis",
+            "codebase",
+            "--analysis",
+            "dataflow",
+            "--output",
+            "json",
+            "--reproducible",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(report["summary"]["scanned_files"], 1);
+    for analysis in ["codebase", "dataflow"] {
+        assert_eq!(report["coverage"][analysis]["scanned_files"], 1);
+    }
+    let result = binary()
+        .args([
+            "analyze",
+            root.to_str().unwrap(),
+            "--ignore-path",
+            "[invalid",
+        ])
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("invalid glob"));
+    std::fs::remove_dir_all(root).unwrap();
+}

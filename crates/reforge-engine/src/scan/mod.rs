@@ -31,6 +31,7 @@ mod anchors;
 mod churn;
 pub(crate) mod config;
 mod detection_control;
+mod ignore_paths;
 mod ignore_policy;
 mod parse_cache;
 mod paths;
@@ -43,6 +44,7 @@ mod thresholds;
 use churn::collect_churn_metrics;
 use config::{ConfigFile, ConfigSuppression, effective_scan_config_with};
 use detection_control::apply_detection_controls;
+use ignore_paths::IgnorePaths;
 use progress::ProgressEvent;
 pub(crate) use progress::{NoopProgress, ProgressSink};
 use signals::ScanSignalContext;
@@ -93,9 +95,10 @@ struct WorkspacePlan {
 pub(crate) fn comment_source_paths(root: &Path, args: &EffectiveConfig) -> Result<Vec<PathBuf>> {
     if root.is_file() {
         let base = root.parent().unwrap_or(root);
+        let ignores = IgnorePaths::new(&args.filters.ignore_paths)?;
         return Ok(
             if should_scan_source_file(root, args)
-                && !is_ignored_path(root, base, args)
+                && !ignores.matches(root, base)
                 && (args.filters.include_hidden
                     || !root
                         .file_name()

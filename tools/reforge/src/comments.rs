@@ -35,7 +35,7 @@ struct SourceArgs {
     no_gitignore: bool,
     #[arg(long)]
     exclude_tests: bool,
-    /// Exclude a relative path or directory prefix. Repeat as needed.
+    /// Exclude a root-relative path or glob. Repeat as needed; quote shell patterns.
     #[arg(long = "ignore-path")]
     ignore_paths: Vec<String>,
 }

@@ -76,6 +76,7 @@ struct AnalyzeCommand {
     no_gitignore: bool,
     #[arg(long)]
     exclude_tests: bool,
+    /// Exclude a root-relative path or glob. Repeat as needed; quote shell patterns.
     #[arg(long = "ignore-path")]
     ignore_paths: Vec<String>,
     /// Write Codebase raw metrics to a separate JSON sidecar.
