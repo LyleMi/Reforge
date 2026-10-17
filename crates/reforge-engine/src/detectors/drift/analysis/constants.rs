@@ -169,7 +169,6 @@ pub(super) const CONFIG_BOUNDARY_WORDS: &[&str] =
 
 pub(super) const FS_BOUNDARY_WORDS: &[&str] = &[
     "dao",
-    "file",
     "filesystem",
     "persistence",
     "repository",

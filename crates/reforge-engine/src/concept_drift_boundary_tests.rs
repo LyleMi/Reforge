@@ -94,6 +94,22 @@ fn boundary_in_another_workspace_package_does_not_create_bypasses() {
 }
 
 #[test]
+fn generic_file_names_do_not_establish_a_filesystem_boundary() {
+    let files = vec![
+        source_file(
+            "crates/engine/src/detectors/duplicate_files.rs",
+            "fn find_duplicates() {}",
+        ),
+        source_file("crates/engine/src/a.rs", "fn a() { std::fs::read(\"a\"); }"),
+        source_file("crates/engine/src/b.rs", "fn b() { std::fs::read(\"b\"); }"),
+        source_file("crates/engine/src/c.rs", "fn c() { std::fs::read(\"c\"); }"),
+        source_file("crates/engine/src/d.rs", "fn d() { std::fs::read(\"d\"); }"),
+    ];
+
+    assert_no_boundary_bypass(&files);
+}
+
+#[test]
 fn skips_adapter_boundary_bypasses_in_support_scripts() {
     let files = vec![
         source_file(
